@@ -287,8 +287,14 @@ func (f *App) Run(args []string) error {
 			return err
 		}
 	}
-	// initialize fleet client if enabled
-	if cfg.Fleet.Enabled {
+	// Initialize fleet client if enabled via config OR if enrollment data exists on disk.
+	// After `fibratus enroll`, the agent has all it needs without any YAML config.
+	fleetEnrolled := f.isEnrolled()
+	if cfg.Fleet.Enabled || fleetEnrolled {
+		if fleetEnrolled && !cfg.Fleet.Enabled {
+			log.Info("fleet: enrollment data detected — auto-enabling fleet mode")
+			cfg.Fleet.Enabled = true
+		}
 		if err := f.initFleetClient(cfg); err != nil {
 			log.Warnf("fleet: failed to initialize: %v", err)
 		}
@@ -453,6 +459,21 @@ func (f *App) Shutdown() error {
 		errs = append(errs, err)
 	}
 	return multierror.Wrap(errs...)
+}
+
+// isEnrolled checks if enrollment data exists on disk from a prior
+// `fibratus enroll` command. If it does, fleet mode can be auto-enabled.
+func (f *App) isEnrolled() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+	agentID := filepath.Join(dataDir, "agent-id")
+	serverURL := filepath.Join(dataDir, "server-url")
+	_, err1 := os.Stat(agentID)
+	_, err2 := os.Stat(serverURL)
+	return err1 == nil && err2 == nil
 }
 
 // initFleetClient initializes the fleet client, registers with

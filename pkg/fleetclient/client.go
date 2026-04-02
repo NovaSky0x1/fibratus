@@ -93,6 +93,16 @@ func New(config Config, dataDir string) (*Client, error) {
 		Timeout:   config.Timeout,
 	}
 
+	// Load persisted enrollment data — overrides config file settings.
+	// After `fibratus enroll`, these files contain the canonical identity.
+	if serverURL := loadFile(filepath.Join(dataDir, "server-url")); serverURL != "" {
+		config.ServerURL = serverURL
+		log.Infof("fleet: loaded server URL from enrollment: %s", serverURL)
+	}
+	if orgID := loadFile(filepath.Join(dataDir, "org-id")); orgID != "" {
+		config.OrgID = orgID
+	}
+
 	baseURL := strings.TrimRight(config.ServerURL, "/")
 
 	c := &Client{
@@ -109,15 +119,8 @@ func New(config Config, dataDir string) (*Client, error) {
 	}
 	c.hostname = hostname
 
-	// Load persisted agent ID if available
+	// Load persisted agent ID
 	c.agentID = c.loadAgentID()
-
-	// Load persisted org ID if not set in config
-	if c.config.OrgID == "" {
-		if orgID := c.loadOrgID(); orgID != "" {
-			c.config.OrgID = orgID
-		}
-	}
 
 	return c, nil
 }
@@ -127,14 +130,6 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-func (c *Client) loadOrgID() string {
-	path := filepath.Join(c.dataDir, "org-id")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
 
 // Register registers this agent with the fleet server. If the agent
 // is already registered (has a persisted ID), it re-registers to
@@ -365,7 +360,11 @@ func (c *Client) readError(resp *http.Response) error {
 
 // loadAgentID loads a previously persisted agent ID from disk.
 func (c *Client) loadAgentID() string {
-	path := filepath.Join(c.dataDir, agentIDFile)
+	return loadFile(filepath.Join(c.dataDir, agentIDFile))
+}
+
+// loadFile reads a single-value text file, returning empty string on error.
+func loadFile(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""

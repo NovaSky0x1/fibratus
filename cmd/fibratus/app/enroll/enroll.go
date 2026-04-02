@@ -199,23 +199,24 @@ func runEnroll(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write org ID: %w", err)
 	}
 
+	// Write server URL so the agent can auto-connect on startup
+	if err := os.WriteFile(filepath.Join(dataDir, "server-url"), []byte(serverURL), 0o644); err != nil {
+		return fmt.Errorf("failed to write server URL: %w", err)
+	}
+
 	// 6. Print success
 	fmt.Println("")
 	fmt.Println("  Enrollment successful!")
 	fmt.Println("")
-	fmt.Printf("  Agent ID:     %s\n", enrollResp.AgentID)
-	fmt.Printf("  Organization: %s\n", enrollResp.OrgID)
-	fmt.Printf("  Certificates: %s\n", certDir)
+	fmt.Printf("  Agent ID:      %s\n", enrollResp.AgentID)
+	fmt.Printf("  Organization:  %s\n", enrollResp.OrgID)
+	fmt.Printf("  Server:        %s\n", serverURL)
+	fmt.Printf("  Certificates:  %s\n", certDir)
 	fmt.Println("")
-	fmt.Println("  Add to fibratus.yml:")
+	fmt.Println("  The agent is now enrolled. Start it with:")
+	fmt.Println("    fibratus service start")
 	fmt.Println("")
-	fmt.Println("    fleet:")
-	fmt.Println("      enabled: true")
-	fmt.Printf("      server-url: \"%s\"\n", serverURL)
-	fmt.Printf("      org-id: \"%s\"\n", enrollResp.OrgID)
-	fmt.Println("      agent-group: \"default\"")
-	fmt.Println("")
-	fmt.Println("  Then start: fibratus service start")
+	fmt.Println("  No configuration file changes needed.")
 
 	return nil
 }
