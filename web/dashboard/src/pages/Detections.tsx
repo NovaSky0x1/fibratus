@@ -235,7 +235,7 @@ export default function Detections() {
                 </div>
               )}
 
-            {selectedDet.events && (
+            {selectedDet.events != null && (
               <div>
                 <h4 className="text-sm font-medium text-gray-500">Event Data</h4>
                 <pre className="mt-2 max-h-96 overflow-auto rounded-lg bg-gray-900 p-4 text-xs text-gray-100 font-mono">

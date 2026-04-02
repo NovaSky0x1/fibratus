@@ -311,7 +311,7 @@ export default function Agents() {
                     {cmd.error_message && (
                       <p className="mt-1 text-xs text-red-600">{cmd.error_message}</p>
                     )}
-                    {cmd.result && cmd.status === 'completed' && (
+                    {cmd.result != null && cmd.status === 'completed' && (
                       <details className="mt-2">
                         <summary className="text-xs text-fibratus-600 cursor-pointer hover:text-fibratus-800">View result</summary>
                         <pre className="mt-1 max-h-60 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100 font-mono">
