@@ -19,6 +19,8 @@
 package config
 
 import (
+	"time"
+
 	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 	"github.com/spf13/viper"
 )
@@ -34,10 +36,21 @@ func (c *FleetConfig) initFromViper(v *viper.Viper) {
 	c.APIKey = v.GetString("fleet.api-key")
 	c.OrgID = v.GetString("fleet.org-id")
 	c.AgentGroup = v.GetString("fleet.agent-group")
-	c.HeartbeatInterval = v.GetDuration("fleet.heartbeat-interval")
-	c.RuleSyncInterval = v.GetDuration("fleet.rule-sync-interval")
 	c.EnableGzip = v.GetBool("fleet.enable-gzip")
 	c.TLSCA = v.GetString("fleet.tls-ca")
 	c.TLSInsecureSkipVerify = v.GetBool("fleet.tls-insecure-skip-verify")
+
+	// Apply defaults for durations — zero values cause panics in tickers
+	c.HeartbeatInterval = v.GetDuration("fleet.heartbeat-interval")
+	if c.HeartbeatInterval <= 0 {
+		c.HeartbeatInterval = 30 * time.Second
+	}
+	c.RuleSyncInterval = v.GetDuration("fleet.rule-sync-interval")
+	if c.RuleSyncInterval <= 0 {
+		c.RuleSyncInterval = 5 * time.Minute
+	}
 	c.Timeout = v.GetDuration("fleet.timeout")
+	if c.Timeout <= 0 {
+		c.Timeout = 10 * time.Second
+	}
 }

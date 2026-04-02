@@ -487,11 +487,14 @@ func (f *App) Shutdown() error {
 // initFleetClient initializes the fleet client, registers with
 // the fleet server, and starts the heartbeat goroutine.
 func (f *App) initFleetClient(cfg *config.Config) error {
+	log.Infof("fleet: initializing client (server=%s, org=%s)", cfg.Fleet.ServerURL, cfg.Fleet.OrgID)
+
 	exe, err := os.Executable()
 	if err != nil {
 		exe = "."
 	}
 	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+	log.Infof("fleet: data directory: %s", dataDir)
 
 	client, err := fleetclient.New(cfg.Fleet.Config, dataDir)
 	if err != nil {
