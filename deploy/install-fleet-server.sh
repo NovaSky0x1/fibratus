@@ -227,6 +227,8 @@ CGO_ENABLED=0 go build \
     -o "${INSTALL_DIR}/bin/fleet-server" \
     ./cmd/fleet-server/
 chmod +x "${INSTALL_DIR}/bin/fleet-server"
+# Allow binding to privileged ports (443) as non-root
+setcap 'cap_net_bind_service=+ep' "${INSTALL_DIR}/bin/fleet-server"
 ok "Binary built at ${INSTALL_DIR}/bin/fleet-server"
 
 # ─── Step 8: Create service user ────────────────────────────────────────────
@@ -285,6 +287,9 @@ HOOK
         chmod +x /etc/letsencrypt/renewal-hooks/deploy/fibratus-fleet.sh
         systemctl enable certbot.timer 2>/dev/null || true
         systemctl start certbot.timer 2>/dev/null || true
+
+        # Ensure service user can read the cert files
+        chmod 0755 /etc/letsencrypt/live /etc/letsencrypt/archive
 
         ok "Let's Encrypt certificate issued (auto-renewal enabled)"
         TLS_NOTE="Let's Encrypt (auto-renew via certbot)"
