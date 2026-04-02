@@ -271,22 +271,25 @@ func (s *Server) Run(ctx context.Context) error {
 	// Start agent status reaper
 	go s.agentReaper(ctx, agentStore)
 
-	// Configure TLS with optional mTLS (client certificate verification)
+	// Configure TLS. We use RequestClientCert so browsers can connect
+	// without a client cert (dashboard), while enrolled agents can
+	// optionally present their cert for mTLS authentication. The
+	// agentIdentity middleware extracts identity from presented certs.
 	if s.config.Server.TLSCert != "" && s.config.Server.TLSKey != "" {
-		// Load all org CA certs for client verification
-		clientCAs, err := caManager.LoadAllCACerts(context.Background())
-		if err != nil {
-			log.Warnf("fleet: failed to load org CAs for mTLS: %v", err)
+		tlsConfig := &tls.Config{
+			// Request but don't require client certs — browsers won't
+			// have one, enrolled agents will present theirs.
+			ClientAuth: tls.RequestClientCert,
 		}
 
-		tlsConfig := &tls.Config{
-			// Request client certs but don't require them —
-			// enrollment endpoint and legacy agents don't have certs yet
-			ClientAuth: tls.VerifyClientCertIfGiven,
+		// Load org CA certs so we can verify agent certs in middleware
+		clientCAs, err := caManager.LoadAllCACerts(context.Background())
+		if err != nil {
+			log.Warnf("fleet: failed to load org CAs: %v", err)
 		}
 		if clientCAs != nil {
 			tlsConfig.ClientCAs = clientCAs
-			log.Info("fleet: mTLS enabled — enrolled agents will use client certificates")
+			log.Info("fleet: agent client certificate verification enabled")
 		}
 
 		s.httpServer.TLSConfig = tlsConfig
