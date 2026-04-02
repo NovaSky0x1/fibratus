@@ -23,9 +23,10 @@ import (
 )
 
 var (
-	version = "dev"
-	commit  = "unknown"
-	date    = "unknown"
+	version    = "dev"
+	commit     = "unknown"
+	date       = "unknown"
+	configFile string
 )
 
 // RootCmd is the entrance to the Fleet Server CLI.
@@ -41,6 +42,8 @@ var RootCmd = &cobra.Command{
 }
 
 func init() {
+	RootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "configs/fleet-server.yml", "Path to configuration file")
+
 	RootCmd.AddCommand(serveCmd)
 	RootCmd.AddCommand(migrateCmd)
 	RootCmd.AddCommand(versionCmd)

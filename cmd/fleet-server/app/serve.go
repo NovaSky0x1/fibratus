@@ -29,8 +29,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var configFile string
-
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the fleet management server",
@@ -62,10 +60,6 @@ var serveCmd = &cobra.Command{
 
 		return srv.Run(ctx)
 	},
-}
-
-func init() {
-	serveCmd.Flags().StringVarP(&configFile, "config", "c", "configs/fleet-server.yml", "Path to configuration file")
 }
 
 func initLogging(level string) {
