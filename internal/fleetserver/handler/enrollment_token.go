@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rabbitstack/fibratus/internal/fleetserver"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -41,9 +41,9 @@ func NewEnrollmentTokenHandler(tokens store.EnrollmentTokenStore) *EnrollmentTok
 
 // Create handles POST /api/v1/orgs/{org_id}/enrollment-tokens
 func (h *EnrollmentTokenHandler) Create(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
-	accountID := fleetserver.AccountIDFromContext(r.Context())
-	userID := fleetserver.UserIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	userID := ctxutil.UserIDFromContext(r.Context())
 
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
@@ -88,7 +88,7 @@ func (h *EnrollmentTokenHandler) Create(w http.ResponseWriter, r *http.Request) 
 
 // List handles GET /api/v1/orgs/{org_id}/enrollment-tokens
 func (h *EnrollmentTokenHandler) List(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return

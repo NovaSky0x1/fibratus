@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -36,13 +38,13 @@ func jwtAuth(secret string, next http.Handler) http.Handler {
 		}
 		tokenStr := strings.TrimPrefix(auth, "Bearer ")
 
-		claims, err := ValidateJWT(secret, tokenStr)
+		claims, err := fleetauth.ValidateJWT(secret, tokenStr)
 		if err != nil {
 			http.Error(w, `{"error":{"code":401,"message":"invalid or expired token"}}`, http.StatusUnauthorized)
 			return
 		}
 
-		ctx := WithUserContext(r.Context(), claims.Sub, claims.AccountID, claims.Role)
+		ctx := ctxutil.WithUserContext(r.Context(), claims.Sub, claims.AccountID, claims.Role)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -88,7 +90,7 @@ func agentIdentity(next http.Handler) http.Handler {
 		}
 
 		if agentID != "" || orgID != "" {
-			ctx := WithAgentContext(r.Context(), agentID, orgID, accountID)
+			ctx := ctxutil.WithAgentContext(r.Context(), agentID, orgID, accountID)
 			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)

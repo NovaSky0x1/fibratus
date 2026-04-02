@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rabbitstack/fibratus/internal/fleetserver"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -49,10 +49,10 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 
 	// Fall back to context for mTLS-authenticated agents
 	if agentID == "" {
-		agentID = fleetserver.AgentIDFromContext(r.Context())
+		agentID = ctxutil.AgentIDFromContext(r.Context())
 	}
 	if orgID == "" {
-		orgID = fleetserver.OrgIDFromContext(r.Context())
+		orgID = ctxutil.OrgIDFromContext(r.Context())
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
@@ -122,7 +122,7 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 
 // List handles GET /api/v1/orgs/{org_id}/detections
 func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
@@ -155,7 +155,7 @@ func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/v1/orgs/{org_id}/detections/{id}
 func (h *DetectionHandler) Get(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
@@ -183,7 +183,7 @@ func (h *DetectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // Timeline handles GET /api/v1/orgs/{org_id}/detections/timeline
 func (h *DetectionHandler) Timeline(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
@@ -208,7 +208,7 @@ func (h *DetectionHandler) Timeline(w http.ResponseWriter, r *http.Request) {
 
 // MitreHeatmap handles GET /api/v1/orgs/{org_id}/detections/mitre
 func (h *DetectionHandler) MitreHeatmap(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return

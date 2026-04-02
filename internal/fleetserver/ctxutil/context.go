@@ -16,62 +16,70 @@
  * limitations under the License.
  */
 
-package fleetserver
+// Package ctxutil provides request context helpers for the fleet server.
+// It is a separate package to avoid import cycles between the server
+// core, middleware, and handler packages.
+package ctxutil
 
 import "context"
 
 type contextKey string
 
 const (
-	ctxKeyUserID    contextKey = "user_id"
-	ctxKeyAccountID contextKey = "account_id"
-	ctxKeyRole      contextKey = "role"
-	ctxKeyAgentID   contextKey = "agent_id"
-	ctxKeyOrgID     contextKey = "org_id"
+	keyUserID    contextKey = "user_id"
+	keyAccountID contextKey = "account_id"
+	keyRole      contextKey = "role"
+	keyAgentID   contextKey = "agent_id"
+	keyOrgID     contextKey = "org_id"
 )
 
 // WithUserContext stores user identity in the context (from JWT).
 func WithUserContext(ctx context.Context, userID, accountID, role string) context.Context {
-	ctx = context.WithValue(ctx, ctxKeyUserID, userID)
-	ctx = context.WithValue(ctx, ctxKeyAccountID, accountID)
-	ctx = context.WithValue(ctx, ctxKeyRole, role)
+	ctx = context.WithValue(ctx, keyUserID, userID)
+	ctx = context.WithValue(ctx, keyAccountID, accountID)
+	ctx = context.WithValue(ctx, keyRole, role)
 	return ctx
 }
 
 // WithAgentContext stores agent identity in the context (from mTLS cert or API key).
 func WithAgentContext(ctx context.Context, agentID, orgID, accountID string) context.Context {
-	ctx = context.WithValue(ctx, ctxKeyAgentID, agentID)
-	ctx = context.WithValue(ctx, ctxKeyOrgID, orgID)
-	ctx = context.WithValue(ctx, ctxKeyAccountID, accountID)
+	ctx = context.WithValue(ctx, keyAgentID, agentID)
+	ctx = context.WithValue(ctx, keyOrgID, orgID)
+	ctx = context.WithValue(ctx, keyAccountID, accountID)
 	return ctx
 }
 
-// UserIDFromContext extracts the user ID from the context.
+// WithOrgID stores just the org ID in the context (from URL path).
+func WithOrgID(ctx context.Context, orgID string) context.Context {
+	return context.WithValue(ctx, keyOrgID, orgID)
+}
+
+// UserIDFromContext extracts the user ID.
 func UserIDFromContext(ctx context.Context) string {
-	v, _ := ctx.Value(ctxKeyUserID).(string)
+	v, _ := ctx.Value(keyUserID).(string)
 	return v
 }
 
-// AccountIDFromContext extracts the account ID from the context.
+// AccountIDFromContext extracts the account ID.
 func AccountIDFromContext(ctx context.Context) string {
-	v, _ := ctx.Value(ctxKeyAccountID).(string)
+	v, _ := ctx.Value(keyAccountID).(string)
 	return v
 }
 
-// RoleFromContext extracts the user role from the context.
+// RoleFromContext extracts the user role.
 func RoleFromContext(ctx context.Context) string {
-	v, _ := ctx.Value(ctxKeyRole).(string)
+	v, _ := ctx.Value(keyRole).(string)
 	return v
 }
 
-// AgentIDFromContext extracts the agent ID from the context.
+// AgentIDFromContext extracts the agent ID.
 func AgentIDFromContext(ctx context.Context) string {
-	v, _ := ctx.Value(ctxKeyAgentID).(string)
+	v, _ := ctx.Value(keyAgentID).(string)
 	return v
 }
 
-// OrgIDFromContext extracts the org ID from the context.
+// OrgIDFromContext extracts the org ID.
 func OrgIDFromContext(ctx context.Context) string {
-	v, _ := ctx.Value(ctxKeyOrgID).(string)
+	v, _ := ctx.Value(keyOrgID).(string)
 	return v
 }

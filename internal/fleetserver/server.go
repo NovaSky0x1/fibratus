@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ca"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
 	log "github.com/sirupsen/logrus"
@@ -153,7 +154,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 
 		// Inject org_id into context
-		ctx := context.WithValue(r.Context(), ctxKeyOrgID, orgID)
+		ctx := ctxutil.WithOrgID(r.Context(), orgID)
 		r = r.WithContext(ctx)
 
 		// Route to sub-handlers

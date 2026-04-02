@@ -26,7 +26,8 @@ import (
 	"time"
 	"unicode"
 
-	fleetserver "github.com/rabbitstack/fibratus/internal/fleetserver"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -87,7 +88,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hash password
-	hashedPassword, err := fleetserver.HashPassword(req.Password)
+	hashedPassword, err := fleetauth.HashPassword(req.Password)
 	if err != nil {
 		log.Errorf("fleet: signup hash error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -156,7 +157,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate JWT
-	token, err := fleetserver.GenerateJWT(h.jwtSecret, userID, accountID, "admin")
+	token, err := fleetauth.GenerateJWT(h.jwtSecret, userID, accountID, "admin")
 	if err != nil {
 		log.Errorf("fleet: signup generate token error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -198,12 +199,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := fleetserver.CheckPassword(user.Password, req.Password); err != nil {
+	if err := fleetauth.CheckPassword(user.Password, req.Password); err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
-	token, err := fleetserver.GenerateJWT(h.jwtSecret, user.ID, user.AccountID, user.Role)
+	token, err := fleetauth.GenerateJWT(h.jwtSecret, user.ID, user.AccountID, user.Role)
 	if err != nil {
 		log.Errorf("fleet: login generate token error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -219,6 +220,63 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		User:  *user,
 	}
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
+}
+
+// ListOrganizations handles GET /api/v1/account/organizations
+func (h *AuthHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	orgs, err := h.orgs.ListByAccount(r.Context(), accountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: orgs})
+}
+
+// CreateOrganization handles POST /api/v1/account/organizations
+func (h *AuthHandler) CreateOrganization(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	var req fleet.CreateOrgRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if req.Slug == "" {
+		req.Slug = slugify(req.Name)
+	}
+
+	org := &fleet.Organization{
+		ID:        generateID(),
+		AccountID: accountID,
+		Name:      req.Name,
+		Slug:      req.Slug,
+	}
+	if err := h.orgs.Create(r.Context(), org); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create organization")
+		return
+	}
+
+	// Grant current user access
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID != "" {
+		h.users.AddOrgAccess(r.Context(), userID, org.ID, "admin")
+	}
+
+	writeJSON(w, http.StatusCreated, fleet.Response{Data: org})
 }
 
 // slugify converts a name to a URL-friendly slug.

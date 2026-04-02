@@ -21,7 +21,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/rabbitstack/fibratus/internal/fleetserver"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -40,7 +40,7 @@ func NewDashboardHandler(agents store.AgentStore, detections store.DetectionStor
 
 // Overview handles GET /api/v1/orgs/{org_id}/dashboard/overview
 func (h *DashboardHandler) Overview(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return

@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	_ "github.com/lib/pq"
@@ -88,7 +89,7 @@ Example:
 		apiKey := generateAPIKey()
 
 		// Hash password
-		passHash, err := fleetserver.HashPassword(bsAdminPass)
+		passHash, err := fleetauth.HashPassword(bsAdminPass)
 		if err != nil {
 			return fmt.Errorf("failed to hash password: %w", err)
 		}

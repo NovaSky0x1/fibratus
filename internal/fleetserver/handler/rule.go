@@ -24,7 +24,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/rabbitstack/fibratus/internal/fleetserver"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -44,7 +44,7 @@ func NewRuleHandler(rules store.RuleStore, agents store.AgentStore) *RuleHandler
 
 // List handles GET /api/v1/orgs/{org_id}/rules
 func (h *RuleHandler) List(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
@@ -71,7 +71,7 @@ func (h *RuleHandler) List(w http.ResponseWriter, r *http.Request) {
 // Create handles POST /api/v1/orgs/{org_id}/rules
 // Accepts either a JSON rule object or raw YAML in the body.
 func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
@@ -130,7 +130,7 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/v1/orgs/{org_id}/rules/{id}
 func (h *RuleHandler) Get(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	parts := strings.Split(r.URL.Path, "/rules/")
 	if len(parts) < 2 || parts[1] == "" {
 		writeError(w, http.StatusBadRequest, "rule ID required")
@@ -152,7 +152,7 @@ func (h *RuleHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/v1/orgs/{org_id}/rules/{id}
 func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	parts := strings.Split(r.URL.Path, "/rules/")
 	if len(parts) < 2 || parts[1] == "" {
 		writeError(w, http.StatusBadRequest, "rule ID required")
@@ -180,7 +180,7 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/v1/orgs/{org_id}/rules/{id}
 func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	parts := strings.Split(r.URL.Path, "/rules/")
 	if len(parts) < 2 || parts[1] == "" {
 		writeError(w, http.StatusBadRequest, "rule ID required")
@@ -201,11 +201,11 @@ func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *RuleHandler) GetForAgent(w http.ResponseWriter, r *http.Request) {
 	orgID := r.Header.Get("X-Org-ID")
 	if orgID == "" {
-		orgID = fleetserver.OrgIDFromContext(r.Context())
+		orgID = ctxutil.OrgIDFromContext(r.Context())
 	}
 	agentID := r.Header.Get("X-Agent-ID")
 	if agentID == "" {
-		agentID = fleetserver.AgentIDFromContext(r.Context())
+		agentID = ctxutil.AgentIDFromContext(r.Context())
 	}
 
 	if orgID == "" {

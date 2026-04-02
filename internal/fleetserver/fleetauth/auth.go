@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package fleetserver
+package fleetauth
 
 import (
 	"crypto/hmac"

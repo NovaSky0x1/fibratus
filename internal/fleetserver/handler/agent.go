@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rabbitstack/fibratus/internal/fleetserver"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -131,7 +131,7 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For agent routes, org_id comes from agent identity or header
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		orgID = r.Header.Get("X-Org-ID")
 	}
@@ -148,7 +148,7 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 
 // List handles GET /api/v1/orgs/{org_id}/agents
 func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
@@ -179,7 +179,7 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/v1/orgs/{org_id}/agents/{id}
 func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
@@ -208,7 +208,7 @@ func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/v1/orgs/{org_id}/agents/{id}
 func (h *AgentHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	orgID := fleetserver.OrgIDFromContext(r.Context())
+	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
 		writeError(w, http.StatusBadRequest, "org context required")
 		return
