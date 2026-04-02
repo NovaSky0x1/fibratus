@@ -34,11 +34,11 @@ DB_USER="fibratus"
 DB_PASS="$(openssl rand -hex 16)"
 API_KEY="$(openssl rand -hex 32)"
 
-GO_VERSION="1.23.4"
+GO_VERSION="1.26.1"
 NODE_MAJOR="20"
 
 REPO_URL="https://github.com/NovaSky0x1/fibratus.git"
-REPO_BRANCH="master"
+REPO_BRANCH="${FIBRATUS_BRANCH:-feat/fleet-server}"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -151,14 +151,19 @@ ok "Source code ready at ${INSTALL_DIR}/src"
 
 info "Building dashboard (React + Vite)..."
 cd "${INSTALL_DIR}/src/web/dashboard"
-npm install --silent 2>/dev/null
-npm run build 2>/dev/null
+npm install --silent
+npm run build
 ok "Dashboard built"
 
 # ─── Step 7: Build fleet-server binary ───────────────────────────────────────
 
 info "Building fleet-server binary..."
 cd "${INSTALL_DIR}/src"
+mkdir -p "${INSTALL_DIR}/bin"
+
+# Fetch dependencies
+go mod tidy 2>/dev/null || go mod download
+
 CGO_ENABLED=0 go build \
     -ldflags="-s -w -X github.com/rabbitstack/fibratus/cmd/fleet-server/app.version=$(git describe --tags 2>/dev/null || echo dev) -X github.com/rabbitstack/fibratus/cmd/fleet-server/app.commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
     -o "${INSTALL_DIR}/bin/fleet-server" \
