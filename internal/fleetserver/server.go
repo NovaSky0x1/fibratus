@@ -151,7 +151,7 @@ func (s *Server) Run(ctx context.Context) error {
 	agentMux.HandleFunc("/api/v1/agent/telemetry", methodGuard(http.MethodPost, telemetryHandler.Ingest))
 
 	// Wrap agent routes with API key auth + agent identity
-	agentAuthenticated := apiKeyAuth(s.apiKeys, agentIdentity(agentMux))
+	agentAuthenticated := agentAuth(s.apiKeys, agentIdentity(agentMux))
 
 	// ── Dashboard routes (JWT auth, org-scoped) ──────────────
 

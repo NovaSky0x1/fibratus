@@ -49,17 +49,33 @@ func jwtAuth(secret string, next http.Handler) http.Handler {
 	})
 }
 
-// apiKeyAuth validates the X-API-Key header against configured keys.
-// Used for backward-compatible agent authentication (Phase 1 agents
-// that haven't enrolled via mTLS yet).
-func apiKeyAuth(validKeys map[string]bool, next http.Handler) http.Handler {
+// agentAuth validates agent requests via API key OR client certificate.
+// Enrolled agents present a client cert (mTLS) and don't need an API key.
+// Legacy agents use X-API-Key header. At least one must be valid.
+func agentAuth(validKeys map[string]bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check for valid API key
 		key := r.Header.Get("X-API-Key")
-		if key == "" || !validKeys[key] {
-			http.Error(w, `{"error":{"code":401,"message":"unauthorized"}}`, http.StatusUnauthorized)
+		if key != "" && validKeys[key] {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+
+		// Check for client certificate (enrolled agent via mTLS)
+		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Check for X-Agent-ID + X-Org-ID headers (enrolled agent without mTLS)
+		agentID := r.Header.Get("X-Agent-ID")
+		orgID := r.Header.Get("X-Org-ID")
+		if agentID != "" && orgID != "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		http.Error(w, `{"error":{"code":401,"message":"unauthorized"}}`, http.StatusUnauthorized)
 	})
 }
 
