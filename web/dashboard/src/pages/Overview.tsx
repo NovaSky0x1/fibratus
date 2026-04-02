@@ -1,6 +1,22 @@
 import { useQuery } from '@tanstack/react-query'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import { api, type FleetOverview, type Detection, type TimelineBucket } from '../lib/api'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts'
+import {
+  api,
+  type FleetOverview,
+  type Detection,
+  type TimelineBucket,
+} from '../lib/api'
 import StatCard from '../components/StatCard'
 import SeverityBadge from '../components/SeverityBadge'
 
@@ -19,7 +35,7 @@ export default function Overview() {
 
   const { data: detections } = useQuery({
     queryKey: ['recent-detections'],
-    queryFn: () => api.getDetections({ page: 1 }),
+    queryFn: () => api.getDetections({ page: '1' }),
   })
 
   const { data: timeline } = useQuery({
@@ -32,19 +48,32 @@ export default function Overview() {
   const timelineData = (timeline?.data || []) as TimelineBucket[]
 
   const severityData = stats?.severity_breakdown
-    ? Object.entries(stats.severity_breakdown).map(([name, value]) => ({ name, value }))
+    ? Object.entries(stats.severity_breakdown).map(([name, value]) => ({
+        name,
+        value,
+      }))
     : []
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900">Fleet Overview</h1>
-      <p className="mt-1 text-sm text-gray-500">Real-time visibility into your endpoint fleet</p>
+      <p className="mt-1 text-sm text-gray-500">
+        Real-time visibility into your endpoint fleet
+      </p>
 
       {/* Stat cards */}
       <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Agents" value={stats?.total_agents ?? 0} />
-        <StatCard title="Online" value={stats?.online_agents ?? 0} variant="success" />
-        <StatCard title="Offline" value={stats?.offline_agents ?? 0} variant="danger" />
+        <StatCard
+          title="Online"
+          value={stats?.online_agents ?? 0}
+          variant="success"
+        />
+        <StatCard
+          title="Offline"
+          value={stats?.offline_agents ?? 0}
+          variant="danger"
+        />
         <StatCard
           title="Detections (24h)"
           value={stats?.total_detections_24h ?? 0}
@@ -56,67 +85,105 @@ export default function Overview() {
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Detection timeline */}
         <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-sm font-medium text-gray-500">Detection Timeline (24h)</h3>
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={timelineData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis
-                  dataKey="timestamp"
-                  tickFormatter={(t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  fontSize={12}
-                />
-                <YAxis fontSize={12} />
-                <Tooltip
-                  labelFormatter={(t) => new Date(t as string).toLocaleString()}
-                />
-                <Bar dataKey="count" fill="#4c6ef5" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <h3 className="text-sm font-medium text-gray-500">
+            Detection Timeline (24h)
+          </h3>
+          {timelineData.length > 0 ? (
+            <div className="mt-4 h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={timelineData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis
+                    dataKey="timestamp"
+                    tickFormatter={(t) =>
+                      new Date(t).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    }
+                    fontSize={12}
+                  />
+                  <YAxis fontSize={12} />
+                  <Tooltip
+                    labelFormatter={(t) =>
+                      new Date(t as string).toLocaleString()
+                    }
+                  />
+                  <Bar dataKey="count" fill="#4c6ef5" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-gray-400">
+              No detection data in the last 24 hours.
+            </p>
+          )}
         </div>
 
         {/* Severity breakdown */}
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-sm font-medium text-gray-500">Severity Breakdown</h3>
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={severityData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {severityData.map((entry) => (
-                    <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name] || '#6b7280'} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-2 flex flex-wrap justify-center gap-3">
-            {severityData.map((entry) => (
-              <div key={entry.name} className="flex items-center gap-1.5 text-xs">
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: SEVERITY_COLORS[entry.name] || '#6b7280' }}
-                />
-                <span className="capitalize text-gray-600">{entry.name}: {entry.value}</span>
+          <h3 className="text-sm font-medium text-gray-500">
+            Severity Breakdown
+          </h3>
+          {severityData.length > 0 ? (
+            <>
+              <div className="mt-4 h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={severityData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {severityData.map((entry) => (
+                        <Cell
+                          key={entry.name}
+                          fill={SEVERITY_COLORS[entry.name] || '#6b7280'}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+              <div className="mt-2 flex flex-wrap justify-center gap-3">
+                {severityData.map((entry) => (
+                  <div
+                    key={entry.name}
+                    className="flex items-center gap-1.5 text-xs"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{
+                        backgroundColor:
+                          SEVERITY_COLORS[entry.name] || '#6b7280',
+                      }}
+                    />
+                    <span className="capitalize text-gray-600">
+                      {entry.name}: {entry.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="mt-4 text-sm text-gray-400">
+              No severity data available.
+            </p>
+          )}
         </div>
       </div>
 
       {/* Recent detections table */}
       <div className="mt-8 rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 px-6 py-4">
-          <h3 className="text-sm font-medium text-gray-900">Recent Detections</h3>
+          <h3 className="text-sm font-medium text-gray-900">
+            Recent Detections
+          </h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -124,15 +191,21 @@ export default function Overview() {
               <tr>
                 <th className="px-6 py-3 font-medium text-gray-500">Rule</th>
                 <th className="px-6 py-3 font-medium text-gray-500">Agent</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Severity</th>
+                <th className="px-6 py-3 font-medium text-gray-500">
+                  Severity
+                </th>
                 <th className="px-6 py-3 font-medium text-gray-500">Time</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {recentDets.slice(0, 10).map((det) => (
                 <tr key={det.id} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-3 font-medium text-gray-900">{det.title || det.rule_name}</td>
-                  <td className="px-6 py-3 text-gray-600">{det.agent_hostname || det.agent_id}</td>
+                  <td className="px-6 py-3 font-medium text-gray-900">
+                    {det.title || det.rule_name}
+                  </td>
+                  <td className="px-6 py-3 text-gray-600">
+                    {det.agent_hostname || det.agent_id}
+                  </td>
                   <td className="px-6 py-3">
                     <SeverityBadge severity={det.severity} />
                   </td>
@@ -143,7 +216,10 @@ export default function Overview() {
               ))}
               {recentDets.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                  <td
+                    colSpan={4}
+                    className="px-6 py-12 text-center text-gray-400"
+                  >
                     No detections yet. Connect agents to start monitoring.
                   </td>
                 </tr>

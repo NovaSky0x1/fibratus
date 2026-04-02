@@ -517,6 +517,10 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 		})
 	}
 
+	// Start command polling — agent checks for pending commands every 5 seconds
+	executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL)
+	client.StartCommandLoop(executor)
+
 	log.Infof("fleet: connected to %s", cfg.Fleet.ServerURL)
 	return nil
 }

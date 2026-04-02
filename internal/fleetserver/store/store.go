@@ -20,6 +20,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
@@ -111,6 +112,16 @@ type GlobalRuleStore interface {
 	GetForOrg(ctx context.Context, orgID string) ([]*fleet.Rule, error)
 	SetOrgOverride(ctx context.Context, orgID, ruleID string, enabled bool) error
 	GetOrgOverrides(ctx context.Context, orgID string) (map[string]bool, error)
+}
+
+// CommandStore manages command queue persistence.
+type CommandStore interface {
+	Create(ctx context.Context, cmd *fleet.Command) error
+	GetPendingForAgent(ctx context.Context, agentID string) ([]*fleet.Command, error)
+	MarkRunning(ctx context.Context, id string) error
+	SetResult(ctx context.Context, id string, status string, result json.RawMessage, errMsg string) error
+	ListByAgent(ctx context.Context, orgID, agentID string, limit int) ([]*fleet.Command, error)
+	Get(ctx context.Context, orgID, id string) (*fleet.Command, error)
 }
 
 // TelemetryStore manages telemetry event persistence and search.

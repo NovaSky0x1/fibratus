@@ -208,6 +208,28 @@ CREATE INDEX IF NOT EXISTS idx_detections_org ON detections(org_id);
 CREATE INDEX IF NOT EXISTS idx_detections_agent ON detections(org_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_detections_severity ON detections(org_id, severity);
 CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections(org_id, timestamp DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Command queue: active response commands for agents
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS commands (
+    id              TEXT PRIMARY KEY,
+    org_id          TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    agent_id        TEXT NOT NULL,
+    type            TEXT NOT NULL,
+    payload         JSONB DEFAULT '{}',
+    status          TEXT NOT NULL DEFAULT 'pending',
+    result          JSONB DEFAULT '{}',
+    error_message   TEXT DEFAULT '',
+    created_by      TEXT DEFAULT '',
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    started_at      TIMESTAMPTZ,
+    completed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_commands_agent_status ON commands(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_commands_org ON commands(org_id);
 `
 
 // Migrate runs the database schema migrations.

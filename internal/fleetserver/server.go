@@ -84,12 +84,14 @@ func (s *Server) Run(ctx context.Context) error {
 	agentStore := postgres.NewAgentStore(db)
 	detStore := postgres.NewDetectionStore(db)
 	ruleStore := postgres.NewRuleStore(db)
+	commandStore := postgres.NewCommandStore(db)
 	enrollStore := postgres.NewEnrollmentTokenStore(db)
 	caManager := ca.NewManager(db)
 
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
 	agentHandler := handler.NewAgentHandler(agentStore)
+	commandHandler := handler.NewCommandHandler(commandStore, agentStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore)
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore)
 	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)
@@ -129,6 +131,14 @@ func (s *Server) Run(ctx context.Context) error {
 		http.NotFound(w, r)
 	})
 	agentMux.HandleFunc("/api/v1/agent/rules", methodGuard(http.MethodGet, ruleHandler.GetForAgent))
+	agentMux.HandleFunc("/api/v1/agent/commands", methodGuard(http.MethodGet, commandHandler.PollCommands))
+	agentMux.HandleFunc("/api/v1/agent/commands/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/result") {
+			commandHandler.ReportResult(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
 	agentMux.HandleFunc("/api/v1/detections", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			detHandler.Ingest(w, r)
@@ -166,6 +176,10 @@ func (s *Server) Run(ctx context.Context) error {
 		// Agents
 		case subpath == "/agents" && r.Method == http.MethodGet:
 			agentHandler.List(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodGet:
+			commandHandler.ListCommands(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodPost:
+			commandHandler.CreateCommand(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodGet:
 			agentHandler.Get(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodDelete:

@@ -187,6 +187,46 @@ type AgentGroup struct {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Command queue: active response
+// ═══════════════════════════════════════════════════════════════
+
+// Command types for active response
+const (
+	CmdIsolate     = "isolate"
+	CmdUnisolate   = "unisolate"
+	CmdKillProcess = "kill_process"
+	CmdUninstall   = "uninstall"
+	CmdListDir     = "list_directory"
+	CmdGetFile     = "get_file"
+	CmdRunCommand  = "run_command"
+	CmdCollectInfo = "collect_info"
+)
+
+// Command status values
+const (
+	CmdStatusPending   = "pending"
+	CmdStatusRunning   = "running"
+	CmdStatusCompleted = "completed"
+	CmdStatusFailed    = "failed"
+)
+
+// Command represents a queued command for an agent to execute.
+type Command struct {
+	ID           string          `json:"id"`
+	OrgID        string          `json:"org_id"`
+	AgentID      string          `json:"agent_id"`
+	Type         string          `json:"type"`
+	Payload      json.RawMessage `json:"payload"`
+	Status       string          `json:"status"`
+	Result       json.RawMessage `json:"result,omitempty"`
+	ErrorMessage string          `json:"error_message,omitempty"`
+	CreatedBy    string          `json:"created_by,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+	StartedAt    *time.Time      `json:"started_at,omitempty"`
+	CompletedAt  *time.Time      `json:"completed_at,omitempty"`
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Dashboard aggregates
 // ═══════════════════════════════════════════════════════════════
 

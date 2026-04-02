@@ -18,7 +18,10 @@
 
 package fleet
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Response is the standard API response envelope.
 type Response struct {
@@ -169,4 +172,21 @@ type DetectionListOptions struct {
 	RuleID   string `json:"rule_id,omitempty"`
 	From     string `json:"from,omitempty"`
 	To       string `json:"to,omitempty"`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Command queue (active response)
+// ═══════════════════════════════════════════════════════════════
+
+// CreateCommandRequest is sent by dashboard to queue a command for an agent.
+type CreateCommandRequest struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+// CommandResultRequest is sent by an agent to report command execution results.
+type CommandResultRequest struct {
+	Status       string          `json:"status"`
+	Result       json.RawMessage `json:"result,omitempty"`
+	ErrorMessage string          `json:"error_message,omitempty"`
 }

@@ -110,6 +110,21 @@ export interface Rule {
   updated_at: string
 }
 
+export interface Command {
+  id: string
+  org_id: string
+  agent_id: string
+  type: string
+  payload: unknown
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  result: unknown
+  error_message: string
+  created_by: string
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
 export interface EnrollmentToken {
   id: string
   name: string
@@ -194,6 +209,15 @@ export const api = {
   updateRule: (id: string, data: Partial<Rule>) =>
     fetchApi<Rule>(orgPath(`/rules/${id}`), { method: 'PUT', body: JSON.stringify(data) }),
   deleteRule: (id: string) => fetchApi<void>(orgPath(`/rules/${id}`), { method: 'DELETE' }),
+
+  // Commands (active response)
+  getAgentCommands: (agentId: string) =>
+    fetchApi<Command[]>(orgPath(`/agents/${agentId}/commands`)),
+  createCommand: (agentId: string, type: string, payload?: Record<string, unknown>) =>
+    fetchApi<Command>(orgPath(`/agents/${agentId}/commands`), {
+      method: 'POST',
+      body: JSON.stringify({ type, payload: payload ? JSON.stringify(payload) : '{}' }),
+    }),
 
   // Enrollment Tokens
   getEnrollmentTokens: () => fetchApi<EnrollmentToken[]>(orgPath('/enrollment-tokens')),
