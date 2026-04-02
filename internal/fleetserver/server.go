@@ -188,6 +188,8 @@ func (s *Server) Run(ctx context.Context) error {
 			enrollTokenHandler.List(w, r)
 		case subpath == "/enrollment-tokens" && r.Method == http.MethodPost:
 			enrollTokenHandler.Create(w, r)
+		case strings.HasPrefix(subpath, "/enrollment-tokens/") && r.Method == http.MethodDelete:
+			enrollTokenHandler.Delete(w, r)
 
 		// Detections
 		case subpath == "/detections" && r.Method == http.MethodGet:

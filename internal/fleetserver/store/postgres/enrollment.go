@@ -99,3 +99,8 @@ func (s *EnrollmentTokenStore) ListByOrg(ctx context.Context, orgID string) ([]*
 	}
 	return tokens, rows.Err()
 }
+
+func (s *EnrollmentTokenStore) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM enrollment_tokens WHERE id = $1`, id)
+	return err
+}

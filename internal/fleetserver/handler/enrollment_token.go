@@ -21,6 +21,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
@@ -102,4 +103,23 @@ func (h *EnrollmentTokenHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: tokens})
+}
+
+// Delete handles DELETE /api/v1/orgs/{org_id}/enrollment-tokens/{id}
+func (h *EnrollmentTokenHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/enrollment-tokens/")
+	if len(parts) < 2 || parts[1] == "" {
+		writeError(w, http.StatusBadRequest, "token ID required")
+		return
+	}
+	tokenID := strings.TrimSuffix(parts[1], "/")
+
+	if err := h.tokens.Delete(r.Context(), tokenID); err != nil {
+		log.Errorf("fleet: delete enrollment token error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to delete token")
+		return
+	}
+
+	log.Infof("fleet: enrollment token deleted: %s", tokenID)
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -54,6 +54,7 @@ type EnrollmentTokenStore interface {
 	Get(ctx context.Context, id string) (*fleet.EnrollmentToken, error)
 	IncrementUses(ctx context.Context, id string) error
 	ListByOrg(ctx context.Context, orgID string) ([]*fleet.EnrollmentToken, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // AgentStore manages agent persistence. All operations are org-scoped.
@@ -98,6 +99,18 @@ type DetectionStore interface {
 	CountBySeverity(ctx context.Context, orgID string) (map[string]int, error)
 	Timeline(ctx context.Context, orgID string, from, to time.Time, interval string) ([]fleet.TimelineBucket, error)
 	MitreHeatmap(ctx context.Context, orgID string, from, to time.Time) ([]fleet.MitreCell, error)
+}
+
+// GlobalRuleStore manages system-wide rules that apply to all organizations.
+type GlobalRuleStore interface {
+	Create(ctx context.Context, rule *fleet.Rule) error
+	Get(ctx context.Context, id string) (*fleet.Rule, error)
+	List(ctx context.Context, opts fleet.ListOptions) ([]*fleet.Rule, int, error)
+	Update(ctx context.Context, rule *fleet.Rule) error
+	Delete(ctx context.Context, id string) error
+	GetForOrg(ctx context.Context, orgID string) ([]*fleet.Rule, error)
+	SetOrgOverride(ctx context.Context, orgID, ruleID string, enabled bool) error
+	GetOrgOverrides(ctx context.Context, orgID string) (map[string]bool, error)
 }
 
 // TelemetryStore manages telemetry event persistence and search.

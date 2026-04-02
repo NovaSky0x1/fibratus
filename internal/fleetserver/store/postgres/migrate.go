@@ -176,6 +176,34 @@ CREATE TABLE IF NOT EXISTS detections (
     timestamp       TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Global rules apply to ALL organizations by default.
+-- Admins manage these from the system-level dashboard.
+-- Orgs can override (disable) specific global rules via global_rule_overrides.
+CREATE TABLE IF NOT EXISTS global_rules (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    version         TEXT NOT NULL DEFAULT '1.0.0',
+    description     TEXT DEFAULT '',
+    condition       TEXT NOT NULL,
+    output_template TEXT DEFAULT '',
+    severity        TEXT NOT NULL DEFAULT 'medium',
+    labels          JSONB DEFAULT '{}',
+    tags            TEXT[] DEFAULT '{}',
+    "references"    TEXT[] DEFAULT '{}',
+    raw_yaml        TEXT NOT NULL,
+    enabled         BOOLEAN DEFAULT true,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Per-org overrides for global rules (e.g., disable a noisy global rule for one org)
+CREATE TABLE IF NOT EXISTS global_rule_overrides (
+    org_id      TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    rule_id     TEXT NOT NULL REFERENCES global_rules(id) ON DELETE CASCADE,
+    enabled     BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (org_id, rule_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_detections_org ON detections(org_id);
 CREATE INDEX IF NOT EXISTS idx_detections_agent ON detections(org_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_detections_severity ON detections(org_id, severity);
