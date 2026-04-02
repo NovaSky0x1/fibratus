@@ -28,6 +28,7 @@ const (
 	fleetEnabled              = "fleet.enabled"
 	fleetServerURL            = "fleet.server-url"
 	fleetAPIKey               = "fleet.api-key"
+	fleetOrgID                = "fleet.org-id"
 	fleetAgentGroup           = "fleet.agent-group"
 	fleetHeartbeatInterval    = "fleet.heartbeat-interval"
 	fleetRuleSyncInterval     = "fleet.rule-sync-interval"
@@ -45,6 +46,8 @@ type Config struct {
 	ServerURL string `mapstructure:"server-url"`
 	// APIKey is the authentication key for the fleet server.
 	APIKey string `mapstructure:"api-key"`
+	// OrgID is the organization this agent belongs to.
+	OrgID string `mapstructure:"org-id"`
 	// AgentGroup is the group this agent belongs to.
 	AgentGroup string `mapstructure:"agent-group"`
 	// HeartbeatInterval is the interval between heartbeat sends.
@@ -66,6 +69,7 @@ func AddFlags(flags *pflag.FlagSet) {
 	flags.Bool(fleetEnabled, false, "Determines whether the fleet client is enabled")
 	flags.String(fleetServerURL, "", "The base URL of the fleet server")
 	flags.String(fleetAPIKey, "", "The API key for fleet server authentication")
+	flags.String(fleetOrgID, "", "The organization ID this agent belongs to")
 	flags.String(fleetAgentGroup, "default", "The agent group this agent belongs to")
 	flags.Duration(fleetHeartbeatInterval, 30*time.Second, "The interval between heartbeat messages")
 	flags.Duration(fleetRuleSyncInterval, 5*time.Minute, "The interval between rule synchronization checks")

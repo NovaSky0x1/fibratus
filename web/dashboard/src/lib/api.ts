@@ -136,7 +136,13 @@ export interface Organization {
 // API client
 // ═══════════════════════════════════════════════════════════════
 
+export type { ApiResponse }
+
 export const api = {
+  // Generic org-scoped resource fetch
+  getOrgResource: <T>(path: string, options?: RequestInit) =>
+    fetchApi<T>(orgPath(path), options),
+
   // Auth
   signup: (data: SignupData) =>
     fetchApi<AuthResponse>('/auth/signup', {

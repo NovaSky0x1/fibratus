@@ -32,6 +32,7 @@ func (c *FleetConfig) initFromViper(v *viper.Viper) {
 	c.Enabled = v.GetBool("fleet.enabled")
 	c.ServerURL = v.GetString("fleet.server-url")
 	c.APIKey = v.GetString("fleet.api-key")
+	c.OrgID = v.GetString("fleet.org-id")
 	c.AgentGroup = v.GetString("fleet.agent-group")
 	c.HeartbeatInterval = v.GetDuration("fleet.heartbeat-interval")
 	c.RuleSyncInterval = v.GetDuration("fleet.rule-sync-interval")

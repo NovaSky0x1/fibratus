@@ -6,6 +6,7 @@ import Signup from './pages/Signup'
 import Overview from './pages/Overview'
 import Agents from './pages/Agents'
 import Detections from './pages/Detections'
+import Rules from './pages/Rules'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -28,6 +29,7 @@ export default function App() {
                 <Route path="/" element={<Overview />} />
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/detections" element={<Detections />} />
+                <Route path="/rules" element={<Rules />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

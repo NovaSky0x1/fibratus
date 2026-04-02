@@ -80,12 +80,14 @@ func (s *Server) Run(ctx context.Context) error {
 	userStore := postgres.NewUserStore(db)
 	agentStore := postgres.NewAgentStore(db)
 	detStore := postgres.NewDetectionStore(db)
+	ruleStore := postgres.NewRuleStore(db)
 	enrollStore := postgres.NewEnrollmentTokenStore(db)
 
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
 	agentHandler := handler.NewAgentHandler(agentStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore)
+	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore)
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
 	_ = enrollStore // Used in Phase B (enrollment endpoint)
 
@@ -118,6 +120,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		http.NotFound(w, r)
 	})
+	agentMux.HandleFunc("/api/v1/agent/rules", methodGuard(http.MethodGet, ruleHandler.GetForAgent))
 	agentMux.HandleFunc("/api/v1/detections", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			detHandler.Ingest(w, r)
@@ -159,6 +162,18 @@ func (s *Server) Run(ctx context.Context) error {
 			agentHandler.Get(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodDelete:
 			agentHandler.Delete(w, r)
+
+		// Rules
+		case subpath == "/rules" && r.Method == http.MethodGet:
+			ruleHandler.List(w, r)
+		case subpath == "/rules" && r.Method == http.MethodPost:
+			ruleHandler.Create(w, r)
+		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodGet:
+			ruleHandler.Get(w, r)
+		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodPut:
+			ruleHandler.Update(w, r)
+		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodDelete:
+			ruleHandler.Delete(w, r)
 
 		// Detections
 		case subpath == "/detections" && r.Method == http.MethodGet:
@@ -212,7 +227,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 
 		// Agent routes (API key auth)
-		if strings.HasPrefix(path, "/api/v1/agents/") || (path == "/api/v1/detections" && r.Method == http.MethodPost) {
+		if strings.HasPrefix(path, "/api/v1/agents/") || strings.HasPrefix(path, "/api/v1/agent/") || (path == "/api/v1/detections" && r.Method == http.MethodPost) {
 			agentAuthenticated.ServeHTTP(w, r)
 			return
 		}

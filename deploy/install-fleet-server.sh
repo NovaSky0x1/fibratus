@@ -223,11 +223,23 @@ chmod 600 "${CONFIG_DIR}/fleet-server.yml"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}/fleet-server.yml"
 ok "Configuration written to ${CONFIG_DIR}/fleet-server.yml"
 
-# ─── Step 10: Run migrations ────────────────────────────────────────────────
+# ─── Step 10: Run migrations + bootstrap ────────────────────────────────────
 
 info "Running database migrations..."
 "${INSTALL_DIR}/bin/fleet-server" migrate --config "${CONFIG_DIR}/fleet-server.yml"
 ok "Database schema created"
+
+ADMIN_PASS="$(openssl rand -hex 8)"
+info "Bootstrapping initial account and organization..."
+BOOTSTRAP_OUTPUT=$("${INSTALL_DIR}/bin/fleet-server" bootstrap \
+    --config "${CONFIG_DIR}/fleet-server.yml" \
+    --account "Default" \
+    --org "Production" \
+    --email "admin@fibratus.local" \
+    --name "Admin" \
+    --password "${ADMIN_PASS}" 2>&1)
+ORG_ID=$(echo "${BOOTSTRAP_OUTPUT}" | grep "Org ID:" | awk '{print $NF}')
+ok "Bootstrap complete"
 
 # ─── Step 11: Install systemd service ────────────────────────────────────────
 
@@ -298,6 +310,11 @@ echo -e "  ${BOLD}API:${NC}         http://${SERVER_IP}:${LISTEN_PORT}/api/v1/"
 echo -e "  ${BOLD}Health:${NC}      http://${SERVER_IP}:${LISTEN_PORT}/health"
 echo ""
 echo -e "  ${BOLD}API Key:${NC}     ${YELLOW}${API_KEY}${NC}"
+echo -e "  ${BOLD}Org ID:${NC}      ${YELLOW}${ORG_ID}${NC}"
+echo ""
+echo -e "  ${BOLD}Dashboard login:${NC}"
+echo -e "    Email:    admin@fibratus.local"
+echo -e "    Password: ${ADMIN_PASS}"
 echo ""
 echo -e "  ${BOLD}Config:${NC}      ${CONFIG_DIR}/fleet-server.yml"
 echo -e "  ${BOLD}Logs:${NC}        ${LOG_DIR}/fleet-server.log"
@@ -314,7 +331,8 @@ echo -e "    ${YELLOW}fleet:${NC}"
 echo -e "    ${YELLOW}  enabled: true${NC}"
 echo -e "    ${YELLOW}  server-url: \"http://${SERVER_IP}:${LISTEN_PORT}\"${NC}"
 echo -e "    ${YELLOW}  api-key: \"${API_KEY}\"${NC}"
+echo -e "    ${YELLOW}  org-id: \"${ORG_ID}\"${NC}"
 echo -e "    ${YELLOW}  agent-group: \"default\"${NC}"
 echo ""
-echo -e "  ${BOLD}Save the API key above — you'll need it for every agent!${NC}"
+echo -e "  ${BOLD}Save the credentials above — you'll need them!${NC}"
 echo ""

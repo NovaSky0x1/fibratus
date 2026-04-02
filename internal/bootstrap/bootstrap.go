@@ -143,11 +143,28 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 	var rs *config.RulesCompileResult
 
 	if cfg.Filters.Rules.Enabled && !cfg.ForwardMode && !cfg.IsCaptureSet() && !cfg.IsFilamentSet() {
+		// When fleet mode is enabled, override rule paths to use server-managed rules
+		if cfg.Fleet.Enabled {
+			log.Info("fleet mode: rules will be managed by the fleet server")
+			exe, err := os.Executable()
+			if err != nil {
+				exe = "."
+			}
+			fleetRulesDir := filepath.Join(filepath.Dir(exe), "..", "data", "rules")
+			cfg.Filters.Rules.FromPaths = []string{filepath.Join(fleetRulesDir, "*")}
+			cfg.Filters.Rules.FromURLs = nil
+		}
+
 		engine = rules.NewEngine(psnap, cfg)
 		var err error
 		rs, err = engine.Compile()
 		if err != nil {
-			return nil, err
+			if cfg.Fleet.Enabled {
+				// Don't fail startup if fleet rules aren't downloaded yet
+				log.Warnf("fleet: initial rule compilation failed (rules may not be synced yet): %v", err)
+			} else {
+				return nil, err
+			}
 		}
 		if rs != nil {
 			log.Infof("rules compile summary: %s", rs)
@@ -463,6 +480,21 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 		collector = f.engine
 	}
 	client.StartHeartbeat(collector)
+
+	// Start rule sync — when rules change, recompile the engine
+	if f.engine != nil {
+		client.StartRuleSync(func(rulesDir string) error {
+			log.Info("fleet: rules updated from server, recompiling...")
+			rs, err := f.engine.Compile()
+			if err != nil {
+				return err
+			}
+			if rs != nil {
+				log.Infof("fleet: rules recompile summary: %s", rs)
+			}
+			return nil
+		})
+	}
 
 	log.Infof("fleet: connected to %s", cfg.Fleet.ServerURL)
 	return nil

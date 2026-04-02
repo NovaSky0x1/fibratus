@@ -117,6 +117,9 @@ fleet:
   # API key for fleet server authentication
   #api-key: ""
 
+  # Organization ID this agent belongs to (from fleet-server bootstrap output)
+  #org-id: ""
+
   # The agent group this agent belongs to
   agent-group: "default"
 

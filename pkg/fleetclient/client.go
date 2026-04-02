@@ -264,6 +264,9 @@ func (c *Client) doRequestWithHeaders(method, path string, body []byte, headers 
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", c.config.APIKey)
+	if c.config.OrgID != "" {
+		req.Header.Set("X-Org-ID", c.config.OrgID)
+	}
 
 	if isGzipped {
 		req.Header.Set("Content-Encoding", "gzip")
