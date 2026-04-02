@@ -3,26 +3,47 @@
 # Fibratus Fleet Server — One-liner installer for Ubuntu 22.04/24.04
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/NovaSky0x1/fibratus/master/deploy/install-fleet-server.sh | sudo bash
+#   sudo bash install-fleet-server.sh <domain>                  # Let's Encrypt (recommended)
+#   sudo bash install-fleet-server.sh <domain> --self-signed    # Self-signed cert
+#   sudo bash install-fleet-server.sh <domain> --cert /path/to/cert.pem --key /path/to/key.pem  # Own cert
 #
-# Or run locally:
-#   sudo bash deploy/install-fleet-server.sh
-#
-# What this does:
-#   1. Installs Go, Node.js 20, PostgreSQL 16
-#   2. Creates the database and user
-#   3. Builds the dashboard (React)
-#   4. Builds the fleet-server binary
-#   5. Generates a random API key
-#   6. Runs database migrations
-#   7. Installs as a systemd service
-#   8. Opens firewall port 8443
+# Examples:
+#   sudo bash install-fleet-server.sh fleet.acme.com
+#   sudo bash install-fleet-server.sh fleet.acme.com --self-signed
+#   sudo bash install-fleet-server.sh fleet.acme.com --cert /etc/ssl/fleet.crt --key /etc/ssl/fleet.key
 #
 set -euo pipefail
 
-# ─── Configuration ───────────────────────────────────────────────────────────
+# ─── Parse arguments ─────────────────────────────────────────────────────────
 
-FLEET_DOMAIN="${1:-${FLEET_DOMAIN:-}}"
+FLEET_DOMAIN=""
+TLS_MODE="letsencrypt"   # letsencrypt | selfsigned | custom
+CUSTOM_CERT=""
+CUSTOM_KEY=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --self-signed)  TLS_MODE="selfsigned"; shift ;;
+        --cert)         TLS_MODE="custom"; CUSTOM_CERT="$2"; shift 2 ;;
+        --key)          CUSTOM_KEY="$2"; shift 2 ;;
+        --help|-h)
+            echo "Usage: sudo bash install-fleet-server.sh <domain> [options]"
+            echo ""
+            echo "Options:"
+            echo "  --self-signed           Use a self-signed certificate"
+            echo "  --cert <path> --key <path>  Use your own certificate files"
+            echo ""
+            echo "Default: Let's Encrypt (free, trusted, auto-renewing)"
+            exit 0
+            ;;
+        -*)             echo "Unknown option: $1"; exit 1 ;;
+        *)              FLEET_DOMAIN="$1"; shift ;;
+    esac
+done
+
+FLEET_DOMAIN="${FLEET_DOMAIN:-${FLEET_DOMAIN_ENV:-}}"
+
+# ─── Configuration ───────────────────────────────────────────────────────────
 
 INSTALL_DIR="/opt/fibratus-fleet"
 CONFIG_DIR="/etc/fibratus"
@@ -75,13 +96,26 @@ if [[ -z "${FLEET_DOMAIN}" ]]; then
     echo -e "  ${BOLD}Usage:${NC}"
     echo -e "    sudo bash install-fleet-server.sh ${YELLOW}<your-domain>${NC}"
     echo ""
-    echo -e "  ${BOLD}Example:${NC}"
-    echo -e "    sudo bash install-fleet-server.sh fleet.acme.com"
+    echo -e "  ${BOLD}Examples:${NC}"
+    echo -e "    sudo bash install-fleet-server.sh fleet.acme.com                 # Let's Encrypt (default)"
+    echo -e "    sudo bash install-fleet-server.sh fleet.acme.com --self-signed   # Self-signed cert"
+    echo -e "    sudo bash install-fleet-server.sh fleet.acme.com --cert /path/to/cert.pem --key /path/to/key.pem"
     echo ""
-    echo -e "  A domain is required for Let's Encrypt TLS certificates."
     echo -e "  Point a DNS A record to this server's public IP first."
     echo ""
     err "Domain name required as first argument"
+fi
+
+if [[ "${TLS_MODE}" == "custom" ]]; then
+    if [[ -z "${CUSTOM_CERT}" || -z "${CUSTOM_KEY}" ]]; then
+        err "Both --cert and --key must be provided for custom certificate"
+    fi
+    if [[ ! -f "${CUSTOM_CERT}" ]]; then
+        err "Certificate file not found: ${CUSTOM_CERT}"
+    fi
+    if [[ ! -f "${CUSTOM_KEY}" ]]; then
+        err "Key file not found: ${CUSTOM_KEY}"
+    fi
 fi
 
 echo ""
@@ -89,7 +123,8 @@ echo -e "${BOLD}╔════════════════════�
 echo -e "${BOLD}║     Fibratus Fleet Server — Installer            ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
-info "Domain: ${FLEET_DOMAIN}"
+info "Domain:   ${FLEET_DOMAIN}"
+info "TLS mode: ${TLS_MODE}"
 
 # ─── Step 1: System packages ────────────────────────────────────────────────
 
@@ -208,45 +243,79 @@ fi
 mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" "${LOG_DIR}"
 
-# ─── Step 9a: Let's Encrypt TLS certificate ─────────────────────────────────
+# ─── Step 9a: TLS certificate ────────────────────────────────────────────────
 
-info "Setting up Let's Encrypt TLS certificate for ${FLEET_DOMAIN}..."
+TLS_CERT=""
+TLS_KEY=""
+TLS_NOTE=""
 
-# Install certbot
-if ! command -v certbot &>/dev/null; then
-    apt-get install -y -qq certbot > /dev/null 2>&1
-fi
+case "${TLS_MODE}" in
+    letsencrypt)
+        info "Obtaining Let's Encrypt TLS certificate for ${FLEET_DOMAIN}..."
 
-# Stop anything on port 80 temporarily (certbot needs it for HTTP challenge)
-systemctl stop fibratus-fleet 2>/dev/null || true
+        # Install certbot
+        if ! command -v certbot &>/dev/null; then
+            apt-get install -y -qq certbot > /dev/null 2>&1
+        fi
 
-# Obtain certificate (standalone mode — certbot runs its own web server on :80)
-certbot certonly --standalone \
-    --non-interactive \
-    --agree-tos \
-    --register-unsafely-without-email \
-    --domain "${FLEET_DOMAIN}" \
-    --preferred-challenges http
+        # Stop anything on port 80/443 temporarily (certbot needs port 80)
+        systemctl stop fibratus-fleet 2>/dev/null || true
 
-TLS_CERT="/etc/letsencrypt/live/${FLEET_DOMAIN}/fullchain.pem"
-TLS_KEY="/etc/letsencrypt/live/${FLEET_DOMAIN}/privkey.pem"
+        # Obtain certificate
+        certbot certonly --standalone \
+            --non-interactive \
+            --agree-tos \
+            --register-unsafely-without-email \
+            --domain "${FLEET_DOMAIN}" \
+            --preferred-challenges http
 
-if [[ ! -f "${TLS_CERT}" ]]; then
-    err "Let's Encrypt certificate not found. Make sure DNS for ${FLEET_DOMAIN} points to this server and port 80 is open."
-fi
-ok "TLS certificate issued by Let's Encrypt for ${FLEET_DOMAIN}"
+        TLS_CERT="/etc/letsencrypt/live/${FLEET_DOMAIN}/fullchain.pem"
+        TLS_KEY="/etc/letsencrypt/live/${FLEET_DOMAIN}/privkey.pem"
 
-# Set up auto-renewal with post-hook to restart fleet server
-cat > /etc/letsencrypt/renewal-hooks/deploy/fibratus-fleet.sh <<'HOOK'
+        if [[ ! -f "${TLS_CERT}" ]]; then
+            err "Let's Encrypt failed. Make sure DNS for ${FLEET_DOMAIN} points to this server and port 80 is open."
+        fi
+
+        # Auto-renewal with restart hook
+        mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+        cat > /etc/letsencrypt/renewal-hooks/deploy/fibratus-fleet.sh <<'HOOK'
 #!/bin/bash
 systemctl restart fibratus-fleet
 HOOK
-chmod +x /etc/letsencrypt/renewal-hooks/deploy/fibratus-fleet.sh
+        chmod +x /etc/letsencrypt/renewal-hooks/deploy/fibratus-fleet.sh
+        systemctl enable certbot.timer 2>/dev/null || true
+        systemctl start certbot.timer 2>/dev/null || true
 
-# Enable certbot auto-renewal timer
-systemctl enable certbot.timer 2>/dev/null || true
-systemctl start certbot.timer 2>/dev/null || true
-ok "Auto-renewal configured (certbot timer)"
+        ok "Let's Encrypt certificate issued (auto-renewal enabled)"
+        TLS_NOTE="Let's Encrypt (auto-renew via certbot)"
+        ;;
+
+    selfsigned)
+        info "Generating self-signed TLS certificate..."
+        mkdir -p "${CONFIG_DIR}/tls"
+        openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+            -keyout "${CONFIG_DIR}/tls/server.key" \
+            -out "${CONFIG_DIR}/tls/server.crt" \
+            -subj "/CN=${FLEET_DOMAIN}/O=Fibratus" \
+            -addext "subjectAltName=DNS:${FLEET_DOMAIN},DNS:localhost" 2>/dev/null
+
+        TLS_CERT="${CONFIG_DIR}/tls/server.crt"
+        TLS_KEY="${CONFIG_DIR}/tls/server.key"
+        chmod 600 "${TLS_KEY}"
+
+        ok "Self-signed certificate generated"
+        TLS_NOTE="Self-signed (agents need --insecure flag)"
+        ;;
+
+    custom)
+        info "Using custom TLS certificate..."
+        TLS_CERT="${CUSTOM_CERT}"
+        TLS_KEY="${CUSTOM_KEY}"
+
+        ok "Custom certificate: ${TLS_CERT}"
+        TLS_NOTE="Custom certificate"
+        ;;
+esac
 
 JWT_SECRET="$(openssl rand -hex 32)"
 
@@ -373,6 +442,10 @@ else
 fi
 
 SERVER_URL="https://${FLEET_DOMAIN}"
+ENROLL_CMD="fibratus enroll --token ${ENROLL_TOKEN} --server ${SERVER_URL}"
+if [[ "${TLS_MODE}" == "selfsigned" ]]; then
+    ENROLL_CMD="${ENROLL_CMD} --insecure"
+fi
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -390,7 +463,7 @@ echo -e "  ───────────────────────
 echo ""
 echo -e "  ${BOLD}${GREEN}Enroll agents — run this on each Windows endpoint:${NC}"
 echo ""
-echo -e "    ${YELLOW}fibratus enroll --token ${ENROLL_TOKEN} --server ${SERVER_URL}${NC}"
+echo -e "    ${YELLOW}${ENROLL_CMD}${NC}"
 echo ""
 echo -e "  Then start the agent:"
 echo -e "    ${YELLOW}fibratus service start${NC}"
@@ -400,7 +473,7 @@ echo ""
 echo -e "  ${BOLD}Enrollment Token:${NC}  ${ENROLL_TOKEN}"
 echo -e "  ${BOLD}Org ID:${NC}            ${ORG_ID}"
 echo -e "  ${BOLD}Config:${NC}            ${CONFIG_DIR}/fleet-server.yml"
-echo -e "  ${BOLD}TLS:${NC}               Let's Encrypt (auto-renew enabled)"
+echo -e "  ${BOLD}TLS:${NC}               ${TLS_NOTE}"
 echo -e "  ${BOLD}Logs:${NC}              journalctl -u fibratus-fleet -f"
 echo ""
 echo -e "  Token valid for 1 year / 1000 agents. Create more in dashboard Settings."
