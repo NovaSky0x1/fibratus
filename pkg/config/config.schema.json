@@ -311,6 +311,45 @@
       },
       "additionalProperties": false
     },
+    "fleet": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "server-url": {
+          "type": "string"
+        },
+        "api-key": {
+          "type": "string"
+        },
+        "org-id": {
+          "type": "string"
+        },
+        "agent-group": {
+          "type": "string"
+        },
+        "heartbeat-interval": {
+          "type": "string"
+        },
+        "rule-sync-interval": {
+          "type": "string"
+        },
+        "enable-gzip": {
+          "type": "boolean"
+        },
+        "tls-ca": {
+          "type": "string"
+        },
+        "tls-insecure-skip-verify": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "event": {
       "type": "object",
       "properties": {
