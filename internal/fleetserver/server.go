@@ -234,8 +234,8 @@ func (s *Server) Run(ctx context.Context) error {
 	rootMux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Public auth routes
-		if strings.HasPrefix(path, "/api/v1/auth/") {
+		// Public routes (no auth required)
+		if strings.HasPrefix(path, "/api/v1/auth/") || path == "/api/v1/enroll" {
 			mux.ServeHTTP(w, r)
 			return
 		}
