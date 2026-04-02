@@ -140,6 +140,22 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 	hsnap := handle.NewSnapshotter(cfg, opts.handleSnapshotFn)
 	psnap := ps.NewSnapshotter(hsnap, cfg)
 
+	// Detect enrollment data EARLY — before rules, output, and event pipeline setup.
+	// This ensures fleet mode is active before the aggregator picks an output sink.
+	if !cfg.Fleet.Enabled {
+		exe, _ := os.Executable()
+		if exe == "" {
+			exe = "."
+		}
+		dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+		agentFile := filepath.Join(dataDir, "agent-id")
+		serverFile := filepath.Join(dataDir, "server-url")
+		if fileExists(agentFile) && fileExists(serverFile) {
+			log.Info("fleet: enrollment data detected — auto-enabling fleet mode")
+			cfg.Fleet.Enabled = true
+		}
+	}
+
 	var engine *rules.Engine
 	var rs *config.RulesCompileResult
 
@@ -298,14 +314,8 @@ func (f *App) Run(args []string) error {
 			return err
 		}
 	}
-	// Initialize fleet client if enabled via config OR if enrollment data exists on disk.
-	// After `fibratus enroll`, the agent has all it needs without any YAML config.
-	fleetEnrolled := f.isEnrolled()
-	if cfg.Fleet.Enabled || fleetEnrolled {
-		if fleetEnrolled && !cfg.Fleet.Enabled {
-			log.Info("fleet: enrollment data detected — auto-enabling fleet mode")
-			cfg.Fleet.Enabled = true
-		}
+	// Initialize fleet client if fleet mode is enabled (set in NewApp via enrollment detection)
+	if cfg.Fleet.Enabled {
 		if err := f.initFleetClient(cfg); err != nil {
 			log.Warnf("fleet: failed to initialize: %v", err)
 		}
@@ -474,19 +484,6 @@ func (f *App) Shutdown() error {
 
 // isEnrolled checks if enrollment data exists on disk from a prior
 // `fibratus enroll` command. If it does, fleet mode can be auto-enabled.
-func (f *App) isEnrolled() bool {
-	exe, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
-	agentID := filepath.Join(dataDir, "agent-id")
-	serverURL := filepath.Join(dataDir, "server-url")
-	_, err1 := os.Stat(agentID)
-	_, err2 := os.Stat(serverURL)
-	return err1 == nil && err2 == nil
-}
-
 // initFleetClient initializes the fleet client, registers with
 // the fleet server, and starts the heartbeat goroutine.
 func (f *App) initFleetClient(cfg *config.Config) error {
@@ -547,6 +544,11 @@ func (f *App) stop() {
 // accomplished by creating a global event object. If such
 // an object already exists, we can conclude Fibratus process
 // is already running.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func (f *App) isSingleInstance() bool {
 	name, err := windows.UTF16PtrFromString("Global\\Fibratus")
 	if err != nil {
