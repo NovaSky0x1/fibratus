@@ -85,6 +85,7 @@ func (s *Server) Run(ctx context.Context) error {
 	detStore := postgres.NewDetectionStore(db)
 	ruleStore := postgres.NewRuleStore(db)
 	commandStore := postgres.NewCommandStore(db)
+	telemetryStore := postgres.NewTelemetryStore(db)
 	enrollStore := postgres.NewEnrollmentTokenStore(db)
 	caManager := ca.NewManager(db)
 
@@ -95,6 +96,7 @@ func (s *Server) Run(ctx context.Context) error {
 	detHandler := handler.NewDetectionHandler(detStore, agentStore)
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore)
 	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)
+	telemetryHandler := handler.NewTelemetryHandler(telemetryStore, agentStore)
 	enrollTokenHandler := handler.NewEnrollmentTokenHandler(enrollStore)
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
 
@@ -146,6 +148,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
+	agentMux.HandleFunc("/api/v1/agent/telemetry", methodGuard(http.MethodPost, telemetryHandler.Ingest))
 
 	// Wrap agent routes with API key auth + agent identity
 	agentAuthenticated := apiKeyAuth(s.apiKeys, agentIdentity(agentMux))
@@ -176,6 +179,8 @@ func (s *Server) Run(ctx context.Context) error {
 		// Agents
 		case subpath == "/agents" && r.Method == http.MethodGet:
 			agentHandler.List(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/events") && r.Method == http.MethodGet:
+			telemetryHandler.GetLiveEvents(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodGet:
 			commandHandler.ListCommands(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodPost:
@@ -214,6 +219,10 @@ func (s *Server) Run(ctx context.Context) error {
 			detHandler.MitreHeatmap(w, r)
 		case strings.HasPrefix(subpath, "/detections/") && r.Method == http.MethodGet:
 			detHandler.Get(w, r)
+
+		// Telemetry
+		case subpath == "/telemetry" && r.Method == http.MethodGet:
+			telemetryHandler.Search(w, r)
 
 		default:
 			http.NotFound(w, r)
@@ -286,6 +295,25 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Start agent status reaper
 	go s.agentReaper(ctx, agentStore)
+
+	// Start telemetry retention purge (every hour, keep 7 days)
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				deleted, err := telemetryStore.Purge(context.Background(), 7)
+				if err != nil {
+					log.Warnf("fleet: telemetry purge error: %v", err)
+				} else if deleted > 0 {
+					log.Infof("fleet: purged %d old telemetry events", deleted)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	// Configure TLS. We use RequestClientCert so browsers can connect
 	// without a client cert (dashboard), while enrolled agents can

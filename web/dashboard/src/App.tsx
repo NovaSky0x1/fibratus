@@ -7,6 +7,7 @@ import Overview from './pages/Overview'
 import Agents from './pages/Agents'
 import Detections from './pages/Detections'
 import Rules from './pages/Rules'
+import Events from './pages/Events'
 import Settings from './pages/Settings'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ export default function App() {
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/detections" element={<Detections />} />
                 <Route path="/rules" element={<Rules />} />
+                <Route path="/events" element={<Events />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </Layout>

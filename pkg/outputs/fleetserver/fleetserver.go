@@ -1,0 +1,200 @@
+/*
+ * Copyright 2021-2022 by Nedim Sabic Sabic
+ * https://www.fibratus.io
+ * All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package fleetserver
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/rabbitstack/fibratus/pkg/event"
+	"github.com/rabbitstack/fibratus/pkg/outputs"
+	"github.com/rabbitstack/fibratus/pkg/util/tls"
+	"github.com/rabbitstack/fibratus/pkg/util/version"
+	log "github.com/sirupsen/logrus"
+)
+
+var userAgent = version.ProductToken()
+
+type fleetOutput struct {
+	client    *http.Client
+	serverURL string
+	apiKey    string
+	orgID     string
+	agentID   string
+}
+
+func init() {
+	outputs.Register(outputs.FleetServer, initFleetServer)
+}
+
+func initFleetServer(config outputs.Config) (outputs.OutputGroup, error) {
+	cfg, ok := config.Output.(Config)
+	if !ok {
+		return outputs.Fail(outputs.ErrInvalidConfig(outputs.FleetServer, config.Output))
+	}
+
+	if cfg.ServerURL == "" {
+		// Try to load from enrollment data
+		cfg.ServerURL = loadEnrollmentFile("server-url")
+		cfg.OrgID = loadEnrollmentFile("org-id")
+		cfg.AgentID = loadEnrollmentFile("agent-id")
+	}
+
+	if cfg.ServerURL == "" {
+		return outputs.Fail(fmt.Errorf("fleet server URL not configured and no enrollment data found"))
+	}
+
+	tlsCert := ""
+	tlsKey := ""
+	certDir := enrollmentCertDir()
+	if certDir != "" {
+		certFile := filepath.Join(certDir, "agent.crt")
+		keyFile := filepath.Join(certDir, "agent.key")
+		if fileExists(certFile) && fileExists(keyFile) {
+			tlsCert = certFile
+			tlsKey = keyFile
+		}
+	}
+
+	tlsConfig, err := tls.MakeConfig(tlsCert, tlsKey, cfg.TLSCA, cfg.TLSInsecureSkipVerify)
+	if err != nil {
+		return outputs.Fail(fmt.Errorf("fleet output: TLS config: %v", err))
+	}
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{TLSClientConfig: tlsConfig},
+		Timeout:   30 * time.Second,
+	}
+
+	client := &fleetOutput{
+		client:    httpClient,
+		serverURL: strings.TrimRight(cfg.ServerURL, "/"),
+		apiKey:    cfg.APIKey,
+		orgID:     cfg.OrgID,
+		agentID:   cfg.AgentID,
+	}
+
+	return outputs.Success(client), nil
+}
+
+func (f *fleetOutput) Connect() error {
+	log.Infof("fleet output: connected to %s", f.serverURL)
+	return nil
+}
+
+func (f *fleetOutput) Close() error { return nil }
+
+// Publish sends a batch of events to the fleet server telemetry endpoint.
+// Events are serialized as JSON and gzip-compressed.
+func (f *fleetOutput) Publish(batch *event.Batch) error {
+	buf := batch.MarshalJSON()
+	if len(buf) == 0 {
+		return nil
+	}
+
+	// Gzip compress
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	if _, err := gz.Write(buf); err != nil {
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/api/v1/agent/telemetry", f.serverURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &compressed)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	if f.apiKey != "" {
+		req.Header.Set("X-API-Key", f.apiKey)
+	}
+	if f.agentID != "" {
+		req.Header.Set("X-Agent-ID", f.agentID)
+	}
+	if f.orgID != "" {
+		req.Header.Set("X-Org-ID", f.orgID)
+	}
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("fleet output: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("fleet output: server returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// Config for the fleet server output.
+type Config struct {
+	Enabled              bool   `mapstructure:"enabled"`
+	ServerURL            string `mapstructure:"server-url"`
+	APIKey               string `mapstructure:"api-key"`
+	OrgID                string `mapstructure:"org-id"`
+	AgentID              string `mapstructure:"agent-id"`
+	TLSCA                string `mapstructure:"tls-ca"`
+	TLSInsecureSkipVerify bool  `mapstructure:"tls-insecure-skip-verify"`
+}
+
+func loadEnrollmentFile(name string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+	data, err := os.ReadFile(filepath.Join(dataDir, name))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func enrollmentCertDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(exe), "..", "data", "certs")
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}

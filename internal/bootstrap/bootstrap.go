@@ -31,6 +31,7 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/filter"
 	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 	"github.com/rabbitstack/fibratus/pkg/handle"
+	"github.com/rabbitstack/fibratus/pkg/outputs"
 	"github.com/rabbitstack/fibratus/pkg/ps"
 	"github.com/rabbitstack/fibratus/pkg/rules"
 	"github.com/rabbitstack/fibratus/pkg/symbolize"
@@ -274,6 +275,16 @@ func (f *App) Run(args []string) error {
 		if err != nil {
 			return multierror.Wrap(err, f.evs.Close())
 		}
+		// When fleet mode is active, auto-enable fleet server as the output
+		// to stream telemetry to the fleet server for remote visibility.
+		if cfg.Fleet.Enabled && cfg.Output.Type == outputs.Null {
+			log.Info("fleet: auto-enabling fleet server telemetry output")
+			cfg.Output.Type = outputs.FleetServer
+			cfg.Output.Output = struct {
+				Enabled bool `mapstructure:"enabled"`
+			}{Enabled: true}
+		}
+
 		// set up the aggregator that forwards events to outputs
 		f.agg, err = aggregator.NewBuffered(
 			f.evs.Events(),

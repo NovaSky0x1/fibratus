@@ -25,6 +25,7 @@ import (
 	"strconv"
 
 	"github.com/rabbitstack/fibratus/pkg/outputs/eventlog"
+	fleetoutput "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
 
 	"github.com/rabbitstack/fibratus/pkg/outputs"
 	"github.com/rabbitstack/fibratus/pkg/outputs/amqp"
@@ -125,6 +126,16 @@ func (c *Config) tryLoadOutput() error {
 				continue
 			}
 			c.Output.Type, c.Output.Output = outputs.Eventlog, eventlogConfig
+
+		case outputs.FleetServer:
+			var fleetConfig fleetoutput.Config
+			if err := decode(config, &fleetConfig); err != nil {
+				return errOutputConfig(typ, err)
+			}
+			if !fleetConfig.Enabled {
+				continue
+			}
+			c.Output.Type, c.Output.Output = outputs.FleetServer, fleetConfig
 		}
 	}
 

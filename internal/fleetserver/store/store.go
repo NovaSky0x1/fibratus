@@ -126,6 +126,44 @@ type CommandStore interface {
 
 // TelemetryStore manages telemetry event persistence and search.
 type TelemetryStore interface {
-	BulkIndex(ctx context.Context, orgID, agentID string, events []byte) error
-	Search(ctx context.Context, orgID, query string, from, to time.Time, agentID string, limit int) ([]byte, int, error)
+	BulkIngest(ctx context.Context, orgID, agentID, hostname string, events []json.RawMessage) error
+	Search(ctx context.Context, orgID string, opts TelemetrySearchOpts) ([]TelemetryEvent, int, error)
+	GetLatestForAgent(ctx context.Context, orgID, agentID string, limit int) ([]TelemetryEvent, error)
+	Purge(ctx context.Context, retentionDays int) (int64, error)
+	CountByAgent(ctx context.Context, orgID string) (map[string]int64, error)
+}
+
+// TelemetryEvent represents a kernel event forwarded by an agent.
+type TelemetryEvent struct {
+	ID             int64           `json:"id"`
+	OrgID          string          `json:"org_id"`
+	AgentID        string          `json:"agent_id"`
+	AgentHostname  string          `json:"agent_hostname"`
+	Seq            int64           `json:"seq"`
+	Timestamp      time.Time       `json:"timestamp"`
+	EventName      string          `json:"event_name"`
+	EventCategory  string          `json:"event_category"`
+	PID            int             `json:"pid"`
+	TID            int             `json:"tid"`
+	ProcessName    string          `json:"process_name"`
+	ProcessExe     string          `json:"process_exe"`
+	ProcessCmdline string          `json:"process_cmdline"`
+	ParentPID      int             `json:"parent_pid"`
+	ParentName     string          `json:"parent_name"`
+	Params         json.RawMessage `json:"params"`
+	Metadata       json.RawMessage `json:"metadata"`
+	RawEvent       json.RawMessage `json:"raw_event"`
+}
+
+// TelemetrySearchOpts defines search filters for telemetry events.
+type TelemetrySearchOpts struct {
+	AgentID     string
+	EventName   string
+	ProcessName string
+	PID         int
+	Search      string // full text search across process_name, process_exe, process_cmdline, event_name
+	From        time.Time
+	To          time.Time
+	Limit       int
+	Offset      int
 }

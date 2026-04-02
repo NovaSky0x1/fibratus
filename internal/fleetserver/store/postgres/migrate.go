@@ -230,6 +230,38 @@ CREATE TABLE IF NOT EXISTS commands (
 
 CREATE INDEX IF NOT EXISTS idx_commands_agent_status ON commands(agent_id, status);
 CREATE INDEX IF NOT EXISTS idx_commands_org ON commands(org_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Telemetry: kernel events forwarded by agents
+-- Uses timestamp-based queries. Old data purged by retention job.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS telemetry_events (
+    id              BIGSERIAL PRIMARY KEY,
+    org_id          TEXT NOT NULL,
+    agent_id        TEXT NOT NULL,
+    agent_hostname  TEXT DEFAULT '',
+    seq             BIGINT DEFAULT 0,
+    timestamp       TIMESTAMPTZ NOT NULL,
+    event_name      TEXT NOT NULL,
+    event_category  TEXT DEFAULT '',
+    pid             INTEGER DEFAULT 0,
+    tid             INTEGER DEFAULT 0,
+    process_name    TEXT DEFAULT '',
+    process_exe     TEXT DEFAULT '',
+    process_cmdline TEXT DEFAULT '',
+    parent_pid      INTEGER DEFAULT 0,
+    parent_name     TEXT DEFAULT '',
+    params          JSONB DEFAULT '{}',
+    metadata        JSONB DEFAULT '{}',
+    raw_event       JSONB DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_telemetry_org_agent ON telemetry_events(org_id, agent_id);
+CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry_events(org_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_event_name ON telemetry_events(org_id, event_name);
+CREATE INDEX IF NOT EXISTS idx_telemetry_process ON telemetry_events(org_id, process_name);
+CREATE INDEX IF NOT EXISTS idx_telemetry_pid ON telemetry_events(org_id, pid);
 `
 
 // Migrate runs the database schema migrations.

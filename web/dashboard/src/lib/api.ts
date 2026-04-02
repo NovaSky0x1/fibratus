@@ -210,6 +210,14 @@ export const api = {
     fetchApi<Rule>(orgPath(`/rules/${id}`), { method: 'PUT', body: JSON.stringify(data) }),
   deleteRule: (id: string) => fetchApi<void>(orgPath(`/rules/${id}`), { method: 'DELETE' }),
 
+  // Telemetry (live events)
+  getOrgTelemetry: (params?: Record<string, string>) => {
+    const q = new URLSearchParams(params || {}).toString()
+    return fetchApi<unknown[]>(orgPath(`/telemetry?${q}`))
+  },
+  getAgentEvents: (agentId: string, limit?: number) =>
+    fetchApi<unknown[]>(orgPath(`/agents/${agentId}/events?limit=${limit || 100}`)),
+
   // Commands (active response)
   getAgentCommands: (agentId: string) =>
     fetchApi<Command[]>(orgPath(`/agents/${agentId}/commands`)),
