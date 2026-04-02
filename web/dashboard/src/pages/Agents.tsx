@@ -4,6 +4,7 @@ import { api, type Agent, type Command } from '../lib/api'
 import StatusBadge from '../components/StatusBadge'
 import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
+import RemoteShell from '../components/RemoteShell'
 
 export default function Agents() {
   const queryClient = useQueryClient()
@@ -12,7 +13,8 @@ export default function Agents() {
   const [page, setPage] = useState(1)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null)
-  const [activeTab, setActiveTab] = useState<'details' | 'response' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'response' | 'terminal' | 'history'>('details')
+  const [shellType, setShellType] = useState<'cmd' | 'powershell'>('powershell')
 
   // Command input state
   const [cmdType, setCmdType] = useState('')
@@ -144,14 +146,14 @@ export default function Agents() {
           <div>
             {/* Tabs */}
             <div className="flex gap-1 border-b border-gray-200 mb-6">
-              {(['details', 'response', 'history'] as const).map(tab => (
+              {(['details', 'response', 'terminal', 'history'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={'px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize ' +
                     (activeTab === tab ? 'border-fibratus-600 text-fibratus-600' : 'border-transparent text-gray-500 hover:text-gray-700')}
                 >
-                  {tab === 'response' ? 'Active Response' : tab === 'history' ? 'Command History' : tab}
+                  {tab === 'response' ? 'Active Response' : tab === 'history' ? 'Command History' : tab === 'terminal' ? 'Terminal' : tab}
                 </button>
               ))}
             </div>
@@ -260,6 +262,32 @@ export default function Agents() {
                     </button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Terminal Tab */}
+            {activeTab === 'terminal' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Shell:</span>
+                  <button
+                    onClick={() => setShellType('powershell')}
+                    className={'px-3 py-1 text-xs rounded-full font-medium ' + (shellType === 'powershell' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600')}
+                  >
+                    PowerShell
+                  </button>
+                  <button
+                    onClick={() => setShellType('cmd')}
+                    className={'px-3 py-1 text-xs rounded-full font-medium ' + (shellType === 'cmd' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600')}
+                  >
+                    CMD
+                  </button>
+                </div>
+                <RemoteShell
+                  agentId={selectedAgent.id}
+                  hostname={selectedAgent.hostname}
+                  shellType={shellType}
+                />
               </div>
             )}
 
