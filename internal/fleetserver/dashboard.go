@@ -19,22 +19,19 @@
 package fleetserver
 
 import (
-	"embed"
 	"io/fs"
 	"net/http"
 	"strings"
-)
 
-//go:embed all:../../web/dashboard/dist
-var dashboardFS embed.FS
+	"github.com/rabbitstack/fibratus/web"
+)
 
 // dashboardHandler serves the embedded React SPA.
 // It serves static files from the dist directory and falls back
 // to index.html for client-side routing.
 func dashboardHandler() http.Handler {
-	distFS, err := fs.Sub(dashboardFS, "web/dashboard/dist")
+	distFS, err := fs.Sub(web.DashboardFS, "dashboard/dist")
 	if err != nil {
-		// Fallback: serve empty handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "dashboard not available", http.StatusNotFound)
 		})
