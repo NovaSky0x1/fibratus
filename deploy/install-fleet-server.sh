@@ -22,12 +22,14 @@ set -euo pipefail
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
+FLEET_DOMAIN="${1:-${FLEET_DOMAIN:-}}"
+
 INSTALL_DIR="/opt/fibratus-fleet"
 CONFIG_DIR="/etc/fibratus"
 DATA_DIR="/var/lib/fibratus-fleet"
 LOG_DIR="/var/log/fibratus-fleet"
 SERVICE_USER="fibratus"
-LISTEN_PORT="8443"
+LISTEN_PORT="443"
 
 DB_NAME="fibratus_fleet"
 DB_USER="fibratus"
@@ -64,11 +66,30 @@ if ! grep -qiE 'ubuntu|debian' /etc/os-release 2>/dev/null; then
     warn "This script is designed for Ubuntu/Debian. Proceed with caution."
 fi
 
+if [[ -z "${FLEET_DOMAIN}" ]]; then
+    echo ""
+    echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}║     Fibratus Fleet Server — Installer            ║${NC}"
+    echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${BOLD}Usage:${NC}"
+    echo -e "    sudo bash install-fleet-server.sh ${YELLOW}<your-domain>${NC}"
+    echo ""
+    echo -e "  ${BOLD}Example:${NC}"
+    echo -e "    sudo bash install-fleet-server.sh fleet.acme.com"
+    echo ""
+    echo -e "  A domain is required for Let's Encrypt TLS certificates."
+    echo -e "  Point a DNS A record to this server's public IP first."
+    echo ""
+    err "Domain name required as first argument"
+fi
+
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}║     Fibratus Fleet Server — Installer            ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
+info "Domain: ${FLEET_DOMAIN}"
 
 # ─── Step 1: System packages ────────────────────────────────────────────────
 
@@ -184,28 +205,56 @@ fi
 
 # ─── Step 9: Write configuration ────────────────────────────────────────────
 
-mkdir -p "${CONFIG_DIR}" "${CONFIG_DIR}/tls" "${DATA_DIR}" "${LOG_DIR}"
+mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" "${LOG_DIR}"
 
-# Generate self-signed TLS certificate for the server
-info "Generating server TLS certificate..."
-SERVER_IP=$(hostname -I | awk '{print $1}')
-openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
-    -keyout "${CONFIG_DIR}/tls/server.key" \
-    -out "${CONFIG_DIR}/tls/server.crt" \
-    -subj "/CN=fibratus-fleet/O=Fibratus" \
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:${SERVER_IP}" 2>/dev/null
-chmod 600 "${CONFIG_DIR}/tls/server.key"
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}/tls"
-ok "TLS certificate generated"
+# ─── Step 9a: Let's Encrypt TLS certificate ─────────────────────────────────
+
+info "Setting up Let's Encrypt TLS certificate for ${FLEET_DOMAIN}..."
+
+# Install certbot
+if ! command -v certbot &>/dev/null; then
+    apt-get install -y -qq certbot > /dev/null 2>&1
+fi
+
+# Stop anything on port 80 temporarily (certbot needs it for HTTP challenge)
+systemctl stop fibratus-fleet 2>/dev/null || true
+
+# Obtain certificate (standalone mode — certbot runs its own web server on :80)
+certbot certonly --standalone \
+    --non-interactive \
+    --agree-tos \
+    --register-unsafely-without-email \
+    --domain "${FLEET_DOMAIN}" \
+    --preferred-challenges http
+
+TLS_CERT="/etc/letsencrypt/live/${FLEET_DOMAIN}/fullchain.pem"
+TLS_KEY="/etc/letsencrypt/live/${FLEET_DOMAIN}/privkey.pem"
+
+if [[ ! -f "${TLS_CERT}" ]]; then
+    err "Let's Encrypt certificate not found. Make sure DNS for ${FLEET_DOMAIN} points to this server and port 80 is open."
+fi
+ok "TLS certificate issued by Let's Encrypt for ${FLEET_DOMAIN}"
+
+# Set up auto-renewal with post-hook to restart fleet server
+cat > /etc/letsencrypt/renewal-hooks/deploy/fibratus-fleet.sh <<'HOOK'
+#!/bin/bash
+systemctl restart fibratus-fleet
+HOOK
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/fibratus-fleet.sh
+
+# Enable certbot auto-renewal timer
+systemctl enable certbot.timer 2>/dev/null || true
+systemctl start certbot.timer 2>/dev/null || true
+ok "Auto-renewal configured (certbot timer)"
 
 JWT_SECRET="$(openssl rand -hex 32)"
 
 cat > "${CONFIG_DIR}/fleet-server.yml" <<YAML
 server:
   listen: ":${LISTEN_PORT}"
-  tls-cert: ${CONFIG_DIR}/tls/server.crt
-  tls-key: ${CONFIG_DIR}/tls/server.key
+  tls-cert: ${TLS_CERT}
+  tls-key: ${TLS_KEY}
 
 database:
   host: localhost
@@ -285,11 +334,14 @@ LimitNOFILE=65536
 StandardOutput=append:${LOG_DIR}/fleet-server.log
 StandardError=append:${LOG_DIR}/fleet-server.log
 
+# Allow binding to port 443 as non-root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
 # Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${DATA_DIR} ${LOG_DIR}
+ReadWritePaths=${DATA_DIR} ${LOG_DIR} /etc/letsencrypt
 PrivateTmp=true
 
 [Install]
@@ -304,8 +356,9 @@ ok "Systemd service installed and started"
 # ─── Step 12: Firewall ──────────────────────────────────────────────────────
 
 if command -v ufw &>/dev/null; then
-    ufw allow ${LISTEN_PORT}/tcp comment "Fibratus Fleet Server" 2>/dev/null || true
-    ok "Firewall port ${LISTEN_PORT} opened"
+    ufw allow 80/tcp comment "Let's Encrypt HTTP challenge" 2>/dev/null || true
+    ufw allow 443/tcp comment "Fibratus Fleet Server" 2>/dev/null || true
+    ok "Firewall ports 80 (certbot) and 443 (fleet) opened"
 fi
 
 # ─── Done ────────────────────────────────────────────────────────────────────
@@ -319,13 +372,7 @@ else
     STATUS="${RED}NOT RUNNING${NC} (check: journalctl -u fibratus-fleet)"
 fi
 
-PRIVATE_IP=$(hostname -I | awk '{print $1}')
-PUBLIC_IP=$(curl -sf --max-time 3 ifconfig.me 2>/dev/null || echo "")
-if [[ -n "${PUBLIC_IP}" ]]; then
-    SERVER_IP="${PUBLIC_IP}"
-else
-    SERVER_IP="${PRIVATE_IP}"
-fi
+SERVER_URL="https://${FLEET_DOMAIN}"
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
@@ -333,11 +380,7 @@ echo -e "${BOLD}║              Fibratus Fleet Server — Installed!           
 echo -e "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${BOLD}Status:${NC}       ${STATUS}"
-echo -e "  ${BOLD}Dashboard:${NC}    https://${SERVER_IP}:${LISTEN_PORT}"
-echo -e "  ${BOLD}Private IP:${NC}   ${PRIVATE_IP}"
-if [[ -n "${PUBLIC_IP}" ]]; then
-echo -e "  ${BOLD}Public IP:${NC}    ${PUBLIC_IP}"
-fi
+echo -e "  ${BOLD}Dashboard:${NC}    ${GREEN}${SERVER_URL}${NC}"
 echo ""
 echo -e "  ${BOLD}Dashboard login:${NC}"
 echo -e "    Email:      admin@fibratus.local"
@@ -347,7 +390,7 @@ echo -e "  ───────────────────────
 echo ""
 echo -e "  ${BOLD}${GREEN}Enroll agents — run this on each Windows endpoint:${NC}"
 echo ""
-echo -e "    ${YELLOW}fibratus enroll --token ${ENROLL_TOKEN} --server https://${SERVER_IP}:${LISTEN_PORT} --insecure${NC}"
+echo -e "    ${YELLOW}fibratus enroll --token ${ENROLL_TOKEN} --server ${SERVER_URL}${NC}"
 echo ""
 echo -e "  Then start the agent:"
 echo -e "    ${YELLOW}fibratus service start${NC}"
@@ -357,10 +400,8 @@ echo ""
 echo -e "  ${BOLD}Enrollment Token:${NC}  ${ENROLL_TOKEN}"
 echo -e "  ${BOLD}Org ID:${NC}            ${ORG_ID}"
 echo -e "  ${BOLD}Config:${NC}            ${CONFIG_DIR}/fleet-server.yml"
+echo -e "  ${BOLD}TLS:${NC}               Let's Encrypt (auto-renew enabled)"
 echo -e "  ${BOLD}Logs:${NC}              journalctl -u fibratus-fleet -f"
 echo ""
 echo -e "  Token valid for 1 year / 1000 agents. Create more in dashboard Settings."
-echo ""
-echo -e "  ${BOLD}Note:${NC} --insecure is needed for the self-signed TLS cert."
-echo -e "  For production, use a CA-signed cert and remove the flag."
 echo ""
