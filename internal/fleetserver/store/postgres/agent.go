@@ -40,6 +40,13 @@ func NewAgentStore(db *sql.DB) *AgentStore {
 
 func (s *AgentStore) Create(ctx context.Context, agent *fleet.Agent) error {
 	tags, _ := json.Marshal(agent.Tags)
+
+	// Pass NULL for empty group_id to satisfy FK constraint
+	var groupID interface{}
+	if agent.GroupID != "" {
+		groupID = agent.GroupID
+	}
+
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO agents (id, org_id, hostname, os_version, engine_version, group_id, tags, status, last_heartbeat, registered_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
@@ -52,7 +59,7 @@ func (s *AgentStore) Create(ctx context.Context, agent *fleet.Agent) error {
 			last_heartbeat = EXCLUDED.last_heartbeat,
 			updated_at = NOW()`,
 		agent.ID, agent.OrgID, agent.Hostname, agent.OSVersion, agent.EngineVersion,
-		agent.GroupID, tags, string(agent.Status), agent.LastHeartbeat, agent.RegisteredAt,
+		groupID, tags, string(agent.Status), agent.LastHeartbeat, agent.RegisteredAt,
 	)
 	return err
 }
