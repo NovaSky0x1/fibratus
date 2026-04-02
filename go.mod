@@ -13,6 +13,7 @@ require (
 	github.com/hashicorp/go-version v1.2.1
 	github.com/hillu/go-yara/v4 v4.2.4
 	github.com/jedib0t/go-pretty/v6 v6.2.1
+	github.com/lib/pq v1.10.9
 	github.com/lithammer/fuzzysearch v1.1.2
 	github.com/magiconair/properties v1.8.1
 	github.com/mitchellh/mapstructure v1.4.1

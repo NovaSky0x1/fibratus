@@ -1,0 +1,65 @@
+# Fibratus Fleet Server — Docker Compose
+#
+# Usage:
+#   cd deploy
+#   docker compose up -d
+#
+# This starts:
+#   - fleet-server on port 8443 (dashboard + API)
+#   - PostgreSQL on port 5432 (internal only)
+#   - Elasticsearch on port 9200 (internal only, Phase 2)
+#
+# Access the dashboard at: http://localhost:8443
+#
+# Default API key: change-me-to-a-secure-random-string
+# Generate one with: openssl rand -hex 32
+
+services:
+  fleet-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./fleet-server-config.yml:/etc/fibratus/fleet-server.yml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fibratus_fleet
+      POSTGRES_USER: fibratus
+      POSTGRES_PASSWORD: fibratus-fleet-db-pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fibratus -d fibratus_fleet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.24
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  esdata:

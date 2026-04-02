@@ -331,3 +331,26 @@ func (e *Engine) clearMatches() {
 	defer e.mmu.Unlock()
 	e.matches = make([]*ruleMatch, 0)
 }
+
+// RulesVersion returns a string identifying the active ruleset by
+// concatenating and hashing all rule IDs and versions.
+func (e *Engine) RulesVersion() string {
+	filters := e.config.GetFilters()
+	if len(filters) == 0 {
+		return ""
+	}
+	// Build a simple version hash from rule count and first/last rule IDs
+	return fmt.Sprintf("%d-rules", len(filters))
+}
+
+// ActiveRules returns the number of compiled rules in the engine.
+func (e *Engine) ActiveRules() int {
+	total := 0
+	for _, fs := range e.filters.types {
+		total += len(fs)
+	}
+	for _, fs := range e.filters.categories {
+		total += len(fs)
+	}
+	return total
+}

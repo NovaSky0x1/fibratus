@@ -51,6 +51,8 @@ const (
 	Eventlog
 	// Null is the null output.
 	Null
+	// FleetServer denotes the fleet server output.
+	FleetServer
 	// Unknown is an undefined output type.
 	Unknown
 )
@@ -70,6 +72,8 @@ func (t Type) String() string {
 		return "eventlog"
 	case Null:
 		return "null"
+	case FleetServer:
+		return "fleetserver"
 	default:
 		return "unknown"
 	}
@@ -90,6 +94,8 @@ func TypeFromString(s string) Type {
 		return Eventlog
 	case "null":
 		return Null
+	case "fleetserver":
+		return FleetServer
 	default:
 		return Unknown
 	}

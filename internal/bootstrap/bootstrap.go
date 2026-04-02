@@ -29,6 +29,7 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/config"
 	"github.com/rabbitstack/fibratus/pkg/filament"
 	"github.com/rabbitstack/fibratus/pkg/filter"
+	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 	"github.com/rabbitstack/fibratus/pkg/handle"
 	"github.com/rabbitstack/fibratus/pkg/ps"
 	"github.com/rabbitstack/fibratus/pkg/rules"
@@ -41,6 +42,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sys/windows"
 	"os"
+	"path/filepath"
 )
 
 // ErrAlreadyRunning signals a Fibratus process is already running in the system
@@ -51,17 +53,18 @@ var ErrAlreadyRunning = errors.New("an instance of Fibratus process is already r
 // captures handling, filament execution and event routing
 // to the output sinks.
 type App struct {
-	config     *config.Config
-	evs        *EventSourceControl
-	symbolizer *symbolize.Symbolizer
-	engine     *rules.Engine
-	hsnap      handle.Snapshotter
-	psnap      ps.Snapshotter
-	filament   filament.Filament
-	agg        *aggregator.BufferedAggregator
-	writer     cap.Writer
-	reader     cap.Reader
-	signals    chan struct{}
+	config      *config.Config
+	evs         *EventSourceControl
+	symbolizer  *symbolize.Symbolizer
+	engine      *rules.Engine
+	hsnap       handle.Snapshotter
+	psnap       ps.Snapshotter
+	filament    filament.Filament
+	agg         *aggregator.BufferedAggregator
+	writer      cap.Writer
+	reader      cap.Reader
+	fleetClient *fleetclient.Client
+	signals     chan struct{}
 }
 
 // Option enables changing the behaviour of the bootstrap application.
@@ -267,6 +270,13 @@ func (f *App) Run(args []string) error {
 			return err
 		}
 	}
+	// initialize fleet client if enabled
+	if cfg.Fleet.Enabled {
+		if err := f.initFleetClient(cfg); err != nil {
+			log.Warnf("fleet: failed to initialize: %v", err)
+		}
+	}
+
 	// start the HTTP server
 	return api.StartServer(cfg)
 }
@@ -414,6 +424,11 @@ func (f *App) Shutdown() error {
 	if err := handle.CloseTimeout(); err != nil {
 		errs = append(errs, err)
 	}
+	if f.fleetClient != nil {
+		if err := f.fleetClient.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if err := api.CloseServer(); err != nil {
 		errs = append(errs, err)
 	}
@@ -421,6 +436,36 @@ func (f *App) Shutdown() error {
 		errs = append(errs, err)
 	}
 	return multierror.Wrap(errs...)
+}
+
+// initFleetClient initializes the fleet client, registers with
+// the fleet server, and starts the heartbeat goroutine.
+func (f *App) initFleetClient(cfg *config.Config) error {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "."
+	}
+	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+
+	client, err := fleetclient.New(cfg.Fleet.Config, dataDir)
+	if err != nil {
+		return err
+	}
+	f.fleetClient = client
+
+	if err := client.Register(); err != nil {
+		return err
+	}
+
+	// Start heartbeat with engine stats if available
+	var collector fleetclient.HeartbeatCollector
+	if f.engine != nil {
+		collector = f.engine
+	}
+	client.StartHeartbeat(collector)
+
+	log.Infof("fleet: connected to %s", cfg.Fleet.ServerURL)
+	return nil
 }
 
 func (f *App) stop() {

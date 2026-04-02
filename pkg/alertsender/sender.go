@@ -46,6 +46,8 @@ const (
 	Systray
 	// Eventlog designate the eventlog alert sender
 	Eventlog
+	// FleetServer designates the fleet server alert sender
+	FleetServer
 	// None is the type for unknown alert sender
 	None
 )
@@ -63,6 +65,8 @@ func (s Type) String() string {
 		return "systray"
 	case Eventlog:
 		return "eventlog"
+	case FleetServer:
+		return "fleetserver"
 	default:
 		return "none"
 	}
@@ -93,6 +97,8 @@ func ToType(s string) Type {
 		return Noop
 	case "systray":
 		return Systray
+	case "fleetserver":
+		return FleetServer
 	default:
 		return None
 	}

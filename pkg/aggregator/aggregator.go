@@ -38,6 +38,7 @@ import (
 	_ "github.com/rabbitstack/fibratus/pkg/outputs/null"
 
 	// initialize alert senders
+	_ "github.com/rabbitstack/fibratus/pkg/alertsender/fleetserver"
 	_ "github.com/rabbitstack/fibratus/pkg/alertsender/mail"
 	_ "github.com/rabbitstack/fibratus/pkg/alertsender/slack"
 	_ "github.com/rabbitstack/fibratus/pkg/alertsender/systray"

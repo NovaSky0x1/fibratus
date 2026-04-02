@@ -1,0 +1,66 @@
+###################### Fibratus Fleet Server Configuration #############################
+
+# =============================== Server ==============================================
+
+# HTTP server settings for the fleet management API and dashboard.
+server:
+  # The address and port the server listens on.
+  listen: ":8443"
+
+  # TLS certificate and key paths. Strongly recommended for production.
+  #tls-cert: /etc/fibratus/tls/server.crt
+  #tls-key: /etc/fibratus/tls/server.key
+
+# =============================== Database =============================================
+
+# PostgreSQL database for fleet state (agents, groups, rules, API keys).
+database:
+  host: localhost
+  port: 5432
+  name: fibratus_fleet
+  user: fibratus
+  password: ""
+  ssl-mode: disable
+  max-connections: 50
+
+# =============================== Elasticsearch =======================================
+
+# Elasticsearch for telemetry and detection indexing (Phase 2).
+elasticsearch:
+  servers:
+    - http://localhost:9200
+  index-prefix: fibratus
+  #username: ""
+  #password: ""
+  bulk-workers: 2
+  flush-period: 1s
+
+# =============================== Authentication ======================================
+
+# API key authentication for agents and dashboard API access.
+auth:
+  api-keys:
+    - name: "default"
+      key: ""  # Set this to a secure random string
+
+# =============================== Agent Management ====================================
+
+# Controls agent lifecycle and health monitoring.
+agent:
+  # Time after last heartbeat before marking an agent as offline.
+  # Should be at least 3x the agent's heartbeat-interval (default 30s).
+  heartbeat-timeout: 90s
+
+  # Time after which an offline agent is considered stale.
+  offline-threshold: 5m
+
+# =============================== Logging ==============================================
+
+logging:
+  level: info
+
+# =============================== Dashboard ===========================================
+
+# Web dashboard configuration. The dashboard is embedded in the fleet server binary.
+dashboard:
+  enabled: true

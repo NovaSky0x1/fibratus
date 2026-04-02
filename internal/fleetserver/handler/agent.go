@@ -1,0 +1,216 @@
+/*
+ * Copyright 2021-2022 by Nedim Sabic Sabic
+ * https://www.fibratus.io
+ * All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package handler
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
+	"github.com/rabbitstack/fibratus/pkg/fleet"
+	log "github.com/sirupsen/logrus"
+)
+
+// AgentHandler handles agent-related API requests.
+type AgentHandler struct {
+	agents store.AgentStore
+}
+
+// NewAgentHandler creates a new agent handler.
+func NewAgentHandler(agents store.AgentStore) *AgentHandler {
+	return &AgentHandler{agents: agents}
+}
+
+// Register handles POST /api/v1/agents/register
+func (h *AgentHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var req fleet.RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Hostname == "" {
+		writeError(w, http.StatusBadRequest, "hostname is required")
+		return
+	}
+
+	// Check if agent with same hostname already exists
+	existing, err := h.agents.GetByHostname(r.Context(), req.Hostname)
+	if err != nil {
+		log.Errorf("fleet: register lookup error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	now := time.Now().UTC()
+	var agent *fleet.Agent
+
+	if existing != nil {
+		// Re-register existing agent
+		existing.OSVersion = req.OSVersion
+		existing.EngineVersion = req.EngineVersion
+		existing.Status = fleet.AgentOnline
+		existing.LastHeartbeat = now
+		existing.Tags = req.Tags
+		if err := h.agents.Update(r.Context(), existing); err != nil {
+			log.Errorf("fleet: register update error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		agent = existing
+	} else {
+		// New registration
+		groupID := req.AgentGroup
+		if groupID == "" {
+			groupID = "default"
+		}
+		agent = &fleet.Agent{
+			ID:             generateID(),
+			Hostname:       req.Hostname,
+			OSVersion:      req.OSVersion,
+			EngineVersion:  req.EngineVersion,
+			GroupID:        groupID,
+			Tags:           req.Tags,
+			Status:         fleet.AgentOnline,
+			LastHeartbeat:  now,
+			RegisteredAt:   now,
+		}
+		if err := h.agents.Create(r.Context(), agent); err != nil {
+			log.Errorf("fleet: register create error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
+
+	log.Infof("fleet: agent registered: %s (%s)", agent.Hostname, agent.ID)
+
+	resp := fleet.RegisterResponse{
+		AgentID: agent.ID,
+	}
+	writeJSON(w, http.StatusCreated, fleet.Response{Data: resp})
+}
+
+// Heartbeat handles POST /api/v1/agents/{id}/heartbeat
+func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	agentID := extractPathParam(r.URL.Path, "/api/v1/agents/", "/heartbeat")
+	if agentID == "" {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+
+	var hb fleet.Heartbeat
+	if err := json.NewDecoder(r.Body).Decode(&hb); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if hb.Timestamp.IsZero() {
+		hb.Timestamp = time.Now().UTC()
+	}
+
+	if err := h.agents.UpdateHeartbeat(r.Context(), agentID, &hb); err != nil {
+		log.Errorf("fleet: heartbeat error for %s: %v", agentID, err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	resp := fleet.HeartbeatResponse{Status: "ok"}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
+}
+
+// List handles GET /api/v1/agents
+func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
+	opts := fleet.AgentListOptions{
+		ListOptions: fleet.ListOptions{
+			Page:    intParam(r, "page", 1),
+			PerPage: intParam(r, "per_page", 50),
+			Search:  r.URL.Query().Get("search"),
+		},
+		GroupID: r.URL.Query().Get("group_id"),
+		Status:  fleet.AgentStatus(r.URL.Query().Get("status")),
+	}
+
+	agents, total, err := h.agents.List(r.Context(), opts)
+	if err != nil {
+		log.Errorf("fleet: list agents error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{
+		Data: agents,
+		Meta: &fleet.Pagination{
+			Total:   total,
+			Page:    opts.Page,
+			PerPage: opts.PerPage,
+		},
+	})
+}
+
+// Get handles GET /api/v1/agents/{id}
+func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
+	agentID := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
+	if agentID == "" {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+
+	agent, err := h.agents.Get(r.Context(), agentID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if agent == nil {
+		writeError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: agent})
+}
+
+// Delete handles DELETE /api/v1/agents/{id}
+func (h *AgentHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	agentID := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
+	if agentID == "" {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+
+	if err := h.agents.Delete(r.Context(), agentID); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func intParam(r *http.Request, key string, defaultVal int) int {
+	v := r.URL.Query().Get(key)
+	if v == "" {
+		return defaultVal
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultVal
+	}
+	return n
+}

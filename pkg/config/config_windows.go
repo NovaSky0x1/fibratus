@@ -54,6 +54,7 @@ import (
 	mailsender "github.com/rabbitstack/fibratus/pkg/alertsender/mail"
 	slacksender "github.com/rabbitstack/fibratus/pkg/alertsender/slack"
 	systraysender "github.com/rabbitstack/fibratus/pkg/alertsender/systray"
+	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 	"github.com/rabbitstack/fibratus/pkg/outputs"
 	"github.com/rabbitstack/fibratus/pkg/outputs/console"
 	"github.com/rabbitstack/fibratus/pkg/pe"
@@ -128,6 +129,9 @@ type Config struct {
 
 	// Evasion controls the detection of evasion behaviours.
 	Evasion evasion.Config `json:"evasion" yaml:"evasion"`
+
+	// Fleet stores the fleet client configuration for centralized management.
+	Fleet FleetConfig `json:"fleet" yaml:"fleet"`
 
 	flags *pflag.FlagSet
 	viper *viper.Viper
@@ -233,6 +237,7 @@ func NewWithOpts(options ...Option) *Config {
 		slacksender.AddFlags(flagSet)
 		systraysender.AddFlags(flagSet)
 		eventlogsender.AddFlags(flagSet)
+		fleetclient.AddFlags(flagSet)
 		yara.AddFlags(flagSet)
 	}
 
@@ -285,6 +290,8 @@ func (c *Config) Init() error {
 	c.Log.InitFromViper(c.viper)
 	c.Yara.InitFromViper(c.viper)
 	c.Filters.initFromViper(c.viper)
+
+	c.Fleet.initFromViper(c.viper)
 
 	c.InitHandleSnapshot = c.viper.GetBool(initHandleSnapshot)
 	c.EnumerateHandles = c.viper.GetBool(enumerateHandles)

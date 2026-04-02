@@ -1,0 +1,36 @@
+# Docker Compose fleet server configuration
+# This file is mounted into the container at /etc/fibratus/fleet-server.yml
+
+server:
+  listen: ":8443"
+
+database:
+  host: postgres
+  port: 5432
+  name: fibratus_fleet
+  user: fibratus
+  password: "fibratus-fleet-db-pass"
+  ssl-mode: disable
+  max-connections: 50
+
+elasticsearch:
+  servers:
+    - http://elasticsearch:9200
+  index-prefix: fibratus
+  bulk-workers: 2
+  flush-period: 1s
+
+auth:
+  api-keys:
+    - name: "default"
+      key: "change-me-to-a-secure-random-string"
+
+agent:
+  heartbeat-timeout: 90s
+  offline-threshold: 5m
+
+logging:
+  level: info
+
+dashboard:
+  enabled: true

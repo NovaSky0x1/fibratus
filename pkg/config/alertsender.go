@@ -21,12 +21,14 @@ package config
 import (
 	"errors"
 	"fmt"
+	"reflect"
+
 	"github.com/rabbitstack/fibratus/pkg/alertsender"
 	"github.com/rabbitstack/fibratus/pkg/alertsender/eventlog"
 	"github.com/rabbitstack/fibratus/pkg/alertsender/mail"
 	"github.com/rabbitstack/fibratus/pkg/alertsender/slack"
 	"github.com/rabbitstack/fibratus/pkg/alertsender/systray"
-	"reflect"
+	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 )
 
 var errNoAlertsendersSection = errors.New("no alertsenders section in config")
@@ -105,6 +107,20 @@ func (c *Config) tryLoadAlertSenders() error {
 			config := alertsender.Config{
 				Type:   alertsender.Eventlog,
 				Sender: eventlogConfig,
+			}
+			configs = append(configs, config)
+
+		case "fleetserver":
+			var fleetConfig fleetclient.Config
+			if err := decode(config, &fleetConfig); err != nil {
+				return errAlertsenderConfig(typ, err)
+			}
+			if !fleetConfig.Enabled {
+				continue
+			}
+			config := alertsender.Config{
+				Type:   alertsender.FleetServer,
+				Sender: fleetConfig,
 			}
 			configs = append(configs, config)
 		}

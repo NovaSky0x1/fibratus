@@ -102,6 +102,42 @@ api:
   # Represents the timeout interval for the HTTP server responses.
   timeout: 5s
 
+# =============================== Fleet ================================================
+
+# Fleet client configuration for centralized management via a fleet server.
+# When enabled, the agent registers with the fleet server, sends periodic
+# heartbeats, and reports detections.
+fleet:
+  # Enables/disables fleet client
+  enabled: false
+
+  # The base URL of the fleet server
+  #server-url: "https://fleet.example.com"
+
+  # API key for fleet server authentication
+  #api-key: ""
+
+  # The agent group this agent belongs to
+  agent-group: "default"
+
+  # The interval between heartbeat messages
+  heartbeat-interval: 30s
+
+  # The interval between rule synchronization checks
+  rule-sync-interval: 5m
+
+  # Enable gzip compression for request bodies
+  enable-gzip: true
+
+  # Path to the CA certificate for TLS verification
+  #tls-ca: ""
+
+  # Skip TLS certificate verification (not recommended for production)
+  tls-insecure-skip-verify: false
+
+  # HTTP request timeout for fleet server communication
+  timeout: 10s
+
 # =============================== General ==============================================
 
 # Indicates whether debug privilege is set in Fibratus process' token. Enabling this security policy allows
