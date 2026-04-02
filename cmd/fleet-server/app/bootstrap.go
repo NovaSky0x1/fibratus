@@ -54,6 +54,13 @@ Example:
     --account "Acme Corp" --org "Production" \
     --email admin@acme.com --name "Admin" --password "changeme123"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Auto-generate password if not provided
+		if bsAdminPass == "" {
+			b := make([]byte, 12)
+			rand.Read(b)
+			bsAdminPass = hex.EncodeToString(b)[:16]
+		}
+
 		cfg, err := fleetserver.LoadConfig(configFile)
 		if err != nil {
 			return err
@@ -141,35 +148,44 @@ Example:
 		}
 		log.Infof("created admin user: %s (%s)", bsAdminEmail, userID)
 
+		// Create enrollment token
+		enrollTokenID := "ft-enroll-" + generateID()
+		enrollStore := postgres.NewEnrollmentTokenStore(db)
+		err = enrollStore.Create(ctx, &fleet.EnrollmentToken{
+			ID:        enrollTokenID,
+			AccountID: accountID,
+			OrgID:     orgID,
+			Name:      "initial-bootstrap",
+			MaxUses:   1000,
+			ExpiresAt: time.Now().Add(365 * 24 * time.Hour), // 1 year
+			CreatedBy: userID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create enrollment token: %w", err)
+		}
+		log.Infof("created enrollment token: %s", enrollTokenID)
+
 		// Print results
 		fmt.Println("")
 		fmt.Println("═══════════════════════════════════════════════════════")
 		fmt.Println("  Fleet Server — Bootstrap Complete")
 		fmt.Println("═══════════════════════════════════════════════════════")
 		fmt.Println("")
-		fmt.Printf("  Account:       %s\n", bsAccountName)
-		fmt.Printf("  Account ID:    %s\n", accountID)
-		fmt.Printf("  Organization:  %s\n", bsOrgName)
-		fmt.Printf("  Org ID:        %s\n", orgID)
-		fmt.Printf("  Admin Email:   %s\n", bsAdminEmail)
-		fmt.Printf("  API Key:       %s\n", apiKey)
+		fmt.Printf("  Account:          %s\n", bsAccountName)
+		fmt.Printf("  Organization:     %s\n", bsOrgName)
+		fmt.Printf("  Org ID:           %s\n", orgID)
 		fmt.Println("")
 		fmt.Println("  Dashboard login:")
-		fmt.Printf("    Email:    %s\n", bsAdminEmail)
-		fmt.Printf("    Password: %s\n", bsAdminPass)
+		fmt.Printf("    Email:          %s\n", bsAdminEmail)
+		fmt.Printf("    Password:       %s\n", bsAdminPass)
 		fmt.Println("")
-		fmt.Println("  Agent config (fibratus.yml):")
+		fmt.Printf("  Enrollment Token: %s\n", enrollTokenID)
+		fmt.Printf("  API Key:          %s\n", apiKey)
 		fmt.Println("")
-		fmt.Println("    fleet:")
-		fmt.Println("      enabled: true")
-		fmt.Printf("      server-url: \"http://<SERVER-IP>:8443\"\n")
-		fmt.Printf("      api-key: \"%s\"\n", apiKey)
-		fmt.Printf("      org-id: \"%s\"\n", orgID)
-		fmt.Println("      agent-group: \"default\"")
+		fmt.Println("  Enroll agents (run on each Windows endpoint):")
 		fmt.Println("")
-
-		// Save API key to config (update the config file's auth section)
-		log.Info("add the API key to your fleet-server.yml under auth.api-keys")
+		fmt.Printf("    fibratus enroll --token %s --server https://<SERVER-IP>:8443 --insecure\n", enrollTokenID)
+		fmt.Println("")
 
 		return nil
 	},
@@ -213,16 +229,5 @@ func slugify(s string) string {
 			}
 		}
 	}
-
-	// Auto-generate password if not provided
-	if bsAdminPass == "" {
-		b := make([]byte, 12)
-		rand.Read(b)
-		bsAdminPass = hex.EncodeToString(b)[:16]
-		log.Infof("generated admin password: %s", bsAdminPass)
-		// Set it before the command runs
-		_ = time.Now() // avoid unused import
-	}
-
 	return string(result)
 }
