@@ -70,7 +70,7 @@ Example:
 
 		// Run migrations first
 		log.Info("running database migrations...")
-		if err := postgres.Migrate(cfg.Database); err != nil {
+		if err := postgres.Migrate(cfg.Database.DSN()); err != nil {
 			return err
 		}
 

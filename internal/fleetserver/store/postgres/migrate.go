@@ -23,7 +23,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/rabbitstack/fibratus/internal/fleetserver"
 	_ "github.com/lib/pq"
 )
 
@@ -184,8 +183,9 @@ CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections(org_id, timest
 `
 
 // Migrate runs the database schema migrations.
-func Migrate(cfg fleetserver.DatabaseConfig) error {
-	db, err := sql.Open("postgres", cfg.DSN())
+// Migrate runs the database schema migrations.
+func Migrate(dsn string) error {
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return fmt.Errorf("migrate: failed to connect: %w", err)
 	}

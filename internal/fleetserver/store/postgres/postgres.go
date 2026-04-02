@@ -23,7 +23,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/rabbitstack/fibratus/internal/fleetserver"
 	_ "github.com/lib/pq"
 )
 
@@ -32,13 +31,15 @@ type Store struct {
 	db *sql.DB
 }
 
-// New creates a new PostgreSQL store.
-func New(cfg fleetserver.DatabaseConfig) (*Store, error) {
-	db, err := sql.Open("postgres", cfg.DSN())
+// New creates a new PostgreSQL store from a DSN connection string.
+func New(dsn string, maxConns int) (*Store, error) {
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: failed to open: %w", err)
 	}
-	db.SetMaxOpenConns(cfg.MaxConnections)
+	if maxConns > 0 {
+		db.SetMaxOpenConns(maxConns)
+	}
 
 	if err := db.PingContext(context.Background()); err != nil {
 		return nil, fmt.Errorf("postgres: failed to ping: %w", err)

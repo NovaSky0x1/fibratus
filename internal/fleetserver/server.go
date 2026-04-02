@@ -43,7 +43,7 @@ type Server struct {
 
 // New creates a new fleet server instance.
 func New(cfg *Config) (*Server, error) {
-	pgStore, err := postgres.New(cfg.Database)
+	pgStore, err := postgres.New(cfg.Database.DSN(), cfg.Database.MaxConnections)
 	if err != nil {
 		return nil, fmt.Errorf("fleet server: %w", err)
 	}
@@ -71,7 +71,7 @@ func New(cfg *Config) (*Server, error) {
 // Run starts the fleet server and blocks until the context is cancelled.
 func (s *Server) Run(ctx context.Context) error {
 	log.Info("running database migrations...")
-	if err := postgres.Migrate(s.config.Database); err != nil {
+	if err := postgres.Migrate(s.config.Database.DSN()); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 

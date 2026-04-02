@@ -36,7 +36,7 @@ var migrateCmd = &cobra.Command{
 		initLogging(cfg.Logging.Level)
 
 		log.Info("running database migrations...")
-		if err := postgres.Migrate(cfg.Database); err != nil {
+		if err := postgres.Migrate(cfg.Database.DSN()); err != nil {
 			return err
 		}
 		log.Info("migrations completed successfully")
