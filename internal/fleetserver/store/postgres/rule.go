@@ -43,7 +43,7 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 	labels, _ := json.Marshal(rule.Labels)
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO rules (id, org_id, name, version, description, condition, output_template,
-			severity, labels, tags, references, raw_yaml, enabled, created_at, updated_at)
+			severity, labels, tags, "references", raw_yaml, enabled, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
@@ -55,7 +55,7 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 func (s *RuleStore) Get(ctx context.Context, orgID, id string) (*fleet.Rule, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, org_id, name, version, description, condition, output_template,
-			severity, labels, tags, references, raw_yaml, enabled, created_at, updated_at
+			severity, labels, tags, "references", raw_yaml, enabled, created_at, updated_at
 		 FROM rules WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanRule(row)
 }
@@ -80,7 +80,7 @@ func (s *RuleStore) List(ctx context.Context, orgID string, opts fleet.ListOptio
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, org_id, name, version, description, condition, output_template,
-			severity, labels, tags, references, raw_yaml, enabled, created_at, updated_at
+			severity, labels, tags, "references", raw_yaml, enabled, created_at, updated_at
 		 FROM rules WHERE org_id = $1
 		 ORDER BY name ASC
 		 LIMIT $2 OFFSET $3`,
@@ -106,7 +106,7 @@ func (s *RuleStore) Update(ctx context.Context, rule *fleet.Rule) error {
 	labels, _ := json.Marshal(rule.Labels)
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE rules SET name=$3, version=$4, description=$5, condition=$6,
-			output_template=$7, severity=$8, labels=$9, tags=$10, references=$11,
+			output_template=$7, severity=$8, labels=$9, tags=$10, "references"=$11,
 			raw_yaml=$12, enabled=$13, updated_at=NOW()
 		 WHERE id=$1 AND org_id=$2`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
@@ -127,7 +127,7 @@ func (s *RuleStore) Delete(ctx context.Context, orgID, id string) error {
 func (s *RuleStore) GetForAgent(ctx context.Context, orgID, agentID string) ([]*fleet.Rule, string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, org_id, name, version, description, condition, output_template,
-			severity, labels, tags, references, raw_yaml, enabled, created_at, updated_at
+			severity, labels, tags, "references", raw_yaml, enabled, created_at, updated_at
 		 FROM rules
 		 WHERE org_id = $1 AND enabled = true
 		 ORDER BY name ASC`,

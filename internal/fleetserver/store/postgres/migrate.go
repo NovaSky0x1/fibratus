@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS rules (
     severity        TEXT NOT NULL DEFAULT 'medium',
     labels          JSONB DEFAULT '{}',
     tags            TEXT[] DEFAULT '{}',
-    references      TEXT[] DEFAULT '{}',
+    "references"    TEXT[] DEFAULT '{}',
     raw_yaml        TEXT NOT NULL,
     enabled         BOOLEAN DEFAULT true,
     created_at      TIMESTAMPTZ DEFAULT NOW(),
