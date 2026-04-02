@@ -61,9 +61,26 @@ type Client struct {
 }
 
 // New creates a new fleet client with the given configuration.
-// The dataDir is used to persist the agent ID across restarts.
+// The dataDir is used to persist the agent ID and certificates across restarts.
 func New(config Config, dataDir string) (*Client, error) {
-	tlsConfig, err := tls.MakeConfig("", "", config.TLSCA, config.TLSInsecureSkipVerify)
+	// Check if enrollment certificates exist (from `fibratus enroll`)
+	certFile := filepath.Join(dataDir, "certs", "agent.crt")
+	keyFile := filepath.Join(dataDir, "certs", "agent.key")
+	caFile := filepath.Join(dataDir, "certs", "ca.crt")
+
+	var tlsCert, tlsKey, tlsCA string
+	if fileExists(certFile) && fileExists(keyFile) {
+		tlsCert = certFile
+		tlsKey = keyFile
+		if fileExists(caFile) {
+			tlsCA = caFile
+		}
+		log.Info("fleet: using enrollment certificates for mTLS")
+	} else if config.TLSCA != "" {
+		tlsCA = config.TLSCA
+	}
+
+	tlsConfig, err := tls.MakeConfig(tlsCert, tlsKey, tlsCA, config.TLSInsecureSkipVerify)
 	if err != nil {
 		return nil, fmt.Errorf("fleet client: invalid TLS config: %v", err)
 	}
@@ -95,7 +112,28 @@ func New(config Config, dataDir string) (*Client, error) {
 	// Load persisted agent ID if available
 	c.agentID = c.loadAgentID()
 
+	// Load persisted org ID if not set in config
+	if c.config.OrgID == "" {
+		if orgID := c.loadOrgID(); orgID != "" {
+			c.config.OrgID = orgID
+		}
+	}
+
 	return c, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func (c *Client) loadOrgID() string {
+	path := filepath.Join(c.dataDir, "org-id")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // Register registers this agent with the fleet server. If the agent

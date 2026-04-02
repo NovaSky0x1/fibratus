@@ -20,11 +20,13 @@ package fleetserver
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ca"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
 	log "github.com/sirupsen/logrus"
@@ -82,14 +84,16 @@ func (s *Server) Run(ctx context.Context) error {
 	detStore := postgres.NewDetectionStore(db)
 	ruleStore := postgres.NewRuleStore(db)
 	enrollStore := postgres.NewEnrollmentTokenStore(db)
+	caManager := ca.NewManager(db)
 
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
 	agentHandler := handler.NewAgentHandler(agentStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore)
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore)
+	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)
+	enrollTokenHandler := handler.NewEnrollmentTokenHandler(enrollStore)
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
-	_ = enrollStore // Used in Phase B (enrollment endpoint)
 
 	// ═══════════════════════════════════════════════════════════
 	// Route setup
@@ -107,6 +111,9 @@ func (s *Server) Run(ctx context.Context) error {
 	// Auth routes (signup/login — no auth required)
 	mux.HandleFunc("/api/v1/auth/signup", methodGuard(http.MethodPost, authHandler.Signup))
 	mux.HandleFunc("/api/v1/auth/login", methodGuard(http.MethodPost, authHandler.Login))
+
+	// Enrollment route (token-based auth, no API key or JWT needed)
+	mux.HandleFunc("/api/v1/enroll", methodGuard(http.MethodPost, enrollHandler.Enroll))
 
 	// ── Agent routes (API key auth for Phase 1 compat) ───────
 
@@ -174,6 +181,12 @@ func (s *Server) Run(ctx context.Context) error {
 			ruleHandler.Update(w, r)
 		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodDelete:
 			ruleHandler.Delete(w, r)
+
+		// Enrollment Tokens
+		case subpath == "/enrollment-tokens" && r.Method == http.MethodGet:
+			enrollTokenHandler.List(w, r)
+		case subpath == "/enrollment-tokens" && r.Method == http.MethodPost:
+			enrollTokenHandler.Create(w, r)
 
 		// Detections
 		case subpath == "/detections" && r.Method == http.MethodGet:
@@ -256,6 +269,27 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Start agent status reaper
 	go s.agentReaper(ctx, agentStore)
+
+	// Configure TLS with optional mTLS (client certificate verification)
+	if s.config.Server.TLSCert != "" && s.config.Server.TLSKey != "" {
+		// Load all org CA certs for client verification
+		clientCAs, err := caManager.LoadAllCACerts(context.Background())
+		if err != nil {
+			log.Warnf("fleet: failed to load org CAs for mTLS: %v", err)
+		}
+
+		tlsConfig := &tls.Config{
+			// Request client certs but don't require them —
+			// enrollment endpoint and legacy agents don't have certs yet
+			ClientAuth: tls.VerifyClientCertIfGiven,
+		}
+		if clientCAs != nil {
+			tlsConfig.ClientCAs = clientCAs
+			log.Info("fleet: mTLS enabled — enrolled agents will use client certificates")
+		}
+
+		s.httpServer.TLSConfig = tlsConfig
+	}
 
 	// Start HTTP server
 	errCh := make(chan error, 1)

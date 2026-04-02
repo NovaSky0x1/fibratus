@@ -8,6 +8,7 @@ const navigation = [
   { name: 'Agents', href: '/agents' },
   { name: 'Detections', href: '/detections' },
   { name: 'Rules', href: '/rules' },
+  { name: 'Settings', href: '/settings' },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {

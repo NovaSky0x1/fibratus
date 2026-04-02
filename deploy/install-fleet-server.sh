@@ -177,15 +177,28 @@ fi
 
 # ─── Step 9: Write configuration ────────────────────────────────────────────
 
-mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}"
+mkdir -p "${CONFIG_DIR}" "${CONFIG_DIR}/tls" "${DATA_DIR}" "${LOG_DIR}"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" "${LOG_DIR}"
+
+# Generate self-signed TLS certificate for the server
+info "Generating server TLS certificate..."
+SERVER_IP=$(hostname -I | awk '{print $1}')
+openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+    -keyout "${CONFIG_DIR}/tls/server.key" \
+    -out "${CONFIG_DIR}/tls/server.crt" \
+    -subj "/CN=fibratus-fleet/O=Fibratus" \
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:${SERVER_IP}" 2>/dev/null
+chmod 600 "${CONFIG_DIR}/tls/server.key"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}/tls"
+ok "TLS certificate generated"
+
+JWT_SECRET="$(openssl rand -hex 32)"
 
 cat > "${CONFIG_DIR}/fleet-server.yml" <<YAML
 server:
   listen: ":${LISTEN_PORT}"
-  # Uncomment and set paths for TLS (strongly recommended for production):
-  # tls-cert: /etc/fibratus/tls/server.crt
-  # tls-key: /etc/fibratus/tls/server.key
+  tls-cert: ${CONFIG_DIR}/tls/server.crt
+  tls-key: ${CONFIG_DIR}/tls/server.key
 
 database:
   host: localhost
@@ -204,6 +217,7 @@ elasticsearch:
   flush-period: 1s
 
 auth:
+  jwt-secret: "${JWT_SECRET}"
   api-keys:
     - name: "default"
       key: "${API_KEY}"
@@ -305,9 +319,9 @@ echo -e "${BOLD}║              Fibratus Fleet Server — Installed!           
 echo -e "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${BOLD}Status:${NC}      ${STATUS}"
-echo -e "  ${BOLD}Dashboard:${NC}   http://${SERVER_IP}:${LISTEN_PORT}"
-echo -e "  ${BOLD}API:${NC}         http://${SERVER_IP}:${LISTEN_PORT}/api/v1/"
-echo -e "  ${BOLD}Health:${NC}      http://${SERVER_IP}:${LISTEN_PORT}/health"
+echo -e "  ${BOLD}Dashboard:${NC}   https://${SERVER_IP}:${LISTEN_PORT}"
+echo -e "  ${BOLD}API:${NC}         https://${SERVER_IP}:${LISTEN_PORT}/api/v1/"
+echo -e "  ${BOLD}Health:${NC}      https://${SERVER_IP}:${LISTEN_PORT}/health"
 echo ""
 echo -e "  ${BOLD}API Key:${NC}     ${YELLOW}${API_KEY}${NC}"
 echo -e "  ${BOLD}Org ID:${NC}      ${YELLOW}${ORG_ID}${NC}"
@@ -325,14 +339,23 @@ echo -e "    systemctl status fibratus-fleet"
 echo -e "    systemctl restart fibratus-fleet"
 echo -e "    journalctl -u fibratus-fleet -f"
 echo ""
-echo -e "  ${BOLD}Agent config (add to fibratus.yml on Windows):${NC}"
+echo -e "  ${BOLD}Enroll agents (run on each Windows endpoint):${NC}"
+echo ""
+echo -e "    ${YELLOW}fibratus enroll --token ${API_KEY} --server https://${SERVER_IP}:${LISTEN_PORT} --insecure${NC}"
+echo ""
+echo -e "  ${BOLD}Or manual config (add to fibratus.yml on Windows):${NC}"
 echo ""
 echo -e "    ${YELLOW}fleet:${NC}"
 echo -e "    ${YELLOW}  enabled: true${NC}"
-echo -e "    ${YELLOW}  server-url: \"http://${SERVER_IP}:${LISTEN_PORT}\"${NC}"
+echo -e "    ${YELLOW}  server-url: \"https://${SERVER_IP}:${LISTEN_PORT}\"${NC}"
 echo -e "    ${YELLOW}  api-key: \"${API_KEY}\"${NC}"
 echo -e "    ${YELLOW}  org-id: \"${ORG_ID}\"${NC}"
 echo -e "    ${YELLOW}  agent-group: \"default\"${NC}"
+echo -e "    ${YELLOW}  tls-insecure-skip-verify: true${NC}"
 echo ""
 echo -e "  ${BOLD}Save the credentials above — you'll need them!${NC}"
+echo ""
+echo -e "  ${BOLD}Note:${NC} --insecure / tls-insecure-skip-verify is needed because the"
+echo -e "  server uses a self-signed TLS certificate. For production, use a"
+echo -e "  proper CA-signed certificate and remove the insecure flag."
 echo ""

@@ -7,6 +7,7 @@ import Overview from './pages/Overview'
 import Agents from './pages/Agents'
 import Detections from './pages/Detections'
 import Rules from './pages/Rules'
+import Settings from './pages/Settings'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -30,6 +31,7 @@ export default function App() {
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/detections" element={<Detections />} />
                 <Route path="/rules" element={<Rules />} />
+                <Route path="/settings" element={<Settings />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

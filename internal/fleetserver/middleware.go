@@ -61,18 +61,47 @@ func apiKeyAuth(validKeys map[string]bool, next http.Handler) http.Handler {
 	})
 }
 
-// agentIdentity extracts agent identity from the X-Agent-ID header
-// for legacy API-key authenticated agents. In future, mTLS cert
-// will provide this identity automatically.
+// agentIdentity extracts agent identity from mTLS client certificate
+// or falls back to X-Agent-ID / X-Org-ID headers for legacy agents.
 func agentIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		agentID := r.Header.Get("X-Agent-ID")
-		if agentID != "" {
-			ctx := WithAgentContext(r.Context(), agentID, "", "")
+		var agentID, orgID, accountID string
+
+		// Try mTLS first — extract identity from client certificate Subject
+		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+			cert := r.TLS.PeerCertificates[0]
+			agentID = extractCertField(cert.Subject.CommonName, "agent:")
+			if len(cert.Subject.OrganizationalUnit) > 0 {
+				orgID = extractCertField(cert.Subject.OrganizationalUnit[0], "org:")
+			}
+			if len(cert.Subject.Organization) > 0 {
+				accountID = extractCertField(cert.Subject.Organization[0], "account:")
+			}
+		}
+
+		// Fall back to headers for legacy API-key agents
+		if agentID == "" {
+			agentID = r.Header.Get("X-Agent-ID")
+		}
+		if orgID == "" {
+			orgID = r.Header.Get("X-Org-ID")
+		}
+
+		if agentID != "" || orgID != "" {
+			ctx := WithAgentContext(r.Context(), agentID, orgID, accountID)
 			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// extractCertField extracts the value after a prefix from a cert field.
+// e.g., extractCertField("agent:abc123", "agent:") returns "abc123"
+func extractCertField(field, prefix string) string {
+	if len(field) > len(prefix) && field[:len(prefix)] == prefix {
+		return field[len(prefix):]
+	}
+	return ""
 }
 
 // cors adds CORS headers for dashboard development.

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"github.com/rabbitstack/fibratus/cmd/fibratus/app/capture"
 	"github.com/rabbitstack/fibratus/cmd/fibratus/app/config"
+	"github.com/rabbitstack/fibratus/cmd/fibratus/app/enroll"
 	"github.com/rabbitstack/fibratus/cmd/fibratus/app/list"
 	"github.com/rabbitstack/fibratus/cmd/fibratus/app/replay"
 	"github.com/rabbitstack/fibratus/cmd/fibratus/app/rules"
@@ -62,6 +63,7 @@ func init() {
 	RootCmd.AddCommand(config.Command)
 	RootCmd.AddCommand(list.Command)
 	RootCmd.AddCommand(rules.Command)
+	RootCmd.AddCommand(enroll.Command)
 	RootCmd.AddCommand(runCmd)
 	RootCmd.AddCommand(docsCmd)
 	RootCmd.AddCommand(versionCmd)
