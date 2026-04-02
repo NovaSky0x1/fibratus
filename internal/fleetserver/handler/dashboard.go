@@ -21,6 +21,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/rabbitstack/fibratus/internal/fleetserver"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -37,11 +38,17 @@ func NewDashboardHandler(agents store.AgentStore, detections store.DetectionStor
 	return &DashboardHandler{agents: agents, detections: detections}
 }
 
-// Overview handles GET /api/v1/dashboard/overview
+// Overview handles GET /api/v1/orgs/{org_id}/dashboard/overview
 func (h *DashboardHandler) Overview(w http.ResponseWriter, r *http.Request) {
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
 	ctx := r.Context()
 
-	statusCounts, err := h.agents.CountByStatus(ctx)
+	statusCounts, err := h.agents.CountByStatus(ctx, orgID)
 	if err != nil {
 		log.Errorf("fleet: overview agent count error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -53,14 +60,14 @@ func (h *DashboardHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		totalAgents += v
 	}
 
-	detCount, err := h.detections.Count24h(ctx)
+	detCount, err := h.detections.Count24h(ctx, orgID)
 	if err != nil {
 		log.Errorf("fleet: overview detection count error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	severityBreakdown, err := h.detections.CountBySeverity(ctx)
+	severityBreakdown, err := h.detections.CountBySeverity(ctx, orgID)
 	if err != nil {
 		log.Errorf("fleet: overview severity error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

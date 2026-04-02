@@ -1,0 +1,119 @@
+/*
+ * Copyright 2021-2022 by Nedim Sabic Sabic
+ * https://www.fibratus.io
+ * All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package postgres
+
+import (
+	"context"
+	"database/sql"
+
+	"github.com/rabbitstack/fibratus/pkg/fleet"
+)
+
+// UserStore implements store.UserStore backed by PostgreSQL.
+type UserStore struct {
+	db *sql.DB
+}
+
+// NewUserStore creates a new user store.
+func NewUserStore(db *sql.DB) *UserStore {
+	return &UserStore{db: db}
+}
+
+func (s *UserStore) Create(ctx context.Context, user *fleet.User) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (id, email, name, password, account_id, role, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		user.ID, user.Email, user.Name, user.Password, user.AccountID, user.Role, user.CreatedAt,
+	)
+	return err
+}
+
+func (s *UserStore) GetByEmail(ctx context.Context, email string) (*fleet.User, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, email, name, password, account_id, role, created_at
+		 FROM users WHERE email = $1`, email)
+
+	u := &fleet.User{}
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
+func (s *UserStore) Get(ctx context.Context, id string) (*fleet.User, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, email, name, password, account_id, role, created_at
+		 FROM users WHERE id = $1`, id)
+
+	u := &fleet.User{}
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
+func (s *UserStore) AddOrgAccess(ctx context.Context, userID, orgID, role string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO user_orgs (user_id, org_id, role)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (user_id, org_id) DO UPDATE SET role = EXCLUDED.role`,
+		userID, orgID, role,
+	)
+	return err
+}
+
+func (s *UserStore) GetOrgAccess(ctx context.Context, userID string) ([]fleet.UserOrg, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT user_id, org_id, role
+		 FROM user_orgs WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	access := make([]fleet.UserOrg, 0)
+	for rows.Next() {
+		var uo fleet.UserOrg
+		if err := rows.Scan(&uo.UserID, &uo.OrgID, &uo.Role); err != nil {
+			return nil, err
+		}
+		access = append(access, uo)
+	}
+	return access, rows.Err()
+}
+
+func (s *UserStore) HasOrgAccess(ctx context.Context, userID, orgID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM user_orgs WHERE user_id = $1 AND org_id = $2)`,
+		userID, orgID,
+	).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}

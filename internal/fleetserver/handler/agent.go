@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rabbitstack/fibratus/internal/fleetserver"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -41,6 +42,9 @@ func NewAgentHandler(agents store.AgentStore) *AgentHandler {
 }
 
 // Register handles POST /api/v1/agents/register
+// For Phase 1 agents using API key auth. The agent provides its
+// org affiliation via X-Agent-Org header or defaults to finding
+// one by hostname.
 func (h *AgentHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req fleet.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -53,19 +57,25 @@ func (h *AgentHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if agent with same hostname already exists
-	existing, err := h.agents.GetByHostname(r.Context(), req.Hostname)
+	// For legacy API key agents, org_id comes from header or defaults
+	orgID := r.Header.Get("X-Org-ID")
+	if orgID == "" {
+		orgID = "default"
+	}
+
+	now := time.Now().UTC()
+
+	// Check if agent with same hostname already exists in this org
+	existing, err := h.agents.GetByHostname(r.Context(), orgID, req.Hostname)
 	if err != nil {
 		log.Errorf("fleet: register lookup error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	now := time.Now().UTC()
 	var agent *fleet.Agent
 
 	if existing != nil {
-		// Re-register existing agent
 		existing.OSVersion = req.OSVersion
 		existing.EngineVersion = req.EngineVersion
 		existing.Status = fleet.AgentOnline
@@ -78,21 +88,16 @@ func (h *AgentHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 		agent = existing
 	} else {
-		// New registration
-		groupID := req.AgentGroup
-		if groupID == "" {
-			groupID = "default"
-		}
 		agent = &fleet.Agent{
-			ID:             generateID(),
-			Hostname:       req.Hostname,
-			OSVersion:      req.OSVersion,
-			EngineVersion:  req.EngineVersion,
-			GroupID:        groupID,
-			Tags:           req.Tags,
-			Status:         fleet.AgentOnline,
-			LastHeartbeat:  now,
-			RegisteredAt:   now,
+			ID:            generateID(),
+			OrgID:         orgID,
+			Hostname:      req.Hostname,
+			OSVersion:     req.OSVersion,
+			EngineVersion: req.EngineVersion,
+			Tags:          req.Tags,
+			Status:        fleet.AgentOnline,
+			LastHeartbeat: now,
+			RegisteredAt:  now,
 		}
 		if err := h.agents.Create(r.Context(), agent); err != nil {
 			log.Errorf("fleet: register create error: %v", err)
@@ -101,11 +106,9 @@ func (h *AgentHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Infof("fleet: agent registered: %s (%s)", agent.Hostname, agent.ID)
+	log.Infof("fleet: agent registered: %s (%s) in org %s", agent.Hostname, agent.ID, orgID)
 
-	resp := fleet.RegisterResponse{
-		AgentID: agent.ID,
-	}
+	resp := fleet.RegisterResponse{AgentID: agent.ID}
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: resp})
 }
 
@@ -127,7 +130,13 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		hb.Timestamp = time.Now().UTC()
 	}
 
-	if err := h.agents.UpdateHeartbeat(r.Context(), agentID, &hb); err != nil {
+	// For agent routes, org_id comes from agent identity or header
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		orgID = r.Header.Get("X-Org-ID")
+	}
+
+	if err := h.agents.UpdateHeartbeat(r.Context(), orgID, agentID, &hb); err != nil {
 		log.Errorf("fleet: heartbeat error for %s: %v", agentID, err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -137,8 +146,14 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
 }
 
-// List handles GET /api/v1/agents
+// List handles GET /api/v1/orgs/{org_id}/agents
 func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
 	opts := fleet.AgentListOptions{
 		ListOptions: fleet.ListOptions{
 			Page:    intParam(r, "page", 1),
@@ -149,7 +164,7 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 		Status:  fleet.AgentStatus(r.URL.Query().Get("status")),
 	}
 
-	agents, total, err := h.agents.List(r.Context(), opts)
+	agents, total, err := h.agents.List(r.Context(), orgID, opts)
 	if err != nil {
 		log.Errorf("fleet: list agents error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -158,23 +173,27 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: agents,
-		Meta: &fleet.Pagination{
-			Total:   total,
-			Page:    opts.Page,
-			PerPage: opts.PerPage,
-		},
+		Meta: &fleet.Pagination{Total: total, Page: opts.Page, PerPage: opts.PerPage},
 	})
 }
 
-// Get handles GET /api/v1/agents/{id}
+// Get handles GET /api/v1/orgs/{org_id}/agents/{id}
 func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
-	agentID := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
-	if agentID == "" {
-		writeError(w, http.StatusBadRequest, "agent ID required")
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
 		return
 	}
 
-	agent, err := h.agents.Get(r.Context(), agentID)
+	// Extract agent ID from the path — last segment after /agents/
+	parts := strings.Split(r.URL.Path, "/agents/")
+	if len(parts) < 2 || parts[1] == "" {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+	agentID := strings.TrimSuffix(parts[1], "/")
+
+	agent, err := h.agents.Get(r.Context(), orgID, agentID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -187,15 +206,22 @@ func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: agent})
 }
 
-// Delete handles DELETE /api/v1/agents/{id}
+// Delete handles DELETE /api/v1/orgs/{org_id}/agents/{id}
 func (h *AgentHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	agentID := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
-	if agentID == "" {
-		writeError(w, http.StatusBadRequest, "agent ID required")
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
 		return
 	}
 
-	if err := h.agents.Delete(r.Context(), agentID); err != nil {
+	parts := strings.Split(r.URL.Path, "/agents/")
+	if len(parts) < 2 || parts[1] == "" {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+	agentID := strings.TrimSuffix(parts[1], "/")
+
+	if err := h.agents.Delete(r.Context(), orgID, agentID); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

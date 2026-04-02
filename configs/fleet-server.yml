@@ -39,6 +39,10 @@ elasticsearch:
 
 # API key authentication for agents and dashboard API access.
 auth:
+  # JWT secret for dashboard authentication. Generate with: openssl rand -hex 32
+  jwt-secret: ""
+
+  # Legacy API keys for Phase 1 agents (will be replaced by mTLS enrollment)
   api-keys:
     - name: "default"
       key: ""  # Set this to a secure random string

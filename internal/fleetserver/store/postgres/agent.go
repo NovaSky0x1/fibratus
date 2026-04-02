@@ -41,55 +41,54 @@ func NewAgentStore(db *sql.DB) *AgentStore {
 func (s *AgentStore) Create(ctx context.Context, agent *fleet.Agent) error {
 	tags, _ := json.Marshal(agent.Tags)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO agents (id, hostname, os_version, engine_version, group_id, tags, status, last_heartbeat, registered_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+		`INSERT INTO agents (id, org_id, hostname, os_version, engine_version, group_id, tags, status, last_heartbeat, registered_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
 		 ON CONFLICT (id) DO UPDATE SET
 			hostname = EXCLUDED.hostname,
 			os_version = EXCLUDED.os_version,
 			engine_version = EXCLUDED.engine_version,
-			group_id = EXCLUDED.group_id,
 			tags = EXCLUDED.tags,
 			status = EXCLUDED.status,
 			last_heartbeat = EXCLUDED.last_heartbeat,
 			updated_at = NOW()`,
-		agent.ID, agent.Hostname, agent.OSVersion, agent.EngineVersion,
+		agent.ID, agent.OrgID, agent.Hostname, agent.OSVersion, agent.EngineVersion,
 		agent.GroupID, tags, string(agent.Status), agent.LastHeartbeat, agent.RegisteredAt,
 	)
 	return err
 }
 
-func (s *AgentStore) Get(ctx context.Context, id string) (*fleet.Agent, error) {
+func (s *AgentStore) Get(ctx context.Context, orgID, id string) (*fleet.Agent, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT a.id, a.hostname, a.os_version, a.engine_version, a.group_id,
+		`SELECT a.id, a.org_id, a.hostname, a.os_version, a.engine_version, a.group_id,
 				COALESCE(g.name, '') as group_name, a.tags, a.status,
 				a.last_heartbeat, a.registered_at, a.updated_at
 		 FROM agents a
 		 LEFT JOIN agent_groups g ON a.group_id = g.id
-		 WHERE a.id = $1`, id)
+		 WHERE a.id = $1 AND a.org_id = $2`, id, orgID)
 	return scanAgent(row)
 }
 
-func (s *AgentStore) GetByHostname(ctx context.Context, hostname string) (*fleet.Agent, error) {
+func (s *AgentStore) GetByHostname(ctx context.Context, orgID, hostname string) (*fleet.Agent, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT a.id, a.hostname, a.os_version, a.engine_version, a.group_id,
+		`SELECT a.id, a.org_id, a.hostname, a.os_version, a.engine_version, a.group_id,
 				COALESCE(g.name, '') as group_name, a.tags, a.status,
 				a.last_heartbeat, a.registered_at, a.updated_at
 		 FROM agents a
 		 LEFT JOIN agent_groups g ON a.group_id = g.id
-		 WHERE a.hostname = $1`, hostname)
+		 WHERE a.hostname = $1 AND a.org_id = $2`, hostname, orgID)
 	return scanAgent(row)
 }
 
-func (s *AgentStore) List(ctx context.Context, opts fleet.AgentListOptions) ([]*fleet.Agent, int, error) {
-	query := `SELECT a.id, a.hostname, a.os_version, a.engine_version, a.group_id,
+func (s *AgentStore) List(ctx context.Context, orgID string, opts fleet.AgentListOptions) ([]*fleet.Agent, int, error) {
+	query := `SELECT a.id, a.org_id, a.hostname, a.os_version, a.engine_version, a.group_id,
 				COALESCE(g.name, '') as group_name, a.tags, a.status,
 				a.last_heartbeat, a.registered_at, a.updated_at
 			  FROM agents a
 			  LEFT JOIN agent_groups g ON a.group_id = g.id
-			  WHERE 1=1`
-	countQuery := `SELECT COUNT(*) FROM agents a WHERE 1=1`
-	args := []interface{}{}
-	argIdx := 1
+			  WHERE a.org_id = $1`
+	countQuery := `SELECT COUNT(*) FROM agents a WHERE a.org_id = $1`
+	args := []interface{}{orgID}
+	argIdx := 2
 
 	if opts.Status != "" {
 		clause := fmt.Sprintf(" AND a.status = $%d", argIdx)
@@ -153,30 +152,30 @@ func (s *AgentStore) List(ctx context.Context, opts fleet.AgentListOptions) ([]*
 func (s *AgentStore) Update(ctx context.Context, agent *fleet.Agent) error {
 	tags, _ := json.Marshal(agent.Tags)
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE agents SET hostname=$2, os_version=$3, engine_version=$4,
-			group_id=$5, tags=$6, status=$7, updated_at=NOW()
-		 WHERE id=$1`,
-		agent.ID, agent.Hostname, agent.OSVersion, agent.EngineVersion,
+		`UPDATE agents SET hostname=$3, os_version=$4, engine_version=$5,
+			group_id=$6, tags=$7, status=$8, updated_at=NOW()
+		 WHERE id=$1 AND org_id=$2`,
+		agent.ID, agent.OrgID, agent.Hostname, agent.OSVersion, agent.EngineVersion,
 		agent.GroupID, tags, string(agent.Status),
 	)
 	return err
 }
 
-func (s *AgentStore) Delete(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM agents WHERE id=$1`, id)
+func (s *AgentStore) Delete(ctx context.Context, orgID, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM agents WHERE id=$1 AND org_id=$2`, id, orgID)
 	return err
 }
 
-func (s *AgentStore) UpdateHeartbeat(ctx context.Context, id string, hb *fleet.Heartbeat) error {
+func (s *AgentStore) UpdateHeartbeat(ctx context.Context, orgID, id string, hb *fleet.Heartbeat) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE agents SET last_heartbeat=$2, status='online', updated_at=NOW() WHERE id=$1`,
-		id, hb.Timestamp,
+		`UPDATE agents SET last_heartbeat=$3, status='online', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
+		id, orgID, hb.Timestamp,
 	)
 	return err
 }
 
-func (s *AgentStore) CountByStatus(ctx context.Context) (map[fleet.AgentStatus]int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM agents GROUP BY status`)
+func (s *AgentStore) CountByStatus(ctx context.Context, orgID string) (map[fleet.AgentStatus]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM agents WHERE org_id=$1 GROUP BY status`, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -207,19 +206,16 @@ func (s *AgentStore) MarkOfflineAgents(ctx context.Context, timeout time.Duratio
 	return int(n), nil
 }
 
-type scanner interface {
-	Scan(dest ...interface{}) error
-}
-
 func scanAgent(row *sql.Row) (*fleet.Agent, error) {
 	a := &fleet.Agent{}
 	var tagsJSON []byte
 	var status string
 	var lastHB sql.NullTime
+	var groupID sql.NullString
 
 	err := row.Scan(
-		&a.ID, &a.Hostname, &a.OSVersion, &a.EngineVersion,
-		&a.GroupID, &a.GroupName, &tagsJSON, &status,
+		&a.ID, &a.OrgID, &a.Hostname, &a.OSVersion, &a.EngineVersion,
+		&groupID, &a.GroupName, &tagsJSON, &status,
 		&lastHB, &a.RegisteredAt, &a.UpdatedAt,
 	)
 	if err != nil {
@@ -233,6 +229,9 @@ func scanAgent(row *sql.Row) (*fleet.Agent, error) {
 	if lastHB.Valid {
 		a.LastHeartbeat = lastHB.Time
 	}
+	if groupID.Valid {
+		a.GroupID = groupID.String
+	}
 	json.Unmarshal(tagsJSON, &a.Tags)
 	return a, nil
 }
@@ -242,10 +241,11 @@ func scanAgentRows(rows *sql.Rows) (*fleet.Agent, error) {
 	var tagsJSON []byte
 	var status string
 	var lastHB sql.NullTime
+	var groupID sql.NullString
 
 	err := rows.Scan(
-		&a.ID, &a.Hostname, &a.OSVersion, &a.EngineVersion,
-		&a.GroupID, &a.GroupName, &tagsJSON, &status,
+		&a.ID, &a.OrgID, &a.Hostname, &a.OSVersion, &a.EngineVersion,
+		&groupID, &a.GroupName, &tagsJSON, &status,
 		&lastHB, &a.RegisteredAt, &a.UpdatedAt,
 	)
 	if err != nil {
@@ -255,6 +255,9 @@ func scanAgentRows(rows *sql.Rows) (*fleet.Agent, error) {
 	a.Status = fleet.AgentStatus(status)
 	if lastHB.Valid {
 		a.LastHeartbeat = lastHB.Time
+	}
+	if groupID.Valid {
+		a.GroupID = groupID.String
 	}
 	json.Unmarshal(tagsJSON, &a.Tags)
 	return a, nil

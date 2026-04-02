@@ -23,31 +23,108 @@ import (
 	"time"
 )
 
+// ═══════════════════════════════════════════════════════════════
+// Multi-tenancy: Account > Organization hierarchy
+// ═══════════════════════════════════════════════════════════════
+
+// Account represents a top-level billing entity (company/customer).
+type Account struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Plan      string    `json:"plan"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Organization represents a logical unit within an account
+// (e.g., "Production", "Staging", "US-East"). Each org has
+// its own agents, rules, detections, and enrollment tokens.
+type Organization struct {
+	ID         string    `json:"id"`
+	AccountID  string    `json:"account_id"`
+	Name       string    `json:"name"`
+	Slug       string    `json:"slug"`
+	AgentCount int       `json:"agent_count,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// User represents a dashboard user with access to one or more organizations.
+type User struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	Password  string    `json:"-"` // never serialized
+	AccountID string    `json:"account_id"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// UserOrg maps a user's access and role within a specific organization.
+type UserOrg struct {
+	UserID string `json:"user_id"`
+	OrgID  string `json:"org_id"`
+	Role   string `json:"role"`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Enrollment and authentication
+// ═══════════════════════════════════════════════════════════════
+
+// EnrollmentToken is a one-time-use (or limited-use) token that
+// allows an agent to enroll with a specific organization. Admin
+// creates these in the dashboard and distributes to endpoint admins.
+type EnrollmentToken struct {
+	ID        string    `json:"id"`
+	AccountID string    `json:"account_id"`
+	OrgID     string    `json:"org_id"`
+	OrgName   string    `json:"org_name,omitempty"`
+	Name      string    `json:"name"`
+	MaxUses   int       `json:"max_uses"`
+	UsesCount int       `json:"uses_count"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedBy string    `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// IsValid checks whether the enrollment token can still be used.
+func (t EnrollmentToken) IsValid() bool {
+	if t.UsesCount >= t.MaxUses {
+		return false
+	}
+	if time.Now().After(t.ExpiresAt) {
+		return false
+	}
+	return true
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fleet entities (all org-scoped)
+// ═══════════════════════════════════════════════════════════════
+
 // AgentStatus represents the current status of an agent in the fleet.
 type AgentStatus string
 
 const (
-	// AgentOnline indicates the agent is actively sending heartbeats.
-	AgentOnline AgentStatus = "online"
-	// AgentOffline indicates the agent has missed heartbeat thresholds.
+	AgentOnline  AgentStatus = "online"
 	AgentOffline AgentStatus = "offline"
-	// AgentStale indicates the agent has been offline for an extended period.
-	AgentStale AgentStatus = "stale"
+	AgentStale   AgentStatus = "stale"
 )
 
 // Agent represents a Fibratus agent registered with the fleet server.
 type Agent struct {
-	ID             string            `json:"id"`
-	Hostname       string            `json:"hostname"`
-	OSVersion      string            `json:"os_version"`
-	EngineVersion  string            `json:"engine_version"`
-	GroupID        string            `json:"group_id,omitempty"`
-	GroupName      string            `json:"group_name,omitempty"`
-	Tags           map[string]string `json:"tags,omitempty"`
-	Status         AgentStatus       `json:"status"`
-	LastHeartbeat  time.Time         `json:"last_heartbeat"`
-	RegisteredAt   time.Time         `json:"registered_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	ID            string            `json:"id"`
+	OrgID         string            `json:"org_id"`
+	Hostname      string            `json:"hostname"`
+	OSVersion     string            `json:"os_version"`
+	EngineVersion string            `json:"engine_version"`
+	GroupID       string            `json:"group_id,omitempty"`
+	GroupName     string            `json:"group_name,omitempty"`
+	Tags          map[string]string `json:"tags,omitempty"`
+	Status        AgentStatus       `json:"status"`
+	LastHeartbeat time.Time         `json:"last_heartbeat"`
+	RegisteredAt  time.Time         `json:"registered_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
 // Heartbeat contains periodic status information sent by an agent.
@@ -63,6 +140,7 @@ type Heartbeat struct {
 // Detection represents a rule match reported by an agent.
 type Detection struct {
 	ID            string            `json:"id"`
+	OrgID         string            `json:"org_id"`
 	AgentID       string            `json:"agent_id"`
 	AgentHostname string            `json:"agent_hostname"`
 	RuleID        string            `json:"rule_id"`
@@ -80,6 +158,7 @@ type Detection struct {
 // Rule represents a detection rule managed by the fleet server.
 type Rule struct {
 	ID          string            `json:"id"`
+	OrgID       string            `json:"org_id,omitempty"`
 	Name        string            `json:"name"`
 	Version     string            `json:"version"`
 	Description string            `json:"description,omitempty"`
@@ -97,36 +176,41 @@ type Rule struct {
 
 // AgentGroup represents a logical grouping of agents for rule assignment.
 type AgentGroup struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	RuleIDs     []string `json:"rule_ids,omitempty"`
-	AgentCount  int      `json:"agent_count,omitempty"`
+	ID          string    `json:"id"`
+	OrgID       string    `json:"org_id,omitempty"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	RuleIDs     []string  `json:"rule_ids,omitempty"`
+	AgentCount  int       `json:"agent_count,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Dashboard aggregates
+// ═══════════════════════════════════════════════════════════════
+
 // FleetOverview contains aggregate fleet statistics for the dashboard.
 type FleetOverview struct {
-	TotalAgents       int            `json:"total_agents"`
-	OnlineAgents      int            `json:"online_agents"`
-	OfflineAgents     int            `json:"offline_agents"`
-	TotalDetections24h int           `json:"total_detections_24h"`
-	SeverityBreakdown map[string]int `json:"severity_breakdown"`
+	TotalAgents        int            `json:"total_agents"`
+	OnlineAgents       int            `json:"online_agents"`
+	OfflineAgents      int            `json:"offline_agents"`
+	TotalDetections24h int            `json:"total_detections_24h"`
+	SeverityBreakdown  map[string]int `json:"severity_breakdown"`
 }
 
 // TimelineBucket represents a single time bucket in a detection timeline.
 type TimelineBucket struct {
-	Timestamp  time.Time `json:"timestamp"`
-	Count      int       `json:"count"`
+	Timestamp  time.Time      `json:"timestamp"`
+	Count      int            `json:"count"`
 	BySeverity map[string]int `json:"by_severity,omitempty"`
 }
 
 // MitreCell represents detection counts for a specific MITRE ATT&CK technique.
 type MitreCell struct {
-	TacticID    string `json:"tactic_id"`
-	TacticName  string `json:"tactic_name"`
-	TechniqueID string `json:"technique_id"`
+	TacticID      string `json:"tactic_id"`
+	TacticName    string `json:"tactic_name"`
+	TechniqueID   string `json:"technique_id"`
 	TechniqueName string `json:"technique_name"`
-	Count       int    `json:"count"`
+	Count         int    `json:"count"`
 }

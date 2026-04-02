@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rabbitstack/fibratus/internal/fleetserver"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
@@ -41,17 +42,25 @@ func NewDetectionHandler(detections store.DetectionStore, agents store.AgentStor
 	return &DetectionHandler{detections: detections, agents: agents}
 }
 
-// Ingest handles POST /api/v1/detections
+// Ingest handles POST /api/v1/detections (agent route, API key auth)
 func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 	agentID := r.Header.Get("X-Agent-ID")
+	orgID := r.Header.Get("X-Org-ID")
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20)) // 10MB max
+	// Fall back to context for mTLS-authenticated agents
+	if agentID == "" {
+		agentID = fleetserver.AgentIDFromContext(r.Context())
+	}
+	if orgID == "" {
+		orgID = fleetserver.OrgIDFromContext(r.Context())
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to read body")
 		return
 	}
 
-	// Parse the alert JSON from the agent
 	var alertData struct {
 		ID          string            `json:"id"`
 		Title       string            `json:"title"`
@@ -69,15 +78,19 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve agent hostname
 	hostname := ""
-	if agentID != "" {
-		agent, _ := h.agents.Get(r.Context(), agentID)
+	if agentID != "" && orgID != "" {
+		agent, _ := h.agents.Get(r.Context(), orgID, agentID)
 		if agent != nil {
 			hostname = agent.Hostname
+			if orgID == "" {
+				orgID = agent.OrgID
+			}
 		}
 	}
 
 	det := &fleet.Detection{
 		ID:            generateID(),
+		OrgID:         orgID,
 		AgentID:       agentID,
 		AgentHostname: hostname,
 		RuleID:        alertData.ID,
@@ -99,6 +112,7 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 
 	log.WithFields(log.Fields{
 		"agent":    agentID,
+		"org":      orgID,
 		"rule":     alertData.Title,
 		"severity": alertData.Severity,
 	}).Info("fleet: detection ingested")
@@ -106,8 +120,14 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: map[string]string{"id": det.ID}})
 }
 
-// List handles GET /api/v1/detections
+// List handles GET /api/v1/orgs/{org_id}/detections
 func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
 	opts := fleet.DetectionListOptions{
 		ListOptions: fleet.ListOptions{
 			Page:    intParam(r, "page", 1),
@@ -120,7 +140,7 @@ func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
 		To:       r.URL.Query().Get("to"),
 	}
 
-	detections, total, err := h.detections.List(r.Context(), opts)
+	detections, total, err := h.detections.List(r.Context(), orgID, opts)
 	if err != nil {
 		log.Errorf("fleet: list detections error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -129,23 +149,26 @@ func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: detections,
-		Meta: &fleet.Pagination{
-			Total:   total,
-			Page:    opts.Page,
-			PerPage: opts.PerPage,
-		},
+		Meta: &fleet.Pagination{Total: total, Page: opts.Page, PerPage: opts.PerPage},
 	})
 }
 
-// Get handles GET /api/v1/detections/{id}
+// Get handles GET /api/v1/orgs/{org_id}/detections/{id}
 func (h *DetectionHandler) Get(w http.ResponseWriter, r *http.Request) {
-	detID := strings.TrimPrefix(r.URL.Path, "/api/v1/detections/")
-	if detID == "" {
-		writeError(w, http.StatusBadRequest, "detection ID required")
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
 		return
 	}
 
-	det, err := h.detections.Get(r.Context(), detID)
+	parts := strings.Split(r.URL.Path, "/detections/")
+	if len(parts) < 2 || parts[1] == "" {
+		writeError(w, http.StatusBadRequest, "detection ID required")
+		return
+	}
+	detID := strings.TrimSuffix(parts[1], "/")
+
+	det, err := h.detections.Get(r.Context(), orgID, detID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -158,8 +181,14 @@ func (h *DetectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: det})
 }
 
-// Timeline handles GET /api/v1/detections/timeline
+// Timeline handles GET /api/v1/orgs/{org_id}/detections/timeline
 func (h *DetectionHandler) Timeline(w http.ResponseWriter, r *http.Request) {
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
 	from := parseTime(r.URL.Query().Get("from"), time.Now().UTC().Add(-24*time.Hour))
 	to := parseTime(r.URL.Query().Get("to"), time.Now().UTC())
 	interval := r.URL.Query().Get("interval")
@@ -167,7 +196,7 @@ func (h *DetectionHandler) Timeline(w http.ResponseWriter, r *http.Request) {
 		interval = "hour"
 	}
 
-	buckets, err := h.detections.Timeline(r.Context(), from, to, interval)
+	buckets, err := h.detections.Timeline(r.Context(), orgID, from, to, interval)
 	if err != nil {
 		log.Errorf("fleet: timeline error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -177,12 +206,18 @@ func (h *DetectionHandler) Timeline(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: buckets})
 }
 
-// MitreHeatmap handles GET /api/v1/detections/mitre
+// MitreHeatmap handles GET /api/v1/orgs/{org_id}/detections/mitre
 func (h *DetectionHandler) MitreHeatmap(w http.ResponseWriter, r *http.Request) {
+	orgID := fleetserver.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
 	from := parseTime(r.URL.Query().Get("from"), time.Now().UTC().Add(-30*24*time.Hour))
 	to := parseTime(r.URL.Query().Get("to"), time.Now().UTC())
 
-	cells, err := h.detections.MitreHeatmap(r.Context(), from, to)
+	cells, err := h.detections.MitreHeatmap(r.Context(), orgID, from, to)
 	if err != nil {
 		log.Errorf("fleet: mitre heatmap error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

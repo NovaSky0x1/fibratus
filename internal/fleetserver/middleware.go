@@ -20,12 +20,36 @@ package fleetserver
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 )
 
+// jwtAuth validates a JWT Bearer token and injects user context.
+func jwtAuth(secret string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			http.Error(w, `{"error":{"code":401,"message":"missing or invalid authorization header"}}`, http.StatusUnauthorized)
+			return
+		}
+		tokenStr := strings.TrimPrefix(auth, "Bearer ")
+
+		claims, err := ValidateJWT(secret, tokenStr)
+		if err != nil {
+			http.Error(w, `{"error":{"code":401,"message":"invalid or expired token"}}`, http.StatusUnauthorized)
+			return
+		}
+
+		ctx := WithUserContext(r.Context(), claims.Sub, claims.AccountID, claims.Role)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // apiKeyAuth validates the X-API-Key header against configured keys.
+// Used for backward-compatible agent authentication (Phase 1 agents
+// that haven't enrolled via mTLS yet).
 func apiKeyAuth(validKeys map[string]bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("X-API-Key")
@@ -37,12 +61,26 @@ func apiKeyAuth(validKeys map[string]bool, next http.Handler) http.Handler {
 	})
 }
 
+// agentIdentity extracts agent identity from the X-Agent-ID header
+// for legacy API-key authenticated agents. In future, mTLS cert
+// will provide this identity automatically.
+func agentIdentity(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agentID := r.Header.Get("X-Agent-ID")
+		if agentID != "" {
+			ctx := WithAgentContext(r.Context(), agentID, "", "")
+			r = r.WithContext(ctx)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // cors adds CORS headers for dashboard development.
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Agent-ID, If-None-Match")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Agent-ID, If-None-Match")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)

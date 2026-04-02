@@ -75,10 +75,12 @@ type ElasticsearchConfig struct {
 
 // AuthConfig configures authentication.
 type AuthConfig struct {
-	APIKeys []APIKeyConfig `yaml:"api-keys"`
+	APIKeys   []APIKeyConfig `yaml:"api-keys"`
+	JWTSecret string         `yaml:"jwt-secret"`
 }
 
 // APIKeyConfig represents a named API key.
+// Kept for backward compatibility with Phase 1 agents.
 type APIKeyConfig struct {
 	Name string `yaml:"name"`
 	Key  string `yaml:"key"`

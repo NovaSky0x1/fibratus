@@ -41,26 +41,26 @@ func NewDetectionStore(db *sql.DB) *DetectionStore {
 func (s *DetectionStore) Create(ctx context.Context, det *fleet.Detection) error {
 	labels, _ := json.Marshal(det.Labels)
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO detections (id, agent_id, agent_hostname, rule_id, rule_name,
+		`INSERT INTO detections (id, org_id, agent_id, agent_hostname, rule_id, rule_name,
 			title, text, description, severity, labels, tags, events, timestamp)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		det.ID, det.AgentID, det.AgentHostname, det.RuleID, det.RuleName,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		det.ID, det.OrgID, det.AgentID, det.AgentHostname, det.RuleID, det.RuleName,
 		det.Title, det.Text, det.Description, det.Severity, labels,
 		det.Tags, det.Events, det.Timestamp,
 	)
 	return err
 }
 
-func (s *DetectionStore) Get(ctx context.Context, id string) (*fleet.Detection, error) {
+func (s *DetectionStore) Get(ctx context.Context, orgID, id string) (*fleet.Detection, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, agent_id, agent_hostname, rule_id, rule_name,
+		`SELECT id, org_id, agent_id, agent_hostname, rule_id, rule_name,
 			title, text, description, severity, labels, tags, events, timestamp
-		 FROM detections WHERE id = $1`, id)
+		 FROM detections WHERE id = $1 AND org_id = $2`, id, orgID)
 
 	det := &fleet.Detection{}
 	var labelsJSON []byte
 	err := row.Scan(
-		&det.ID, &det.AgentID, &det.AgentHostname, &det.RuleID, &det.RuleName,
+		&det.ID, &det.OrgID, &det.AgentID, &det.AgentHostname, &det.RuleID, &det.RuleName,
 		&det.Title, &det.Text, &det.Description, &det.Severity, &labelsJSON,
 		&det.Tags, &det.Events, &det.Timestamp,
 	)
@@ -74,13 +74,13 @@ func (s *DetectionStore) Get(ctx context.Context, id string) (*fleet.Detection, 
 	return det, nil
 }
 
-func (s *DetectionStore) List(ctx context.Context, opts fleet.DetectionListOptions) ([]*fleet.Detection, int, error) {
-	query := `SELECT id, agent_id, agent_hostname, rule_id, rule_name,
+func (s *DetectionStore) List(ctx context.Context, orgID string, opts fleet.DetectionListOptions) ([]*fleet.Detection, int, error) {
+	query := `SELECT id, org_id, agent_id, agent_hostname, rule_id, rule_name,
 				title, text, description, severity, labels, tags, events, timestamp
-			  FROM detections WHERE 1=1`
-	countQuery := `SELECT COUNT(*) FROM detections WHERE 1=1`
-	args := []interface{}{}
-	argIdx := 1
+			  FROM detections WHERE org_id = $1`
+	countQuery := `SELECT COUNT(*) FROM detections WHERE org_id = $1`
+	args := []interface{}{orgID}
+	argIdx := 2
 
 	if opts.AgentID != "" {
 		clause := fmt.Sprintf(" AND agent_id = $%d", argIdx)
@@ -148,7 +148,7 @@ func (s *DetectionStore) List(ctx context.Context, opts fleet.DetectionListOptio
 		det := &fleet.Detection{}
 		var labelsJSON []byte
 		err := rows.Scan(
-			&det.ID, &det.AgentID, &det.AgentHostname, &det.RuleID, &det.RuleName,
+			&det.ID, &det.OrgID, &det.AgentID, &det.AgentHostname, &det.RuleID, &det.RuleName,
 			&det.Title, &det.Text, &det.Description, &det.Severity, &labelsJSON,
 			&det.Tags, &det.Events, &det.Timestamp,
 		)
@@ -162,20 +162,20 @@ func (s *DetectionStore) List(ctx context.Context, opts fleet.DetectionListOptio
 	return detections, total, rows.Err()
 }
 
-func (s *DetectionStore) Count24h(ctx context.Context) (int, error) {
+func (s *DetectionStore) Count24h(ctx context.Context, orgID string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM detections WHERE timestamp > $1`,
-		time.Now().UTC().Add(-24*time.Hour),
+		`SELECT COUNT(*) FROM detections WHERE org_id = $1 AND timestamp > $2`,
+		orgID, time.Now().UTC().Add(-24*time.Hour),
 	).Scan(&count)
 	return count, err
 }
 
-func (s *DetectionStore) CountBySeverity(ctx context.Context) (map[string]int, error) {
+func (s *DetectionStore) CountBySeverity(ctx context.Context, orgID string) (map[string]int, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT severity, COUNT(*) FROM detections
-		 WHERE timestamp > $1 GROUP BY severity`,
-		time.Now().UTC().Add(-24*time.Hour),
+		 WHERE org_id = $1 AND timestamp > $2 GROUP BY severity`,
+		orgID, time.Now().UTC().Add(-24*time.Hour),
 	)
 	if err != nil {
 		return nil, err
@@ -194,8 +194,7 @@ func (s *DetectionStore) CountBySeverity(ctx context.Context) (map[string]int, e
 	return counts, rows.Err()
 }
 
-func (s *DetectionStore) Timeline(ctx context.Context, from, to time.Time, interval string) ([]fleet.TimelineBucket, error) {
-	// Use date_trunc for bucketing
+func (s *DetectionStore) Timeline(ctx context.Context, orgID string, from, to time.Time, interval string) ([]fleet.TimelineBucket, error) {
 	bucket := "hour"
 	switch interval {
 	case "day":
@@ -207,10 +206,10 @@ func (s *DetectionStore) Timeline(ctx context.Context, from, to time.Time, inter
 	rows, err := s.db.QueryContext(ctx,
 		fmt.Sprintf(`SELECT date_trunc('%s', timestamp) as bucket, severity, COUNT(*)
 		 FROM detections
-		 WHERE timestamp BETWEEN $1 AND $2
+		 WHERE org_id = $1 AND timestamp BETWEEN $2 AND $3
 		 GROUP BY bucket, severity
 		 ORDER BY bucket`, bucket),
-		from, to,
+		orgID, from, to,
 	)
 	if err != nil {
 		return nil, err
@@ -244,7 +243,7 @@ func (s *DetectionStore) Timeline(ctx context.Context, from, to time.Time, inter
 	return result, rows.Err()
 }
 
-func (s *DetectionStore) MitreHeatmap(ctx context.Context, from, to time.Time) ([]fleet.MitreCell, error) {
+func (s *DetectionStore) MitreHeatmap(ctx context.Context, orgID string, from, to time.Time) ([]fleet.MitreCell, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT
 			labels->>'tactic.id' as tactic_id,
@@ -253,12 +252,12 @@ func (s *DetectionStore) MitreHeatmap(ctx context.Context, from, to time.Time) (
 			labels->>'technique.name' as technique_name,
 			COUNT(*) as count
 		 FROM detections
-		 WHERE timestamp BETWEEN $1 AND $2
+		 WHERE org_id = $1 AND timestamp BETWEEN $2 AND $3
 			AND labels->>'tactic.id' IS NOT NULL
 			AND labels->>'technique.id' IS NOT NULL
 		 GROUP BY tactic_id, tactic_name, technique_id, technique_name
 		 ORDER BY count DESC`,
-		from, to,
+		orgID, from, to,
 	)
 	if err != nil {
 		return nil, err

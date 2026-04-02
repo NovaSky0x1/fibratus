@@ -32,26 +32,19 @@ import (
 
 // Server is the fleet management HTTP server.
 type Server struct {
-	config      *Config
-	httpServer  *http.Server
-	pgStore     *postgres.Store
-	agentStore  *postgres.AgentStore
-	detStore    *postgres.DetectionStore
-	apiKeys     map[string]bool
+	config     *Config
+	httpServer *http.Server
+	pgStore    *postgres.Store
+	apiKeys    map[string]bool
 }
 
 // New creates a new fleet server instance.
 func New(cfg *Config) (*Server, error) {
-	// Connect to PostgreSQL
 	pgStore, err := postgres.New(cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf("fleet server: %w", err)
 	}
 
-	agentStore := postgres.NewAgentStore(pgStore.DB())
-	detStore := postgres.NewDetectionStore(pgStore.DB())
-
-	// Build API key lookup map
 	apiKeys := make(map[string]bool)
 	for _, k := range cfg.Auth.APIKeys {
 		if k.Key != "" {
@@ -59,112 +52,182 @@ func New(cfg *Config) (*Server, error) {
 		}
 	}
 
+	// Generate JWT secret if not set
+	if cfg.Auth.JWTSecret == "" {
+		cfg.Auth.JWTSecret = "fibratus-fleet-dev-secret-change-me"
+		log.Warn("JWT secret not configured — using insecure default. Set auth.jwt-secret in config.")
+	}
+
 	return &Server{
-		config:     cfg,
-		pgStore:    pgStore,
-		agentStore: agentStore,
-		detStore:   detStore,
-		apiKeys:    apiKeys,
+		config:  cfg,
+		pgStore: pgStore,
+		apiKeys: apiKeys,
 	}, nil
 }
 
 // Run starts the fleet server and blocks until the context is cancelled.
 func (s *Server) Run(ctx context.Context) error {
-	// Run migrations
 	log.Info("running database migrations...")
 	if err := postgres.Migrate(s.config.Database); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
-	// Create handlers
-	agentHandler := handler.NewAgentHandler(s.agentStore)
-	detHandler := handler.NewDetectionHandler(s.detStore, s.agentStore)
-	dashHandler := handler.NewDashboardHandler(s.agentStore, s.detStore)
+	db := s.pgStore.DB()
 
-	// Setup routes
+	// Create stores
+	accountStore := postgres.NewAccountStore(db)
+	orgStore := postgres.NewOrgStore(db)
+	userStore := postgres.NewUserStore(db)
+	agentStore := postgres.NewAgentStore(db)
+	detStore := postgres.NewDetectionStore(db)
+	enrollStore := postgres.NewEnrollmentTokenStore(db)
+
+	// Create handlers
+	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
+	agentHandler := handler.NewAgentHandler(agentStore)
+	detHandler := handler.NewDetectionHandler(detStore, agentStore)
+	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
+	_ = enrollStore // Used in Phase B (enrollment endpoint)
+
+	// ═══════════════════════════════════════════════════════════
+	// Route setup
+	// ═══════════════════════════════════════════════════════════
+
 	mux := http.NewServeMux()
 
-	// Agent API endpoints
-	mux.HandleFunc("/api/v1/agents/register", methodGuard(http.MethodPost, agentHandler.Register))
-	mux.HandleFunc("/api/v1/agents/", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
+	// ── Public routes (no auth) ──────────────────────────────
 
-		// POST /api/v1/agents/{id}/heartbeat
-		if r.Method == http.MethodPost && strings.HasSuffix(path, "/heartbeat") {
-			agentHandler.Heartbeat(w, r)
-			return
-		}
-
-		// GET /api/v1/agents (list)
-		if path == "/api/v1/agents/" || path == "/api/v1/agents" {
-			if r.Method == http.MethodGet {
-				agentHandler.List(w, r)
-				return
-			}
-		}
-
-		// GET/DELETE /api/v1/agents/{id}
-		switch r.Method {
-		case http.MethodGet:
-			agentHandler.Get(w, r)
-		case http.MethodDelete:
-			agentHandler.Delete(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	// Detection API endpoints
-	mux.HandleFunc("/api/v1/detections/timeline", methodGuard(http.MethodGet, detHandler.Timeline))
-	mux.HandleFunc("/api/v1/detections/mitre", methodGuard(http.MethodGet, detHandler.MitreHeatmap))
-	mux.HandleFunc("/api/v1/detections/", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if path == "/api/v1/detections/" || path == "/api/v1/detections" {
-			switch r.Method {
-			case http.MethodGet:
-				detHandler.List(w, r)
-			case http.MethodPost:
-				detHandler.Ingest(w, r)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			}
-			return
-		}
-		// GET /api/v1/detections/{id}
-		if r.Method == http.MethodGet {
-			detHandler.Get(w, r)
-			return
-		}
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	})
-	mux.HandleFunc("/api/v1/detections", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			detHandler.List(w, r)
-		case http.MethodPost:
-			detHandler.Ingest(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	// Dashboard API endpoints
-	mux.HandleFunc("/api/v1/dashboard/overview", methodGuard(http.MethodGet, dashHandler.Overview))
-
-	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Serve embedded dashboard for all non-API routes
+	// Auth routes (signup/login — no auth required)
+	mux.HandleFunc("/api/v1/auth/signup", methodGuard(http.MethodPost, authHandler.Signup))
+	mux.HandleFunc("/api/v1/auth/login", methodGuard(http.MethodPost, authHandler.Login))
+
+	// ── Agent routes (API key auth for Phase 1 compat) ───────
+
+	agentMux := http.NewServeMux()
+	agentMux.HandleFunc("/api/v1/agents/register", methodGuard(http.MethodPost, agentHandler.Register))
+	agentMux.HandleFunc("/api/v1/agents/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if r.Method == http.MethodPost && strings.HasSuffix(path, "/heartbeat") {
+			agentHandler.Heartbeat(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	agentMux.HandleFunc("/api/v1/detections", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			detHandler.Ingest(w, r)
+			return
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	// Wrap agent routes with API key auth + agent identity
+	agentAuthenticated := apiKeyAuth(s.apiKeys, agentIdentity(agentMux))
+
+	// ── Dashboard routes (JWT auth, org-scoped) ──────────────
+
+	dashMux := http.NewServeMux()
+
+	// Org-scoped: /api/v1/orgs/{org_id}/...
+	dashMux.HandleFunc("/api/v1/orgs/", func(w http.ResponseWriter, r *http.Request) {
+		// Extract org_id from path: /api/v1/orgs/{org_id}/resource
+		orgID, subpath := extractOrgPath(r.URL.Path)
+		if orgID == "" {
+			writeJSONError(w, http.StatusBadRequest, "org_id required in path")
+			return
+		}
+
+		// Inject org_id into context
+		ctx := context.WithValue(r.Context(), ctxKeyOrgID, orgID)
+		r = r.WithContext(ctx)
+
+		// Route to sub-handlers
+		switch {
+		// Dashboard overview
+		case subpath == "/dashboard/overview" && r.Method == http.MethodGet:
+			dashHandler.Overview(w, r)
+
+		// Agents
+		case subpath == "/agents" && r.Method == http.MethodGet:
+			agentHandler.List(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodGet:
+			agentHandler.Get(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodDelete:
+			agentHandler.Delete(w, r)
+
+		// Detections
+		case subpath == "/detections" && r.Method == http.MethodGet:
+			detHandler.List(w, r)
+		case subpath == "/detections/timeline" && r.Method == http.MethodGet:
+			detHandler.Timeline(w, r)
+		case subpath == "/detections/mitre" && r.Method == http.MethodGet:
+			detHandler.MitreHeatmap(w, r)
+		case strings.HasPrefix(subpath, "/detections/") && r.Method == http.MethodGet:
+			detHandler.Get(w, r)
+
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	// Account-level routes
+	dashMux.HandleFunc("/api/v1/account/organizations", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			authHandler.ListOrganizations(w, r)
+		case http.MethodPost:
+			authHandler.CreateOrganization(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Wrap dashboard routes with JWT auth
+	dashAuthenticated := jwtAuth(s.config.Auth.JWTSecret, dashMux)
+
+	// ── Combine all route groups ─────────────────────────────
+
+	rootMux := http.NewServeMux()
+
+	// Public
+	rootMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+	rootMux.HandleFunc("/api/v1/auth/", mux.ServeHTTP)
+
+	// Route dispatcher — determines auth path based on URL prefix
+	rootMux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Public auth routes
+		if strings.HasPrefix(path, "/api/v1/auth/") {
+			mux.ServeHTTP(w, r)
+			return
+		}
+
+		// Agent routes (API key auth)
+		if strings.HasPrefix(path, "/api/v1/agents/") || (path == "/api/v1/detections" && r.Method == http.MethodPost) {
+			agentAuthenticated.ServeHTTP(w, r)
+			return
+		}
+
+		// Dashboard routes (JWT auth)
+		dashAuthenticated.ServeHTTP(w, r)
+	})
+
+	// Dashboard SPA
 	if s.config.Dashboard.Enabled {
-		mux.Handle("/", dashboardHandler())
+		rootMux.Handle("/", dashboardHandler())
 	}
 
-	// Apply middleware chain: logging -> CORS -> auth
-	var h http.Handler = mux
-	h = apiKeyAuth(s.apiKeys, h)
+	// Apply global middleware
+	var h http.Handler = rootMux
 	h = cors(h)
 	h = requestLogger(h)
 
@@ -177,7 +240,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	// Start agent status reaper
-	go s.agentReaper(ctx)
+	go s.agentReaper(ctx, agentStore)
 
 	// Start HTTP server
 	errCh := make(chan error, 1)
@@ -209,14 +272,14 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 // agentReaper periodically marks agents as offline if they miss heartbeats.
-func (s *Server) agentReaper(ctx context.Context) {
+func (s *Server) agentReaper(ctx context.Context, agents *postgres.AgentStore) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			n, err := s.agentStore.MarkOfflineAgents(ctx, s.config.Agent.HeartbeatTimeout)
+			n, err := agents.MarkOfflineAgents(ctx, s.config.Agent.HeartbeatTimeout)
 			if err != nil {
 				log.Warnf("fleet: reaper error: %v", err)
 				continue
@@ -230,6 +293,20 @@ func (s *Server) agentReaper(ctx context.Context) {
 	}
 }
 
+// extractOrgPath splits /api/v1/orgs/{org_id}/... into org_id and the rest.
+func extractOrgPath(path string) (orgID, subpath string) {
+	const prefix = "/api/v1/orgs/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", ""
+	}
+	rest := path[len(prefix):]
+	idx := strings.Index(rest, "/")
+	if idx < 0 {
+		return rest, ""
+	}
+	return rest[:idx], rest[idx:]
+}
+
 // methodGuard restricts a handler to a specific HTTP method.
 func methodGuard(method string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -239,4 +316,10 @@ func methodGuard(method string, h http.HandlerFunc) http.HandlerFunc {
 		}
 		h(w, r)
 	}
+}
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	fmt.Fprintf(w, `{"error":{"code":%d,"message":"%s"}}`, status, msg)
 }
