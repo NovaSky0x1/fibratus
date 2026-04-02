@@ -319,32 +319,35 @@ else
     STATUS="${RED}NOT RUNNING${NC} (check: journalctl -u fibratus-fleet)"
 fi
 
-SERVER_IP=$(hostname -I | awk '{print $1}')
+PRIVATE_IP=$(hostname -I | awk '{print $1}')
+PUBLIC_IP=$(curl -sf --max-time 3 ifconfig.me 2>/dev/null || echo "")
+if [[ -n "${PUBLIC_IP}" ]]; then
+    SERVER_IP="${PUBLIC_IP}"
+else
+    SERVER_IP="${PRIVATE_IP}"
+fi
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}║              Fibratus Fleet Server — Installed!              ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  ${BOLD}Status:${NC}      ${STATUS}"
-echo -e "  ${BOLD}Dashboard:${NC}   https://${SERVER_IP}:${LISTEN_PORT}"
-echo -e "  ${BOLD}API:${NC}         https://${SERVER_IP}:${LISTEN_PORT}/api/v1/"
-echo -e "  ${BOLD}Health:${NC}      https://${SERVER_IP}:${LISTEN_PORT}/health"
+echo -e "  ${BOLD}Status:${NC}       ${STATUS}"
+echo -e "  ${BOLD}Dashboard:${NC}    https://${SERVER_IP}:${LISTEN_PORT}"
+echo -e "  ${BOLD}Private IP:${NC}   ${PRIVATE_IP}"
+if [[ -n "${PUBLIC_IP}" ]]; then
+echo -e "  ${BOLD}Public IP:${NC}    ${PUBLIC_IP}"
+fi
 echo ""
-echo ""
-echo -e "  ${BOLD}Dashboard:${NC}"
-echo -e "    URL:      https://${SERVER_IP}:${LISTEN_PORT}"
-echo -e "    Email:    admin@fibratus.local"
-echo -e "    Password: ${YELLOW}${ADMIN_PASS}${NC}"
+echo -e "  ${BOLD}Dashboard login:${NC}"
+echo -e "    Email:      admin@fibratus.local"
+echo -e "    Password:   ${YELLOW}${ADMIN_PASS}${NC}"
 echo ""
 echo -e "  ─────────────────────────────────────────────────────────────"
 echo ""
 echo -e "  ${BOLD}${GREEN}Enroll agents — run this on each Windows endpoint:${NC}"
 echo ""
-echo -e "    ${YELLOW}fibratus enroll \\${NC}"
-echo -e "    ${YELLOW}  --token ${ENROLL_TOKEN} \\${NC}"
-echo -e "    ${YELLOW}  --server https://${SERVER_IP}:${LISTEN_PORT} \\${NC}"
-echo -e "    ${YELLOW}  --insecure${NC}"
+echo -e "    ${YELLOW}fibratus enroll --token ${ENROLL_TOKEN} --server https://${SERVER_IP}:${LISTEN_PORT} --insecure${NC}"
 echo ""
 echo -e "  Then start the agent:"
 echo -e "    ${YELLOW}fibratus service start${NC}"
@@ -356,10 +359,8 @@ echo -e "  ${BOLD}Org ID:${NC}            ${ORG_ID}"
 echo -e "  ${BOLD}Config:${NC}            ${CONFIG_DIR}/fleet-server.yml"
 echo -e "  ${BOLD}Logs:${NC}              journalctl -u fibratus-fleet -f"
 echo ""
-echo -e "  The enrollment token is valid for 1 year / 1000 agents."
-echo -e "  Create more tokens in the dashboard under Settings."
+echo -e "  Token valid for 1 year / 1000 agents. Create more in dashboard Settings."
 echo ""
-echo -e "  ${BOLD}Note:${NC} --insecure is needed because the server uses a self-signed"
-echo -e "  TLS certificate. For production, replace with a CA-signed cert"
-echo -e "  and remove the flag."
+echo -e "  ${BOLD}Note:${NC} --insecure is needed for the self-signed TLS cert."
+echo -e "  For production, use a CA-signed cert and remove the flag."
 echo ""
