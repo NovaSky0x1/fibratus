@@ -141,8 +141,14 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 	if f.apiKey != "" {
 		req.Header.Set("X-API-Key", f.apiKey)
 	}
-	if f.agentID != "" {
-		req.Header.Set("X-Agent-ID", f.agentID)
+	// Load agent ID fresh — it may not exist at output init time since
+	// the fleet client registers after the output is created.
+	agentID := f.agentID
+	if agentID == "" {
+		agentID = loadEnrollmentFile("agent-id")
+	}
+	if agentID != "" {
+		req.Header.Set("X-Agent-ID", agentID)
 	}
 	if f.orgID != "" {
 		req.Header.Set("X-Org-ID", f.orgID)
