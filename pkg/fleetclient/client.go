@@ -163,18 +163,20 @@ func (c *Client) Register() error {
 		return c.readError(resp)
 	}
 
-	var result fleet.RegisterResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var apiResp struct {
+		Data fleet.RegisterResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return fmt.Errorf("fleet register: decode response: %w", err)
 	}
 
 	c.mu.Lock()
-	c.agentID = result.AgentID
+	c.agentID = apiResp.Data.AgentID
 	c.mu.Unlock()
 
-	c.persistAgentID(result.AgentID)
+	c.persistAgentID(apiResp.Data.AgentID)
 
-	log.Infof("fleet: registered with server as agent %s", result.AgentID)
+	log.Infof("fleet: registered with server as agent %s", apiResp.Data.AgentID)
 	return nil
 }
 
