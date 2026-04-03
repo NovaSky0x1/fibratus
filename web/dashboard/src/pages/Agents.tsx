@@ -29,7 +29,7 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState('')
 
-  const { data: res, isLoading, refetch } = useQuery({
+  const { data: res, refetch } = useQuery({
     queryKey: ['agent-events', agentId, limit],
     queryFn: () => api.getAgentEvents(agentId, limit),
     refetchInterval: live ? 5000 : false,
