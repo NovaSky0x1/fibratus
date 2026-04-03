@@ -351,12 +351,18 @@ func (f *App) Run(args []string) error {
 			}
 			if !hasFleetSender {
 				log.Info("fleet: auto-enabling fleet server alert sender")
+				timeout := cfg.Fleet.Timeout
+				if timeout == 0 {
+					timeout = 10 * time.Second
+				}
 				cfg.Alertsenders = append(cfg.Alertsenders, alertsender.Config{
 					Type: alertsender.FleetServer,
 					Sender: fleetclient.Config{
-						Enabled:   true,
-						ServerURL: cfg.Fleet.ServerURL,
-						OrgID:     cfg.Fleet.OrgID,
+						Enabled:    true,
+						ServerURL:  cfg.Fleet.ServerURL,
+						OrgID:      cfg.Fleet.OrgID,
+						Timeout:    timeout,
+						EnableGzip: cfg.Fleet.EnableGzip,
 					},
 				})
 			}

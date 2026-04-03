@@ -41,6 +41,7 @@ func Alert(ctx *config.ActionContext, title string, text string, severity string
 		return fmt.Errorf("no alertsenders registered. Alert won't be sent")
 	}
 
+	var lastErr error
 	for _, sender := range senders {
 		alert := alertsender.NewAlert(
 			title,
@@ -59,11 +60,11 @@ func Alert(ctx *config.ActionContext, title string, text string, severity string
 			alert.Text = markdown.Strip(alert.Text)
 		}
 
-		err := sender.Send(alert)
-		if err != nil {
-			return fmt.Errorf("unable to emit alert from rule via [%s] sender: %v", sender.Type(), err)
+		if err := sender.Send(alert); err != nil {
+			log.Warnf("alert sender [%s] failed: %v", sender.Type(), err)
+			lastErr = fmt.Errorf("unable to emit alert from rule via [%s] sender: %v", sender.Type(), err)
 		}
 	}
 
-	return nil
+	return lastErr
 }
