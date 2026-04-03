@@ -32,8 +32,9 @@ import (
 	"sync"
 	"time"
 
+	cryptotls "crypto/tls"
+
 	"github.com/rabbitstack/fibratus/pkg/fleet"
-	"github.com/rabbitstack/fibratus/pkg/util/tls"
 	"github.com/rabbitstack/fibratus/pkg/util/version"
 	log "github.com/sirupsen/logrus"
 )
@@ -68,27 +69,31 @@ func New(config Config, dataDir string) (*Client, error) {
 	keyFile := filepath.Join(dataDir, "certs", "agent.key")
 	caFile := filepath.Join(dataDir, "certs", "ca.crt")
 
-	var tlsCert, tlsKey, tlsCA string
+	// Build TLS: use system CA pool for server trust (Let's Encrypt).
+	// Optionally load enrollment client cert for mTLS.
+	// DO NOT replace RootCAs — nil means system CA pool.
+	var tlsCfg *cryptotls.Config
+
 	if fileExists(certFile) && fileExists(keyFile) {
-		tlsCert = certFile
-		tlsKey = keyFile
-		// NOTE: Don't use the enrollment CA (ca.crt) as the server CA.
-		// The enrollment CA is for mTLS client cert verification on the server side.
-		// The server's TLS cert is from Let's Encrypt (trusted by system CA pool).
-		// Only use a custom CA if explicitly set in config.
-		log.Info("fleet: using enrollment certificates for mTLS")
-	}
-	if config.TLSCA != "" {
-		tlsCA = config.TLSCA
-	}
-
-	tlsConfig, err := tls.MakeConfig(tlsCert, tlsKey, tlsCA, config.TLSInsecureSkipVerify)
-	if err != nil {
-		return nil, fmt.Errorf("fleet client: invalid TLS config: %v", err)
+		cert, err := cryptotls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			log.Warnf("fleet: failed to load enrollment certs: %v", err)
+		} else {
+			tlsCfg = &cryptotls.Config{
+				Certificates:       []cryptotls.Certificate{cert},
+				InsecureSkipVerify: config.TLSInsecureSkipVerify,
+			}
+			log.Info("fleet: using enrollment certificates for mTLS")
+		}
 	}
 
+	if tlsCfg == nil && config.TLSInsecureSkipVerify {
+		tlsCfg = &cryptotls.Config{InsecureSkipVerify: true}
+	}
+
+	// tlsCfg with nil RootCAs = Go uses system CA pool (trusts Let's Encrypt)
 	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
+		TLSClientConfig: tlsCfg,
 	}
 	httpClient := &http.Client{
 		Transport: transport,
