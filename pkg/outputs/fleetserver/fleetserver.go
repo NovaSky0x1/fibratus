@@ -134,11 +134,22 @@ var telemetryEventNames = map[string]bool{
 	"ReplyDns": true,
 }
 
+// telemetryDropNames is a fast-reject set for noisy events that should
+// never be sent, even if they somehow have metadata attached.
+var telemetryDropNames = map[string]bool{
+	"SubmitThreadpoolWork":     true,
+	"SubmitThreadpoolCallback": true,
+	"SetThreadpoolTimer":       true,
+}
+
 // securityRelevant filters the batch to only include events worth
 // storing on the fleet server.
 func securityRelevant(batch *event.Batch) *event.Batch {
 	filtered := make([]*event.Event, 0, len(batch.Events)/4)
 	for _, evt := range batch.Events {
+		if telemetryDropNames[evt.Name] {
+			continue
+		}
 		// Always send events with rule matches or evasion flags
 		if len(evt.Metadata) > 0 || evt.Evasions > 0 {
 			filtered = append(filtered, evt)
