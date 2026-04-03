@@ -99,8 +99,16 @@ func (c *Client) PullRules() (string, bool, error) {
 	macrosDir := filepath.Join(rulesDir, "Macros")
 	os.MkdirAll(macrosDir, 0o755)
 
+	// Remove old fleet rule files before writing new ones (handles rule deletions)
+	oldRules, _ := filepath.Glob(filepath.Join(rulesDir, "fleet-rule-*.yml"))
+	for _, f := range oldRules {
+		os.Remove(f)
+	}
+	// Also clean up legacy single-file format
+	os.Remove(filepath.Join(rulesDir, "fleet-rules.yml"))
+
 	var macrosBuf bytes.Buffer
-	var rulesBuf bytes.Buffer
+	var ruleDocs []string
 	docs := strings.Split(string(rulesYAML), "\n---\n")
 	for _, doc := range docs {
 		trimmed := strings.TrimSpace(doc)
@@ -111,8 +119,7 @@ func (c *Client) PullRules() (string, bool, error) {
 			macrosBuf.WriteString(doc)
 			macrosBuf.WriteString("\n")
 		} else if strings.HasPrefix(trimmed, "name:") {
-			rulesBuf.WriteString(doc)
-			rulesBuf.WriteString("\n---\n")
+			ruleDocs = append(ruleDocs, doc)
 		}
 	}
 
@@ -123,10 +130,16 @@ func (c *Client) PullRules() (string, bool, error) {
 		log.Infof("fleet: wrote macros (%d bytes)", macrosBuf.Len())
 	}
 
-	rulesFile := filepath.Join(rulesDir, "fleet-rules.yml")
-	if err := os.WriteFile(rulesFile, rulesBuf.Bytes(), 0o644); err != nil {
-		return "", false, fmt.Errorf("fleet rule sync: write rules: %w", err)
+	// Write each rule as a separate file — the rule compiler's LoadFilters
+	// calls decodeFilter per file and yaml.Unmarshal only parses the first
+	// YAML document, so one-rule-per-file is required.
+	for i, doc := range ruleDocs {
+		ruleFile := filepath.Join(rulesDir, fmt.Sprintf("fleet-rule-%03d.yml", i+1))
+		if err := os.WriteFile(ruleFile, []byte(doc), 0o644); err != nil {
+			return "", false, fmt.Errorf("fleet rule sync: write rule %d: %w", i+1, err)
+		}
 	}
+	log.Infof("fleet: wrote %d rule files", len(ruleDocs))
 
 	// Save ETag for next request
 	if etag := resp.Header.Get("ETag"); etag != "" {

@@ -340,6 +340,28 @@ func (f *App) Run(args []string) error {
 			}
 		}
 
+		// Auto-enable fleet server alert sender so detections reach the server
+		if cfg.Fleet.Enabled {
+			hasFleetSender := false
+			for _, s := range cfg.Alertsenders {
+				if s.Type == alertsender.FleetServer {
+					hasFleetSender = true
+					break
+				}
+			}
+			if !hasFleetSender {
+				log.Info("fleet: auto-enabling fleet server alert sender")
+				cfg.Alertsenders = append(cfg.Alertsenders, alertsender.Config{
+					Type: alertsender.FleetServer,
+					Sender: fleetclient.Config{
+						Enabled:   true,
+						ServerURL: cfg.Fleet.ServerURL,
+						OrgID:     cfg.Fleet.OrgID,
+					},
+				})
+			}
+		}
+
 		// set up the aggregator that forwards events to outputs
 		f.agg, err = aggregator.NewBuffered(
 			f.evs.Events(),
@@ -562,6 +584,9 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 			}
 			if rs != nil {
 				log.Infof("fleet: rules recompile summary: %s", rs)
+				log.Infof("fleet: %d active rules after recompile", f.engine.ActiveRules())
+			} else {
+				log.Warn("fleet: recompile produced 0 rules — check rule files in data/rules/")
 			}
 			return nil
 		})

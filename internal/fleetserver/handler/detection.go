@@ -20,7 +20,6 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -55,12 +54,6 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 		orgID = ctxutil.OrgIDFromContext(r.Context())
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read body")
-		return
-	}
-
 	var alertData struct {
 		ID          string            `json:"id"`
 		Title       string            `json:"title"`
@@ -71,8 +64,8 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 		Events      json.RawMessage   `json:"events"`
 	}
 
-	if err := json.Unmarshal(body, &alertData); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid alert JSON")
+	if err := decodeBody(r, &alertData); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid alert JSON: "+err.Error())
 		return
 	}
 

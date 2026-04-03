@@ -6,6 +6,7 @@ import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import RemoteShell from '../components/RemoteShell'
 import FileBrowser from '../components/FileBrowser'
+import ProcessTree from '../components/ProcessTree'
 
 interface TelemetryEvent {
   id: number; timestamp: string; event_name: string; event_category: string;
@@ -126,7 +127,7 @@ export default function Agents() {
   const [page, setPage] = useState(1)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null)
-  const [activeTab, setActiveTab] = useState<'details' | 'response' | 'terminal' | 'files' | 'events' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'response' | 'terminal' | 'files' | 'events' | 'processes' | 'history'>('details')
   const [shellType, setShellType] = useState<'cmd' | 'powershell'>('powershell')
 
   // Command input state
@@ -259,14 +260,14 @@ export default function Agents() {
           <div>
             {/* Tabs */}
             <div className="flex gap-1 border-b border-gray-200 mb-6">
-              {(['details', 'response', 'terminal', 'files', 'events', 'history'] as const).map(tab => (
+              {(['details', 'response', 'terminal', 'files', 'events', 'processes', 'history'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={'px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize ' +
                     (activeTab === tab ? 'border-fibratus-600 text-fibratus-600' : 'border-transparent text-gray-500 hover:text-gray-700')}
                 >
-                  {tab === 'response' ? 'Active Response' : tab === 'history' ? 'Command History' : tab === 'terminal' ? 'Terminal' : tab === 'files' ? 'File Browser' : tab === 'events' ? 'Events' : tab}
+                  {tab === 'response' ? 'Active Response' : tab === 'history' ? 'Command History' : tab === 'terminal' ? 'Terminal' : tab === 'files' ? 'File Browser' : tab === 'events' ? 'Events' : tab === 'processes' ? 'Process Tree' : tab}
                 </button>
               ))}
             </div>
@@ -412,6 +413,11 @@ export default function Agents() {
             {/* Agent Events Tab */}
             {activeTab === 'events' && (
               <AgentEventsTab agentId={selectedAgent.id} />
+            )}
+
+            {/* Process Tree Tab */}
+            {activeTab === 'processes' && (
+              <ProcessTree agentId={selectedAgent.id} />
             )}
 
             {/* Command History Tab */}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Rule, type ApiResponse } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
+import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Rules() {
@@ -10,6 +11,10 @@ export default function Rules() {
   const [yamlContent, setYamlContent] = useState('')
   const [uploadError, setUploadError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Rule | null>(null)
+  const [editRule, setEditRule] = useState<Rule | null>(null)
+  const [editYaml, setEditYaml] = useState('')
+  const [editError, setEditError] = useState('')
+  const [search, setSearch] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['rules'],
@@ -46,8 +51,35 @@ export default function Rules() {
     },
   })
 
-  const rules = (data?.data || []) as Rule[]
-  const total = data?.meta?.total ?? rules.length
+  const editMutation = useMutation({
+    mutationFn: ({ id, yaml }: { id: string; yaml: string }) => api.updateRuleYaml(id, yaml),
+    onSuccess: (res: ApiResponse<Rule>) => {
+      if (res.error) {
+        setEditError(res.error.message)
+        return
+      }
+      setEditRule(null)
+      setEditYaml('')
+      setEditError('')
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  const allRules = (data?.data || []) as Rule[]
+  const rules = search
+    ? allRules.filter(r =>
+        r.name.toLowerCase().includes(search.toLowerCase()) ||
+        r.description?.toLowerCase().includes(search.toLowerCase()) ||
+        r.condition?.toLowerCase().includes(search.toLowerCase()) ||
+        r.labels?.['technique.id']?.toLowerCase().includes(search.toLowerCase()))
+    : allRules
+  const total = data?.meta?.total ?? allRules.length
+
+  const openEditor = (rule: Rule) => {
+    setEditRule(rule)
+    setEditYaml(rule.raw_yaml || buildYamlFromRule(rule))
+    setEditError('')
+  }
 
   return (
     <div>
@@ -112,8 +144,20 @@ export default function Rules() {
         </div>
       )}
 
+      {/* Search */}
+      <div className="mt-6 flex gap-4">
+        <input
+          type="text"
+          placeholder="Search rules by name, technique, condition..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+        />
+        <span className="flex items-center text-sm text-gray-400">{rules.length} shown</span>
+      </div>
+
       {/* Rules table */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/50">
@@ -173,13 +217,19 @@ export default function Rules() {
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-3">
                         <button
+                          onClick={() => openEditor(rule)}
+                          className="text-xs font-medium text-fibratus-600 hover:text-fibratus-800"
+                        >
+                          Edit
+                        </button>
+                        <button
                           onClick={() =>
                             toggleMutation.mutate({
                               id: rule.id,
                               enabled: !rule.enabled,
                             })
                           }
-                          className="text-xs font-medium text-fibratus-600 hover:text-fibratus-800"
+                          className="text-xs font-medium text-gray-600 hover:text-gray-800"
                         >
                           {rule.enabled ? 'Disable' : 'Enable'}
                         </button>
@@ -196,7 +246,7 @@ export default function Rules() {
               {!isLoading && rules.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
-                    No rules configured. Upload detection rules above.
+                    {search ? 'No rules match your search.' : 'No rules configured. Upload detection rules above.'}
                   </td>
                 </tr>
               )}
@@ -204,6 +254,67 @@ export default function Rules() {
           </table>
         </div>
       </div>
+
+      {/* Rule editor slide panel */}
+      <SlidePanel open={!!editRule} title={'Edit: ' + (editRule?.name || '')} onClose={() => setEditRule(null)} wide>
+        {editRule && (
+          <div className="flex flex-col h-full">
+            <div className="flex items-center gap-4 mb-4">
+              <SeverityBadge severity={editRule.severity} />
+              <span className="font-mono text-xs text-gray-400">{editRule.id}</span>
+              {editRule.labels?.['technique.id'] && (
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600">
+                  {editRule.labels['technique.id']} — {editRule.labels?.['technique.name'] || ''}
+                </span>
+              )}
+            </div>
+
+            {editError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                {editError}
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0">
+              <textarea
+                value={editYaml}
+                onChange={(e) => setEditYaml(e.target.value)}
+                className="w-full h-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm leading-relaxed focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500 resize-none"
+                style={{ minHeight: 'calc(100vh - 300px)', tabSize: 2 }}
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                onClick={() => editMutation.mutate({ id: editRule.id, yaml: editYaml })}
+                disabled={editMutation.isPending || !editYaml.trim()}
+                className="rounded-lg bg-fibratus-600 px-5 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+              >
+                {editMutation.isPending ? 'Saving...' : 'Save Rule'}
+              </button>
+              <button
+                onClick={() => setEditRule(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <label className="ml-auto flex cursor-pointer items-center rounded-lg border border-gray-300 px-3 py-2 text-xs hover:bg-gray-50">
+                Import file
+                <input
+                  type="file"
+                  accept=".yml,.yaml"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) file.text().then(setEditYaml)
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+      </SlidePanel>
 
       {/* Delete confirmation dialog */}
       <ConfirmDialog
@@ -222,4 +333,29 @@ export default function Rules() {
       />
     </div>
   )
+}
+
+/** Build minimal YAML from rule fields when raw_yaml is not available */
+function buildYamlFromRule(rule: Rule): string {
+  const lines: string[] = []
+  lines.push(`name: ${rule.name}`)
+  lines.push(`id: ${rule.id}`)
+  lines.push(`version: ${rule.version || '1.0.0'}`)
+  if (rule.description) lines.push(`description: ${rule.description}`)
+  if (rule.condition) lines.push(`condition: >\n  ${rule.condition}`)
+  if (rule.output) lines.push(`output: "${rule.output}"`)
+  lines.push(`severity: ${rule.severity || 'medium'}`)
+  if (rule.labels && Object.keys(rule.labels).length > 0) {
+    lines.push('labels:')
+    for (const [k, v] of Object.entries(rule.labels)) {
+      lines.push(`  ${k}: ${v}`)
+    }
+  }
+  if (rule.tags && rule.tags.length > 0) {
+    lines.push('tags:')
+    for (const t of rule.tags) {
+      lines.push(`  - ${t}`)
+    }
+  }
+  return lines.join('\n') + '\n'
 }

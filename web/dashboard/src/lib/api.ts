@@ -208,6 +208,15 @@ export const api = {
   },
   updateRule: (id: string, data: Partial<Rule>) =>
     fetchApi<Rule>(orgPath(`/rules/${id}`), { method: 'PUT', body: JSON.stringify(data) }),
+  updateRuleYaml: (id: string, yaml: string) => {
+    const token = getToken()
+    const orgId = getOrgId()
+    return fetch(`${API_BASE}/orgs/${orgId}/rules/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/x-yaml', Authorization: `Bearer ${token}` },
+      body: yaml,
+    }).then(r => r.json()) as Promise<ApiResponse<Rule>>
+  },
   deleteRule: (id: string) => fetchApi<void>(orgPath(`/rules/${id}`), { method: 'DELETE' }),
 
   // Telemetry (live events)

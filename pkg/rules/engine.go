@@ -164,6 +164,10 @@ func (e *Engine) Compile() (*config.RulesCompileResult, error) {
 		return nil, err
 	}
 
+	// Reset indexed filters and sequences to avoid accumulation on recompile
+	e.filters = newFilterset()
+	e.sequences = make([]*sequenceState, 0)
+
 	for c, f := range filters {
 		var ss *sequenceState
 		if f.IsSequence() {

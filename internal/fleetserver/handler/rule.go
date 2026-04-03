@@ -167,6 +167,7 @@ func (h *RuleHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 // Update handles PUT /api/v1/orgs/{org_id}/rules/{id}
+// Accepts JSON (for field updates like enable/disable) or YAML (for full rule edits).
 func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	parts := strings.Split(r.URL.Path, "/rules/")
@@ -176,10 +177,25 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	ruleID := strings.TrimSuffix(parts[1], "/")
 
-	var rule fleet.Rule
-	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read body")
 		return
+	}
+
+	var rule fleet.Rule
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "yaml") || strings.Contains(contentType, "x-yaml") {
+		if err := parseYAMLRule(body, &rule); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid rule YAML: "+err.Error())
+			return
+		}
+		rule.RawYAML = string(body)
+	} else {
+		if err := json.Unmarshal(body, &rule); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
 	}
 
 	rule.ID = ruleID
