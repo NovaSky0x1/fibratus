@@ -7,71 +7,110 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import RemoteShell from '../components/RemoteShell'
 import FileBrowser from '../components/FileBrowser'
 
+interface TelemetryEvent {
+  id: number; timestamp: string; event_name: string; event_category: string;
+  pid: number; tid: number; process_name: string; process_exe: string;
+  process_cmdline: string; parent_pid: number; parent_name: string; params: unknown;
+  raw_event: unknown;
+}
+
+const categoryColors: Record<string, string> = {
+  process: 'bg-blue-100 text-blue-700',
+  net: 'bg-green-100 text-green-700',
+  file: 'bg-yellow-100 text-yellow-700',
+  registry: 'bg-purple-100 text-purple-700',
+  image: 'bg-indigo-100 text-indigo-700',
+  dns: 'bg-teal-100 text-teal-700',
+}
+
 function AgentEventsTab({ agentId }: { agentId: string }) {
-  const { data: res, isLoading } = useQuery({
-    queryKey: ['agent-events', agentId],
-    queryFn: () => api.getAgentEvents(agentId, 200),
-    refetchInterval: 5000,
+  const [limit, setLimit] = useState(500)
+  const [live, setLive] = useState(false)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [filter, setFilter] = useState('')
+
+  const { data: res, isLoading, refetch } = useQuery({
+    queryKey: ['agent-events', agentId, limit],
+    queryFn: () => api.getAgentEvents(agentId, limit),
+    refetchInterval: live ? 5000 : false,
   })
 
-  const events = (res?.data || []) as Array<{
-    id: number; timestamp: string; event_name: string; event_category: string;
-    pid: number; tid: number; process_name: string; process_exe: string;
-    process_cmdline: string; parent_name: string; params: unknown;
-  }>
+  const allEvents = (res?.data || []) as TelemetryEvent[]
+  const events = filter
+    ? allEvents.filter(e =>
+        e.event_name.toLowerCase().includes(filter.toLowerCase()) ||
+        e.process_name.toLowerCase().includes(filter.toLowerCase()) ||
+        (e.process_cmdline || '').toLowerCase().includes(filter.toLowerCase()))
+    : allEvents
 
-  const [expanded, setExpanded] = useState<number | null>(null)
-
-  if (isLoading) return <div className="text-gray-400 py-8 text-center text-sm">Loading events...</div>
+  const toggle = (id: number) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   return (
-    <div className="space-y-2">
-      <div className="text-xs text-gray-400 mb-2">{events.length} events (auto-refreshing)</div>
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter events..."
+          className="flex-1 rounded border px-3 py-1.5 text-sm focus:ring-2 focus:ring-fibratus-500 focus:outline-none" />
+        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+          <input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} className="rounded" />
+          Live
+        </label>
+        <button onClick={() => refetch()} className="text-xs text-fibratus-600 hover:underline">Refresh</button>
+        <select value={limit} onChange={e => setLimit(Number(e.target.value))} className="text-xs border rounded px-2 py-1">
+          <option value={100}>100</option>
+          <option value={500}>500</option>
+          <option value={1000}>1000</option>
+          <option value={5000}>5000</option>
+        </select>
+        <span className="text-xs text-gray-400">{events.length} events</span>
+      </div>
+
+      <div className="border rounded overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
         <table className="w-full text-left text-xs">
-          <thead className="border-b border-gray-100 bg-gray-50/50">
+          <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
-              <th className="px-3 py-2 font-medium text-gray-500 w-40">Timestamp</th>
-              <th className="px-3 py-2 font-medium text-gray-500 w-32">Event</th>
-              <th className="px-3 py-2 font-medium text-gray-500 w-16">PID</th>
-              <th className="px-3 py-2 font-medium text-gray-500">Process</th>
-              <th className="px-3 py-2 font-medium text-gray-500">Details</th>
+              <th className="px-3 py-2 font-medium text-gray-500 w-28">Time</th>
+              <th className="px-3 py-2 font-medium text-gray-500 w-28">Event</th>
+              <th className="px-3 py-2 font-medium text-gray-500 w-14">PID</th>
+              <th className="px-3 py-2 font-medium text-gray-500 w-40">Process</th>
+              <th className="px-3 py-2 font-medium text-gray-500">Command Line / Details</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody>
             {events.map(evt => (
-              <>
-                <tr key={evt.id} className="hover:bg-gray-50/50 cursor-pointer" onClick={() => setExpanded(expanded === evt.id ? null : evt.id)}>
-                  <td className="px-3 py-1.5 text-gray-500 tabular-nums whitespace-nowrap font-mono">
-                    {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <span className={'inline-block px-1.5 py-0.5 rounded text-xs font-medium ' + (
-                      evt.event_category === 'process' ? 'bg-blue-100 text-blue-700' :
-                      evt.event_category === 'net' ? 'bg-green-100 text-green-700' :
-                      evt.event_category === 'file' ? 'bg-yellow-100 text-yellow-700' :
-                      evt.event_category === 'registry' ? 'bg-purple-100 text-purple-700' :
-                      evt.event_category === 'image' ? 'bg-indigo-100 text-indigo-700' :
-                      'bg-gray-100 text-gray-700'
-                    )}>{evt.event_name}</span>
-                  </td>
-                  <td className="px-3 py-1.5 text-gray-500 tabular-nums font-mono">{evt.pid}</td>
-                  <td className="px-3 py-1.5 font-mono text-gray-700 truncate max-w-[200px]">{evt.process_name}</td>
-                  <td className="px-3 py-1.5 text-gray-500 truncate max-w-[300px] font-mono">{evt.process_cmdline || evt.process_exe || '-'}</td>
-                </tr>
-                {expanded === evt.id && (
-                  <tr key={`${evt.id}-detail`}>
-                    <td colSpan={5} className="px-4 py-3 bg-gray-50">
-                      <pre className="text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
-                        {JSON.stringify(evt.params, null, 2)}
+              <tr key={evt.id} className={'border-t border-gray-100 cursor-pointer ' + (expanded.has(evt.id) ? 'bg-gray-50' : 'hover:bg-gray-50/50')}
+                onClick={() => toggle(evt.id)}>
+                <td className="px-3 py-1.5 text-gray-500 tabular-nums whitespace-nowrap font-mono align-top">
+                  {new Date(evt.timestamp).toLocaleTimeString()}
+                </td>
+                <td className="px-3 py-1.5 align-top">
+                  <span className={'inline-block px-1.5 py-0.5 rounded text-xs font-medium ' +
+                    (categoryColors[evt.event_category] || 'bg-gray-100 text-gray-700')}>{evt.event_name}</span>
+                </td>
+                <td className="px-3 py-1.5 text-gray-500 tabular-nums font-mono align-top">{evt.pid}</td>
+                <td className="px-3 py-1.5 font-mono text-gray-700 align-top">{evt.process_name}</td>
+                <td className="px-3 py-1.5 text-gray-500 font-mono align-top">
+                  {!expanded.has(evt.id) ? (
+                    <span className="truncate block max-w-[600px]">{evt.process_cmdline || evt.process_exe || '-'}</span>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-gray-700 break-all whitespace-pre-wrap">{evt.process_cmdline || evt.process_exe || '-'}</div>
+                      {evt.parent_name && <div className="text-gray-400">Parent: {evt.parent_name} (PID {evt.parent_pid})</div>}
+                      <pre className="text-xs bg-gray-900 text-gray-100 rounded p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
+{JSON.stringify(evt.params, null, 2)}
                       </pre>
-                    </td>
-                  </tr>
-                )}
-              </>
+                    </div>
+                  )}
+                </td>
+              </tr>
             ))}
             {events.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No events yet</td></tr>
+              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No events</td></tr>
             )}
           </tbody>
         </table>
