@@ -117,11 +117,15 @@ func (c *Client) processCommands(executor CommandExecutor) {
 		result, err := executor.Execute(cmd)
 		if err != nil {
 			log.Errorf("fleet: command %s failed: %v", cmd.ID, err)
-			c.ReportCommandResult(cmd.ID, fleet.CmdStatusFailed, nil, err.Error())
+			if rerr := c.ReportCommandResult(cmd.ID, fleet.CmdStatusFailed, nil, err.Error()); rerr != nil {
+				log.Errorf("fleet: failed to report error for command %s: %v", cmd.ID, rerr)
+			}
 			continue
 		}
 
 		log.Infof("fleet: command %s completed", cmd.ID)
-		c.ReportCommandResult(cmd.ID, fleet.CmdStatusCompleted, result, "")
+		if err := c.ReportCommandResult(cmd.ID, fleet.CmdStatusCompleted, result, ""); err != nil {
+			log.Errorf("fleet: failed to report result for command %s: %v", cmd.ID, err)
+		}
 	}
 }

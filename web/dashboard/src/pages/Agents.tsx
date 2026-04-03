@@ -7,6 +7,79 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import RemoteShell from '../components/RemoteShell'
 import FileBrowser from '../components/FileBrowser'
 
+function AgentEventsTab({ agentId }: { agentId: string }) {
+  const { data: res, isLoading } = useQuery({
+    queryKey: ['agent-events', agentId],
+    queryFn: () => api.getAgentEvents(agentId, 200),
+    refetchInterval: 5000,
+  })
+
+  const events = (res?.data || []) as Array<{
+    id: number; timestamp: string; event_name: string; event_category: string;
+    pid: number; tid: number; process_name: string; process_exe: string;
+    process_cmdline: string; parent_name: string; params: unknown;
+  }>
+
+  const [expanded, setExpanded] = useState<number | null>(null)
+
+  if (isLoading) return <div className="text-gray-400 py-8 text-center text-sm">Loading events...</div>
+
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-gray-400 mb-2">{events.length} events (auto-refreshing)</div>
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <table className="w-full text-left text-xs">
+          <thead className="border-b border-gray-100 bg-gray-50/50">
+            <tr>
+              <th className="px-3 py-2 font-medium text-gray-500 w-40">Timestamp</th>
+              <th className="px-3 py-2 font-medium text-gray-500 w-32">Event</th>
+              <th className="px-3 py-2 font-medium text-gray-500 w-16">PID</th>
+              <th className="px-3 py-2 font-medium text-gray-500">Process</th>
+              <th className="px-3 py-2 font-medium text-gray-500">Details</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {events.map(evt => (
+              <>
+                <tr key={evt.id} className="hover:bg-gray-50/50 cursor-pointer" onClick={() => setExpanded(expanded === evt.id ? null : evt.id)}>
+                  <td className="px-3 py-1.5 text-gray-500 tabular-nums whitespace-nowrap font-mono">
+                    {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <span className={'inline-block px-1.5 py-0.5 rounded text-xs font-medium ' + (
+                      evt.event_category === 'process' ? 'bg-blue-100 text-blue-700' :
+                      evt.event_category === 'net' ? 'bg-green-100 text-green-700' :
+                      evt.event_category === 'file' ? 'bg-yellow-100 text-yellow-700' :
+                      evt.event_category === 'registry' ? 'bg-purple-100 text-purple-700' :
+                      evt.event_category === 'image' ? 'bg-indigo-100 text-indigo-700' :
+                      'bg-gray-100 text-gray-700'
+                    )}>{evt.event_name}</span>
+                  </td>
+                  <td className="px-3 py-1.5 text-gray-500 tabular-nums font-mono">{evt.pid}</td>
+                  <td className="px-3 py-1.5 font-mono text-gray-700 truncate max-w-[200px]">{evt.process_name}</td>
+                  <td className="px-3 py-1.5 text-gray-500 truncate max-w-[300px] font-mono">{evt.process_cmdline || evt.process_exe || '-'}</td>
+                </tr>
+                {expanded === evt.id && (
+                  <tr key={`${evt.id}-detail`}>
+                    <td colSpan={5} className="px-4 py-3 bg-gray-50">
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
+                        {JSON.stringify(evt.params, null, 2)}
+                      </pre>
+                    </td>
+                  </tr>
+                )}
+              </>
+            ))}
+            {events.length === 0 && (
+              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No events yet</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function Agents() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -14,7 +87,7 @@ export default function Agents() {
   const [page, setPage] = useState(1)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null)
-  const [activeTab, setActiveTab] = useState<'details' | 'response' | 'terminal' | 'files' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'response' | 'terminal' | 'files' | 'events' | 'history'>('details')
   const [shellType, setShellType] = useState<'cmd' | 'powershell'>('powershell')
 
   // Command input state
@@ -147,14 +220,14 @@ export default function Agents() {
           <div>
             {/* Tabs */}
             <div className="flex gap-1 border-b border-gray-200 mb-6">
-              {(['details', 'response', 'terminal', 'files', 'history'] as const).map(tab => (
+              {(['details', 'response', 'terminal', 'files', 'events', 'history'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={'px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize ' +
                     (activeTab === tab ? 'border-fibratus-600 text-fibratus-600' : 'border-transparent text-gray-500 hover:text-gray-700')}
                 >
-                  {tab === 'response' ? 'Active Response' : tab === 'history' ? 'Command History' : tab === 'terminal' ? 'Terminal' : tab === 'files' ? 'File Browser' : tab}
+                  {tab === 'response' ? 'Active Response' : tab === 'history' ? 'Command History' : tab === 'terminal' ? 'Terminal' : tab === 'files' ? 'File Browser' : tab === 'events' ? 'Events' : tab}
                 </button>
               ))}
             </div>
@@ -295,6 +368,11 @@ export default function Agents() {
             {/* File Browser Tab */}
             {activeTab === 'files' && (
               <FileBrowser agentId={selectedAgent.id} />
+            )}
+
+            {/* Agent Events Tab */}
+            {activeTab === 'events' && (
+              <AgentEventsTab agentId={selectedAgent.id} />
             )}
 
             {/* Command History Tab */}
