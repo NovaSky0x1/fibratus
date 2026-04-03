@@ -158,12 +158,17 @@ func (s *AgentStore) List(ctx context.Context, orgID string, opts fleet.AgentLis
 
 func (s *AgentStore) Update(ctx context.Context, agent *fleet.Agent) error {
 	tags, _ := json.Marshal(agent.Tags)
+	// Pass NULL for empty group_id to satisfy FK constraint (same as Create)
+	var groupID interface{}
+	if agent.GroupID != "" {
+		groupID = agent.GroupID
+	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE agents SET hostname=$3, os_version=$4, engine_version=$5,
 			group_id=$6, tags=$7, status=$8, updated_at=NOW()
 		 WHERE id=$1 AND org_id=$2`,
 		agent.ID, agent.OrgID, agent.Hostname, agent.OSVersion, agent.EngineVersion,
-		agent.GroupID, tags, string(agent.Status),
+		groupID, tags, string(agent.Status),
 	)
 	return err
 }
