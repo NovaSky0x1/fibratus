@@ -206,6 +206,7 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 			fleetRulesDir := filepath.Join(filepath.Dir(exe), "..", "data", "rules")
 			cfg.Filters.Rules.FromPaths = []string{filepath.Join(fleetRulesDir, "*")}
 			cfg.Filters.Rules.FromURLs = nil
+			cfg.Filters.Macros.FromPaths = []string{filepath.Join(fleetRulesDir, "Macros", "*")}
 		}
 
 		engine = rules.NewEngine(psnap, cfg)

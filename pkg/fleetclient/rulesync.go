@@ -19,11 +19,13 @@
 package fleetclient
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -92,8 +94,37 @@ func (c *Client) PullRules() (string, bool, error) {
 		return "", false, fmt.Errorf("fleet rule sync: create rules dir: %w", err)
 	}
 
+	// Split macros from rules — macros start with "- macro:" and must
+	// go in a separate file so the rule compiler can load them independently.
+	macrosDir := filepath.Join(rulesDir, "Macros")
+	os.MkdirAll(macrosDir, 0o755)
+
+	var macrosBuf bytes.Buffer
+	var rulesBuf bytes.Buffer
+	docs := strings.Split(string(rulesYAML), "\n---\n")
+	for _, doc := range docs {
+		trimmed := strings.TrimSpace(doc)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "- macro:") {
+			macrosBuf.WriteString(doc)
+			macrosBuf.WriteString("\n")
+		} else if strings.HasPrefix(trimmed, "name:") {
+			rulesBuf.WriteString(doc)
+			rulesBuf.WriteString("\n---\n")
+		}
+	}
+
+	if macrosBuf.Len() > 0 {
+		if err := os.WriteFile(filepath.Join(macrosDir, "macros.yml"), macrosBuf.Bytes(), 0o644); err != nil {
+			return "", false, fmt.Errorf("fleet rule sync: write macros: %w", err)
+		}
+		log.Infof("fleet: wrote macros (%d bytes)", macrosBuf.Len())
+	}
+
 	rulesFile := filepath.Join(rulesDir, "fleet-rules.yml")
-	if err := os.WriteFile(rulesFile, rulesYAML, 0o644); err != nil {
+	if err := os.WriteFile(rulesFile, rulesBuf.Bytes(), 0o644); err != nil {
 		return "", false, fmt.Errorf("fleet rule sync: write rules: %w", err)
 	}
 
