@@ -108,9 +108,68 @@ func (f *fleetOutput) Connect() error {
 
 func (f *fleetOutput) Close() error { return nil }
 
+// telemetryEventNames is the set of event names worth storing on the
+// fleet server. This dramatically reduces volume by dropping noisy
+// events like registry reads, handle operations, threadpool callbacks,
+// and memory allocations that have no security value at the fleet level.
+var telemetryEventNames = map[string]bool{
+	// Process lifecycle
+	"CreateProcess":    true,
+	"TerminateProcess": true,
+	"OpenProcess":      true,
+	// Thread
+	"CreateThread":    true,
+	"TerminateThread": true,
+	// File mutations
+	"CreateFile": true,
+	"WriteFile":  true,
+	"DeleteFile": true,
+	"RenameFile": true,
+	// Registry mutations
+	"RegCreateKey":   true,
+	"RegSetValue":    true,
+	"RegDeleteKey":   true,
+	"RegDeleteValue": true,
+	// Network
+	"Send":    true,
+	"Recv":    true,
+	"Connect": true,
+	"Accept":  true,
+	"DNS":     true,
+	// Image/DLL loading
+	"LoadImage":   true,
+	"UnloadImage": true,
+	// Memory (evasion-relevant)
+	"VirtualAlloc": true,
+	"VirtualFree":  true,
+	"MapViewFile":  true,
+}
+
+// securityRelevant filters the batch to only include events worth
+// storing on the fleet server.
+func securityRelevant(batch *event.Batch) *event.Batch {
+	filtered := make([]*event.Event, 0, len(batch.Events)/4)
+	for _, evt := range batch.Events {
+		// Always send events with rule matches or evasion flags
+		if len(evt.Metadata) > 0 || evt.Evasions > 0 {
+			filtered = append(filtered, evt)
+			continue
+		}
+		if telemetryEventNames[evt.Name] {
+			filtered = append(filtered, evt)
+		}
+	}
+	return &event.Batch{Events: filtered}
+}
+
 // Publish sends a batch of events to the fleet server telemetry endpoint.
-// Events are serialized as JSON and gzip-compressed.
+// Events are filtered to security-relevant types, serialized as JSON,
+// and gzip-compressed.
 func (f *fleetOutput) Publish(batch *event.Batch) error {
+	batch = securityRelevant(batch)
+	if len(batch.Events) == 0 {
+		return nil
+	}
 	buf := batch.MarshalJSON()
 	if len(buf) == 0 {
 		return nil

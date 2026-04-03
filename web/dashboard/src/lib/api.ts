@@ -224,7 +224,7 @@ export const api = {
   createCommand: (agentId: string, type: string, payload?: Record<string, unknown>) =>
     fetchApi<Command>(orgPath(`/agents/${agentId}/commands`), {
       method: 'POST',
-      body: JSON.stringify({ type, payload: payload ? JSON.stringify(payload) : '{}' }),
+      body: JSON.stringify({ type, payload: payload || {} }),
     }),
 
   // Enrollment Tokens
