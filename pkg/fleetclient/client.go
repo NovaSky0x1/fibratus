@@ -72,11 +72,13 @@ func New(config Config, dataDir string) (*Client, error) {
 	if fileExists(certFile) && fileExists(keyFile) {
 		tlsCert = certFile
 		tlsKey = keyFile
-		if fileExists(caFile) {
-			tlsCA = caFile
-		}
+		// NOTE: Don't use the enrollment CA (ca.crt) as the server CA.
+		// The enrollment CA is for mTLS client cert verification on the server side.
+		// The server's TLS cert is from Let's Encrypt (trusted by system CA pool).
+		// Only use a custom CA if explicitly set in config.
 		log.Info("fleet: using enrollment certificates for mTLS")
-	} else if config.TLSCA != "" {
+	}
+	if config.TLSCA != "" {
 		tlsCA = config.TLSCA
 	}
 
