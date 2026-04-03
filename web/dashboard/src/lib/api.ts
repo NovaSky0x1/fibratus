@@ -130,6 +130,7 @@ export interface Macro {
   org_id: string
   name: string
   expr: string
+  list: string[]
   description: string
   raw_yaml: string
   created_at: string

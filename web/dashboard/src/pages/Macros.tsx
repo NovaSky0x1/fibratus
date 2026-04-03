@@ -9,7 +9,8 @@ export default function Macros() {
   const [showCreate, setShowCreate] = useState(false)
   const [editMacro, setEditMacro] = useState<Macro | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Macro | null>(null)
-  const [form, setForm] = useState({ name: '', expr: '', description: '' })
+  const [form, setForm] = useState({ name: '', expr: '', list: '', description: '' })
+  const [macroType, setMacroType] = useState<'expr' | 'list'>('expr')
   const [error, setError] = useState('')
 
   const { data, isLoading } = useQuery({
@@ -22,8 +23,7 @@ export default function Macros() {
     onSuccess: (res) => {
       if (res.error) { setError(res.error.message); return }
       setShowCreate(false)
-      setForm({ name: '', expr: '', description: '' })
-      setError('')
+      resetForm()
       queryClient.invalidateQueries({ queryKey: ['macros'] })
     },
   })
@@ -48,10 +48,47 @@ export default function Macros() {
 
   const macros = (data?.data || []) as Macro[]
 
-  const openEdit = (m: Macro) => {
-    setEditMacro(m)
-    setForm({ name: m.name, expr: m.expr, description: m.description || '' })
+  function resetForm() {
+    setForm({ name: '', expr: '', list: '', description: '' })
+    setMacroType('expr')
     setError('')
+  }
+
+  function openEdit(m: Macro) {
+    setEditMacro(m)
+    const hasList = m.list && m.list.length > 0
+    setMacroType(hasList ? 'list' : 'expr')
+    setForm({
+      name: m.name,
+      expr: m.expr || '',
+      list: hasList ? m.list.join(', ') : '',
+      description: m.description || '',
+    })
+    setError('')
+  }
+
+  function buildPayload(): Partial<Macro> {
+    if (macroType === 'list') {
+      return { name: form.name, expr: '', list: form.list.split(',').map(s => s.trim()).filter(Boolean), description: form.description }
+    }
+    return { name: form.name, expr: form.expr, list: [], description: form.description }
+  }
+
+  function macroDisplay(m: Macro): string {
+    if (m.list && m.list.length > 0) {
+      const preview = m.list.slice(0, 3).join(', ')
+      return m.list.length > 3 ? `[${preview}, ...+${m.list.length - 3}]` : `[${preview}]`
+    }
+    if (m.expr) {
+      return m.expr.length > 80 ? m.expr.slice(0, 80) + '...' : m.expr
+    }
+    return '-'
+  }
+
+  function macroTypeBadge(m: Macro): string {
+    if (m.list && m.list.length > 0) return 'list'
+    if (m.expr) return 'expr'
+    return 'empty'
   }
 
   return (
@@ -60,11 +97,11 @@ export default function Macros() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Macros</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {macros.length} macro(s) — reusable filter expressions for detection rules
+            {macros.length} macro(s) — reusable filter expressions and value lists for detection rules
           </p>
         </div>
         <button
-          onClick={() => { setShowCreate(true); setForm({ name: '', expr: '', description: '' }); setError('') }}
+          onClick={() => { setShowCreate(true); resetForm() }}
           className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"
         >
           New Macro
@@ -78,26 +115,31 @@ export default function Macros() {
             <thead className="border-b border-gray-100 bg-gray-50/50">
               <tr>
                 <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Expression</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Description</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Updated</th>
+                <th className="px-6 py-3 font-medium text-gray-500 w-16">Type</th>
+                <th className="px-6 py-3 font-medium text-gray-500">Value</th>
                 <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {isLoading && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
               )}
               {!isLoading && macros.map((m) => (
                 <tr key={m.id} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-3 font-mono font-medium text-gray-900">{m.name}</td>
                   <td className="px-6 py-3">
-                    <code className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700 font-mono">
-                      {m.expr.length > 80 ? m.expr.slice(0, 80) + '...' : m.expr}
-                    </code>
+                    <span className="font-mono font-medium text-gray-900">{m.name}</span>
+                    {m.description && <div className="text-xs text-gray-400 mt-0.5 line-clamp-1">{m.description}</div>}
                   </td>
-                  <td className="px-6 py-3 text-gray-500 text-xs">{m.description || '-'}</td>
-                  <td className="px-6 py-3 text-gray-500 text-xs">{new Date(m.updated_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-3">
+                    <span className={'rounded px-1.5 py-0.5 text-xs font-medium ' +
+                      (macroTypeBadge(m) === 'list' ? 'bg-purple-50 text-purple-700' :
+                       macroTypeBadge(m) === 'expr' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500')}>
+                      {macroTypeBadge(m)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3">
+                    <code className="text-xs text-gray-600 font-mono">{macroDisplay(m)}</code>
+                  </td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
                       <button onClick={() => openEdit(m)} className="text-xs font-medium text-fibratus-600 hover:text-fibratus-800">Edit</button>
@@ -107,8 +149,8 @@ export default function Macros() {
                 </tr>
               ))}
               {!isLoading && macros.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400">
-                  No macros defined. Macros are reusable filter expressions like <code className="bg-gray-100 px-1 rounded">spawn_process</code> that simplify rule conditions.
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                  No macros defined.
                 </td></tr>
               )}
             </tbody>
@@ -134,19 +176,54 @@ export default function Macros() {
               placeholder="e.g., spawn_process"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
-            <p className="mt-1 text-xs text-gray-400">This name is used in rule conditions</p>
           </div>
+
+          {/* Type toggle */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expression</label>
-            <textarea
-              value={form.expr}
-              onChange={(e) => setForm({ ...form, expr: e.target.value })}
-              rows={4}
-              placeholder="e.g., kevt.name = 'CreateProcess'"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
-            />
-            <p className="mt-1 text-xs text-gray-400">Filter expression using Fibratus query language</p>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMacroType('expr')}
+                className={'px-3 py-1.5 text-xs rounded-lg font-medium border ' + (macroType === 'expr' ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-white text-gray-500 border-gray-200')}
+              >
+                Expression
+              </button>
+              <button
+                onClick={() => setMacroType('list')}
+                className={'px-3 py-1.5 text-xs rounded-lg font-medium border ' + (macroType === 'list' ? 'bg-purple-50 text-purple-700 border-purple-300' : 'bg-white text-gray-500 border-gray-200')}
+              >
+                Value List
+              </button>
+            </div>
           </div>
+
+          {macroType === 'expr' ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Expression</label>
+              <textarea
+                value={form.expr}
+                onChange={(e) => setForm({ ...form, expr: e.target.value })}
+                rows={4}
+                placeholder="e.g., kevt.name = 'CreateProcess'"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Values (comma-separated)</label>
+              <textarea
+                value={form.list}
+                onChange={(e) => setForm({ ...form, list: e.target.value })}
+                rows={6}
+                placeholder={"chrome.exe, firefox.exe, msedge.exe, iexplore.exe,\nopera.exe, brave.exe, vivaldi.exe"}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                {form.list ? form.list.split(',').map(s => s.trim()).filter(Boolean).length : 0} values
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
             <input
@@ -156,16 +233,18 @@ export default function Macros() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
           </div>
+
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => {
+                const payload = buildPayload()
                 if (editMacro) {
-                  updateMutation.mutate({ id: editMacro.id, data: form })
+                  updateMutation.mutate({ id: editMacro.id, data: payload })
                 } else {
-                  createMutation.mutate(form)
+                  createMutation.mutate(payload)
                 }
               }}
-              disabled={!form.name.trim() || !form.expr.trim() || createMutation.isPending || updateMutation.isPending}
+              disabled={!form.name.trim() || (!form.expr.trim() && !form.list.trim()) || createMutation.isPending || updateMutation.isPending}
               className="rounded-lg bg-fibratus-600 px-5 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
             >
               {createMutation.isPending || updateMutation.isPending ? 'Saving...' : editMacro ? 'Save' : 'Create'}
