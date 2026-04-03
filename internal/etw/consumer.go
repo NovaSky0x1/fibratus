@@ -52,7 +52,7 @@ func NewConsumer(
 	processors processors.Chain,
 ) *Consumer {
 	return &Consumer{
-		q:          event.NewQueueWithChannel(evts, config.EventSource.StackEnrichment, config.ForwardMode || config.IsCaptureSet()),
+		q:          event.NewQueueWithChannel(evts, config.EventSource.StackEnrichment, config.ForwardMode || config.IsCaptureSet() || config.Fleet.Enabled),
 		sequencer:  sequencer,
 		processors: processors,
 		psnap:      psnap,
