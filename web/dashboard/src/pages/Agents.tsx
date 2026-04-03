@@ -27,7 +27,6 @@ const categoryColors: Record<string, string> = {
 function AgentEventsTab({ agentId }: { agentId: string }) {
   const [limit, setLimit] = useState(500)
   const [live, setLive] = useState(false)
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState('')
 
   const { data: res, refetch } = useQuery({
@@ -44,13 +43,7 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
         (e.process_cmdline || '').toLowerCase().includes(filter.toLowerCase()))
     : allEvents
 
-  const toggle = (id: number) => {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
 
   return (
     <div className="flex flex-col gap-3">
@@ -83,33 +76,36 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
             </tr>
           </thead>
           <tbody>
-            {events.map(evt => (
-              <tr key={evt.id} className={'border-t border-gray-100 cursor-pointer ' + (expanded.has(evt.id) ? 'bg-gray-50' : 'hover:bg-gray-50/50')}
-                onClick={() => toggle(evt.id)}>
-                <td className="px-3 py-1.5 text-gray-500 tabular-nums whitespace-nowrap font-mono align-top">
-                  {new Date(evt.timestamp).toLocaleTimeString()}
-                </td>
-                <td className="px-3 py-1.5 align-top">
-                  <span className={'inline-block px-1.5 py-0.5 rounded text-xs font-medium ' +
-                    (categoryColors[evt.event_category] || 'bg-gray-100 text-gray-700')}>{evt.event_name}</span>
-                </td>
-                <td className="px-3 py-1.5 text-gray-500 tabular-nums font-mono align-top">{evt.pid}</td>
-                <td className="px-3 py-1.5 font-mono text-gray-700 align-top">{evt.process_name}</td>
-                <td className="px-3 py-1.5 text-gray-500 font-mono align-top">
-                  {!expanded.has(evt.id) ? (
-                    <span className="truncate block max-w-[600px]">{evt.process_cmdline || evt.process_exe || '-'}</span>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="text-gray-700 break-all whitespace-pre-wrap">{evt.process_cmdline || evt.process_exe || '-'}</div>
-                      {evt.parent_name && <div className="text-gray-400">Parent: {evt.parent_name} (PID {evt.parent_pid})</div>}
-                      <pre className="text-xs bg-gray-900 text-gray-100 rounded p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
+            {events.map((evt, idx) => {
+              const isOpen = expandedIdx === idx
+              return (
+                <tr key={`${evt.id}-${idx}`} className={'border-t border-gray-100 cursor-pointer ' + (isOpen ? 'bg-gray-50' : 'hover:bg-gray-50/50')}
+                  onClick={() => setExpandedIdx(isOpen ? null : idx)}>
+                  <td className="px-3 py-1.5 text-gray-500 tabular-nums whitespace-nowrap font-mono align-top">
+                    {new Date(evt.timestamp).toLocaleTimeString()}
+                  </td>
+                  <td className="px-3 py-1.5 align-top">
+                    <span className={'inline-block px-1.5 py-0.5 rounded text-xs font-medium ' +
+                      (categoryColors[evt.event_category] || 'bg-gray-100 text-gray-700')}>{evt.event_name}</span>
+                  </td>
+                  <td className="px-3 py-1.5 text-gray-500 tabular-nums font-mono align-top">{evt.pid}</td>
+                  <td className="px-3 py-1.5 font-mono text-gray-700 align-top">{evt.process_name}</td>
+                  <td className="px-3 py-1.5 text-gray-500 font-mono align-top">
+                    {!isOpen ? (
+                      <span className="truncate block max-w-[600px]">{evt.process_cmdline || evt.process_exe || '-'}</span>
+                    ) : (
+                      <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                        <div className="text-gray-700 break-all whitespace-pre-wrap">{evt.process_cmdline || evt.process_exe || '-'}</div>
+                        {evt.parent_name && <div className="text-gray-400">Parent: {evt.parent_name} (PID {evt.parent_pid})</div>}
+                        <pre className="text-xs bg-gray-900 text-gray-100 rounded p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
 {JSON.stringify(evt.params, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
+                        </pre>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
             {events.length === 0 && (
               <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No events</td></tr>
             )}
