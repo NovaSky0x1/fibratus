@@ -21,7 +21,9 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
+	"time"
+
 	"github.com/rabbitstack/fibratus/internal/evasion"
 	"github.com/rabbitstack/fibratus/pkg/aggregator"
 	"github.com/rabbitstack/fibratus/pkg/alertsender"
@@ -142,18 +144,33 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 	psnap := ps.NewSnapshotter(hsnap, cfg)
 
 	// Detect enrollment data EARLY — before rules, output, and event pipeline setup.
-	// This ensures fleet mode is active before the aggregator picks an output sink.
-	if !cfg.Fleet.Enabled {
+	// After `fibratus enroll`, all connection info is on disk. No config file needed.
+	// This populates the fleet config from enrollment data, overriding any YAML values.
+	{
 		exe, _ := os.Executable()
 		if exe == "" {
 			exe = "."
 		}
 		dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
-		agentFile := filepath.Join(dataDir, "agent-id")
-		serverFile := filepath.Join(dataDir, "server-url")
-		if fileExists(agentFile) && fileExists(serverFile) {
-			log.Info("fleet: enrollment data detected — auto-enabling fleet mode")
+		if serverURL := loadFileContent(filepath.Join(dataDir, "server-url")); serverURL != "" {
 			cfg.Fleet.Enabled = true
+			cfg.Fleet.ServerURL = serverURL
+			log.Infof("fleet: enrollment detected — server: %s", serverURL)
+		}
+		if orgID := loadFileContent(filepath.Join(dataDir, "org-id")); orgID != "" {
+			cfg.Fleet.OrgID = orgID
+		}
+		// Set defaults if not already configured
+		if cfg.Fleet.Enabled {
+			if cfg.Fleet.HeartbeatInterval <= 0 {
+				cfg.Fleet.HeartbeatInterval = 30 * time.Second
+			}
+			if cfg.Fleet.RuleSyncInterval <= 0 {
+				cfg.Fleet.RuleSyncInterval = 5 * time.Minute
+			}
+			if cfg.Fleet.Timeout <= 0 {
+				cfg.Fleet.Timeout = 10 * time.Second
+			}
 		}
 	}
 
@@ -316,11 +333,8 @@ func (f *App) Run(args []string) error {
 		}
 	}
 	// Initialize fleet client if fleet mode is enabled (set in NewApp via enrollment detection)
-	fmt.Printf("\n\n=== FLEET MODE: enabled=%v server=%s org=%s ===\n\n", cfg.Fleet.Enabled, cfg.Fleet.ServerURL, cfg.Fleet.OrgID)
 	if cfg.Fleet.Enabled {
-		fmt.Println("=== FLEET: INITIALIZING CLIENT ===")
 		if err := f.initFleetClient(cfg); err != nil {
-			fmt.Printf("=== FLEET: INIT FAILED: %v ===\n", err)
 			log.Warnf("fleet: failed to initialize: %v", err)
 		}
 	}
@@ -554,6 +568,14 @@ func (f *App) stop() {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func loadFileContent(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func (f *App) isSingleInstance() bool {
