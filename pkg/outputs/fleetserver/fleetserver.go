@@ -109,40 +109,29 @@ func (f *fleetOutput) Connect() error {
 func (f *fleetOutput) Close() error { return nil }
 
 // telemetryEventNames is the set of event names worth storing on the
-// fleet server. This dramatically reduces volume by dropping noisy
-// events like registry reads, handle operations, threadpool callbacks,
-// and memory allocations that have no security value at the fleet level.
+// fleet server. Only security-relevant events are included. High-volume
+// noise (file reads, registry reads, handle ops, threadpool callbacks,
+// DLL loads, memory ops) is excluded to keep telemetry sustainable.
+//
+// At ~1 agent: expect ~50-200 events/sec instead of ~5000+/sec.
 var telemetryEventNames = map[string]bool{
-	// Process lifecycle
+	// Process lifecycle — core EDR visibility
 	"CreateProcess":    true,
 	"TerminateProcess": true,
-	"OpenProcess":      true,
-	// Thread
-	"CreateThread":    true,
-	"TerminateThread": true,
-	// File mutations
-	"CreateFile": true,
-	"WriteFile":  true,
+	// File mutations — persistence, staging, exfil indicators
 	"DeleteFile": true,
 	"RenameFile": true,
-	// Registry mutations
+	// Registry mutations — persistence, config tampering
 	"RegCreateKey":   true,
 	"RegSetValue":    true,
 	"RegDeleteKey":   true,
 	"RegDeleteValue": true,
-	// Network
-	"Send":    true,
-	"Recv":    true,
+	// Network connections — C2, lateral movement, exfil
 	"Connect": true,
 	"Accept":  true,
-	"DNS":     true,
-	// Image/DLL loading
-	"LoadImage":   true,
-	"UnloadImage": true,
-	// Memory (evasion-relevant)
-	"VirtualAlloc": true,
-	"VirtualFree":  true,
-	"MapViewFile":  true,
+	// DNS — domain resolution for C2/exfil detection
+	"QueryDns": true,
+	"ReplyDns": true,
 }
 
 // securityRelevant filters the batch to only include events worth
