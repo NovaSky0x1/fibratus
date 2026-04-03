@@ -22,10 +22,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
+	"gopkg.in/yaml.v3"
 )
 
 // MacroStore implements store.MacroStore using PostgreSQL.
@@ -89,10 +89,7 @@ func (s *MacroStore) Delete(ctx context.Context, orgID, id string) error {
 }
 
 // GetAllForOrg returns all macros for an org formatted as YAML for agent rule sync.
-// The format must match what the agent's LoadMacros expects:
-//
-//	- macro: spawn_process
-//	  expr: evt.name = 'CreateProcess'
+// Uses proper YAML marshaling to handle special characters in expressions.
 func (s *MacroStore) GetAllForOrg(ctx context.Context, orgID string) (string, error) {
 	macros, err := s.List(ctx, orgID)
 	if err != nil {
@@ -101,15 +98,30 @@ func (s *MacroStore) GetAllForOrg(ctx context.Context, orgID string) (string, er
 	if len(macros) == 0 {
 		return "", nil
 	}
-	var b strings.Builder
-	for _, m := range macros {
-		fmt.Fprintf(&b, "- macro: %s\n  expr: %s\n", m.Name, m.Expr)
-		if m.Description != "" {
-			fmt.Fprintf(&b, "  description: %s\n", m.Description)
-		}
-		b.WriteByte('\n')
+
+	type yamlMacro struct {
+		Macro       string `yaml:"macro"`
+		Expr        string `yaml:"expr"`
+		Description string `yaml:"description,omitempty"`
 	}
-	return b.String(), nil
+
+	out := make([]yamlMacro, 0, len(macros))
+	for _, m := range macros {
+		if m.Expr == "" {
+			continue // skip macros with empty expressions
+		}
+		out = append(out, yamlMacro{
+			Macro:       m.Name,
+			Expr:        m.Expr,
+			Description: m.Description,
+		})
+	}
+
+	data, err := yaml.Marshal(out)
+	if err != nil {
+		return "", fmt.Errorf("marshal macros: %w", err)
+	}
+	return string(data), nil
 }
 
 func scanMacro(row *sql.Row) (*fleet.Macro, error) {
