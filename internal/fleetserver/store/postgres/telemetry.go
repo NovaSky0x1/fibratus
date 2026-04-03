@@ -42,13 +42,7 @@ func NewTelemetryStore(db *sql.DB) *TelemetryStore {
 }
 
 func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostname string, events []json.RawMessage) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(ctx,
+	stmt, err := s.db.PrepareContext(ctx,
 		`INSERT INTO telemetry_events (org_id, agent_id, agent_hostname, seq, timestamp,
 			event_name, event_category, pid, tid, process_name, process_exe,
 			process_cmdline, parent_pid, parent_name, params, metadata, raw_event)
@@ -122,7 +116,7 @@ func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostnam
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.TelemetrySearchOpts) ([]store.TelemetryEvent, int, error) {
