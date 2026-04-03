@@ -19,9 +19,11 @@
 package handler
 
 import (
+	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -47,6 +49,20 @@ func generateID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// decodeBody decodes JSON from the request body, handling gzip if needed.
+func decodeBody(r *http.Request, v interface{}) error {
+	var reader io.Reader = r.Body
+	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(reader)
+		if err != nil {
+			return err
+		}
+		defer gz.Close()
+		reader = gz
+	}
+	return json.NewDecoder(reader).Decode(v)
 }
 
 // extractPathParam extracts a path segment between a prefix and suffix.

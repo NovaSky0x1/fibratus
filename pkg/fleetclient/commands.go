@@ -59,16 +59,19 @@ func (c *Client) PollCommands() ([]*fleet.Command, error) {
 
 // ReportCommandResult sends the result of a command back to the server.
 func (c *Client) ReportCommandResult(cmdID, status string, result json.RawMessage, errMsg string) error {
-	body, _ := json.Marshal(fleet.CommandResultRequest{
+	body, err := json.Marshal(fleet.CommandResultRequest{
 		Status:       status,
 		Result:       result,
 		ErrorMessage: errMsg,
 	})
+	if err != nil {
+		return fmt.Errorf("fleet report: marshal error: %w", err)
+	}
+
+	log.Debugf("fleet: reporting result for %s (status=%s, body_len=%d)", cmdID, status, len(body))
 
 	path := fmt.Sprintf("/agent/commands/%s/result", cmdID)
-	resp, err := c.doRequestWithHeaders(http.MethodPost, path, body, map[string]string{
-		"X-Agent-ID": c.AgentID(),
-	})
+	resp, err := c.doRequestWithHeaders(http.MethodPost, path, body, nil)
 	if err != nil {
 		return err
 	}

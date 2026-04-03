@@ -47,7 +47,7 @@ func NewAgentHandler(agents store.AgentStore) *AgentHandler {
 // one by hostname.
 func (h *AgentHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req fleet.RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeBody(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -121,7 +121,7 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var hb fleet.Heartbeat
-	if err := json.NewDecoder(r.Body).Decode(&hb); err != nil {
+	if err := decodeBody(r, &hb); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
