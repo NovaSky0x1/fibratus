@@ -26,6 +26,7 @@ import (
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/validator"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -90,22 +91,26 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
 	if strings.Contains(contentType, "yaml") || strings.Contains(contentType, "x-yaml") {
-		// Parse YAML rule
+		// Validate YAML against schema before parsing
+		if err := validator.ValidateRuleYAML(body); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if err := parseYAMLRule(body, &rule); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid rule YAML: "+err.Error())
 			return
 		}
 		rule.RawYAML = string(body)
 	} else {
-		// Parse JSON
 		if err := json.Unmarshal(body, &rule); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid rule JSON: "+err.Error())
 			return
 		}
 	}
 
-	if rule.Name == "" || rule.Condition == "" {
-		writeError(w, http.StatusBadRequest, "rule name and condition are required")
+	// Validate rule fields
+	if err := validator.ValidateRuleFields(rule.Name, rule.Condition, rule.Severity); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -175,6 +180,10 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var rule fleet.Rule
 	contentType := r.Header.Get("Content-Type")
 	if strings.Contains(contentType, "yaml") || strings.Contains(contentType, "x-yaml") {
+		if err := validator.ValidateRuleYAML(body); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if err := parseYAMLRule(body, &rule); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid rule YAML: "+err.Error())
 			return
@@ -184,6 +193,13 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(body, &rule); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
+		}
+		// Validate fields for JSON updates (skip for enable/disable toggles)
+		if rule.Condition != "" {
+			if err := validator.ValidateRuleFields(rule.Name, rule.Condition, rule.Severity); err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 		}
 	}
 

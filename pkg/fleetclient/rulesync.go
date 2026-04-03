@@ -26,7 +26,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -150,31 +149,16 @@ func (c *Client) PullRules() (string, bool, error) {
 	return rulesDir, true, nil
 }
 
-// StartRuleSync begins the background rule synchronization goroutine.
-// It calls onUpdate whenever rules change so the engine can recompile.
+// StartRuleSync registers a rule sync callback that runs on every heartbeat.
+// Rules are checked every heartbeat interval (~30s) using ETag caching
+// so unchanged rules don't cause unnecessary downloads.
 func (c *Client) StartRuleSync(onUpdate RuleSyncCallback) {
-	c.wg.Add(1)
-	go c.ruleSyncLoop(onUpdate)
-}
+	c.mu.Lock()
+	c.ruleSyncCallback = onUpdate
+	c.mu.Unlock()
 
-func (c *Client) ruleSyncLoop(onUpdate RuleSyncCallback) {
-	defer c.wg.Done()
-
-	ticker := time.NewTicker(c.config.RuleSyncInterval)
-	defer ticker.Stop()
-
-	// Initial sync
+	// Initial sync immediately
 	c.syncRules(onUpdate)
-
-	for {
-		select {
-		case <-ticker.C:
-			c.syncRules(onUpdate)
-		case <-c.stopCh:
-			log.Info("fleet: rule sync stopped")
-			return
-		}
-	}
 }
 
 func (c *Client) syncRules(onUpdate RuleSyncCallback) {

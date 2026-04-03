@@ -71,4 +71,12 @@ func (c *Client) sendHeartbeat(collector HeartbeatCollector) {
 	if err := c.SendHeartbeat(hb); err != nil {
 		log.Warnf("fleet: heartbeat failed: %v", err)
 	}
+
+	// Check for rule updates on every heartbeat (ETag ensures no-op if unchanged)
+	c.mu.RLock()
+	cb := c.ruleSyncCallback
+	c.mu.RUnlock()
+	if cb != nil {
+		c.syncRules(cb)
+	}
 }

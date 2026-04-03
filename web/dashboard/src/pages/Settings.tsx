@@ -379,6 +379,11 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* ──────────────────────────────────────────── */}
+      {/* Detection as Code — GitHub Sync */}
+      {/* ──────────────────────────────────────────── */}
+      <GitHubSyncSection />
+
       {/* Delete token confirmation dialog */}
       <ConfirmDialog
         open={!!deleteTokenTarget}
@@ -394,6 +399,156 @@ export default function Settings() {
         }}
         onCancel={() => setDeleteTokenTarget(null)}
       />
+    </div>
+  )
+}
+
+function GitHubSyncSection() {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({ repo_url: '', branch: 'main', path: 'rules/', token: '', interval: 30, enabled: false })
+  const [loaded, setLoaded] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number; errors: string[]; duration: string } | null>(null)
+
+  const { data } = useQuery({
+    queryKey: ['github-sync-config'],
+    queryFn: () => api.getGitHubSyncConfig(),
+  })
+
+  // Load config into form on first fetch
+  if (data?.data && !loaded) {
+    const cfg = data.data as Record<string, unknown>
+    setForm({
+      repo_url: (cfg.repo_url as string) || '',
+      branch: (cfg.branch as string) || 'main',
+      path: (cfg.path as string) || 'rules/',
+      token: (cfg.token as string) === '***configured***' ? '' : '',
+      interval: (cfg.interval as number) || 30,
+      enabled: (cfg.enabled as boolean) || false,
+    })
+    setLoaded(true)
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.saveGitHubSyncConfig(form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['github-sync-config'] })
+    },
+  })
+
+  const syncMutation = useMutation({
+    mutationFn: () => api.triggerGitHubSync(),
+    onSuccess: (res) => {
+      if (res.data) setSyncResult(res.data as typeof syncResult)
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Detection as Code</h2>
+          <p className="mt-1 text-sm text-gray-500">Sync detection rules from a GitHub repository. Rules are validated before import.</p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Repository API URL</label>
+            <input
+              value={form.repo_url}
+              onChange={e => setForm({ ...form, repo_url: e.target.value })}
+              placeholder="https://api.github.com/repos/owner/repo"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            />
+            <p className="mt-1 text-xs text-gray-400">GitHub API URL for the repository containing detection rules</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+            <input
+              value={form.branch}
+              onChange={e => setForm({ ...form, branch: e.target.value })}
+              placeholder="main"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Rules Path</label>
+            <input
+              value={form.path}
+              onChange={e => setForm({ ...form, path: e.target.value })}
+              placeholder="rules/"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">GitHub Token (PAT)</label>
+            <input
+              type="password"
+              value={form.token}
+              onChange={e => setForm({ ...form, token: e.target.value })}
+              placeholder="ghp_..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            />
+            <p className="mt-1 text-xs text-gray-400">Optional for public repos. Required for private repos.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} className="rounded" />
+            <span className="text-sm text-gray-700">Enable automatic sync</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">every</span>
+            <input
+              type="number"
+              value={form.interval}
+              onChange={e => setForm({ ...form, interval: Number(e.target.value) })}
+              min={5}
+              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-center"
+            />
+            <span className="text-sm text-gray-500">minutes</span>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+          >
+            {saveMutation.isPending ? 'Saving...' : 'Save Configuration'}
+          </button>
+          <button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending || !form.repo_url}
+            className="rounded-lg border border-fibratus-300 bg-fibratus-50 px-4 py-2 text-sm font-medium text-fibratus-700 hover:bg-fibratus-100 disabled:opacity-50"
+          >
+            {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
+          </button>
+        </div>
+
+        {syncResult && (
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <h4 className="text-sm font-medium text-gray-900">Sync Result</h4>
+            <div className="mt-2 flex gap-6 text-sm">
+              <span className="text-emerald-700">{syncResult.created} created</span>
+              <span className="text-blue-700">{syncResult.updated} updated</span>
+              <span className="text-gray-500">{syncResult.skipped} skipped</span>
+              <span className="text-gray-400">{syncResult.duration}</span>
+            </div>
+            {syncResult.errors && syncResult.errors.length > 0 && (
+              <div className="mt-2 max-h-32 overflow-auto">
+                {syncResult.errors.map((err, i) => (
+                  <div key={i} className="text-xs text-red-600 py-0.5">{err}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

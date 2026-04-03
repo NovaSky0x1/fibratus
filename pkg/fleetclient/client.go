@@ -50,15 +50,16 @@ var userAgent = version.ProductToken()
 
 // Client handles communication with the fleet server.
 type Client struct {
-	httpClient *http.Client
-	config     Config
-	agentID    string
-	hostname   string
-	baseURL    string
-	dataDir    string
-	mu         sync.RWMutex
-	stopCh     chan struct{}
-	wg         sync.WaitGroup
+	httpClient       *http.Client
+	config           Config
+	agentID          string
+	hostname         string
+	baseURL          string
+	dataDir          string
+	mu               sync.RWMutex
+	stopCh           chan struct{}
+	wg               sync.WaitGroup
+	ruleSyncCallback RuleSyncCallback
 }
 
 // New creates a new fleet client with the given configuration.

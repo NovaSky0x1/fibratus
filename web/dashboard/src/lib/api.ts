@@ -276,6 +276,13 @@ export const api = {
     return fetchApi<AuditEntry[]>(orgPath(`/audit-log?${q}`))
   },
 
+  // GitHub Sync
+  getGitHubSyncConfig: () => fetchApi<unknown>(orgPath('/github-sync')),
+  saveGitHubSyncConfig: (data: { repo_url: string; branch: string; path: string; token: string; interval: number; enabled: boolean }) =>
+    fetchApi<unknown>(orgPath('/github-sync'), { method: 'PUT', body: JSON.stringify(data) }),
+  triggerGitHubSync: () =>
+    fetchApi<{ created: number; updated: number; skipped: number; errors: string[]; duration: string }>(orgPath('/github-sync/trigger'), { method: 'POST' }),
+
   // Enrollment Tokens
   getEnrollmentTokens: () => fetchApi<EnrollmentToken[]>(orgPath('/enrollment-tokens')),
   createEnrollmentToken: (data: { name: string; max_uses: number; expires_in: number }) =>

@@ -135,6 +135,8 @@ func (s *Server) Run(ctx context.Context) error {
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
 	macroHandler := handler.NewMacroHandler(macroStore, auditStore, userStore)
 	auditHandler := handler.NewAuditHandler(auditStore)
+	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
+	githubSyncHandler.StartPeriodicSync(ctx)
 
 	// ═══════════════════════════════════════════════════════════
 	// Route setup
@@ -272,6 +274,14 @@ func (s *Server) Run(ctx context.Context) error {
 			macroHandler.Update(w, r)
 		case strings.HasPrefix(subpath, "/macros/") && r.Method == http.MethodDelete:
 			macroHandler.Delete(w, r)
+
+		// GitHub Sync
+		case subpath == "/github-sync" && r.Method == http.MethodGet:
+			githubSyncHandler.GetConfig(w, r)
+		case subpath == "/github-sync" && r.Method == http.MethodPut:
+			githubSyncHandler.SaveConfig(w, r)
+		case subpath == "/github-sync/trigger" && r.Method == http.MethodPost:
+			githubSyncHandler.TriggerSync(w, r)
 
 		// Audit Log
 		case subpath == "/audit-log" && r.Method == http.MethodGet:
