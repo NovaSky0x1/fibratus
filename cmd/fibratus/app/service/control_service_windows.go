@@ -34,8 +34,8 @@ import (
 )
 
 var startCommand = &cobra.Command{
-	Use:   "start",
-	RunE:  startService,
+	Use:  "start",
+	RunE: func(cmd *cobra.Command, args []string) error { return StartService() },
 	Short: "Start fibratus service",
 }
 
@@ -80,7 +80,8 @@ func init() {
 	Command.AddCommand(removeCommand)
 }
 
-func startService(cmd *cobra.Command, args []string) error {
+// StartService starts the fibratus Windows service.
+func StartService() error {
 	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
 		return fmt.Errorf("couldn't connect to Windows Service Manager: %v", err)
@@ -92,7 +93,7 @@ func startService(cmd *cobra.Command, args []string) error {
 	s, err := windows.OpenService(
 		m.Handle,
 		windows.StringToUTF16Ptr(svcName),
-		windows.SERVICE_START|windows.SERVICE_STOP,
+		windows.SERVICE_START|windows.SERVICE_STOP|windows.SERVICE_QUERY_STATUS,
 	)
 	if err != nil {
 		return fmt.Errorf("could not open fibratus service: %v", err)
@@ -101,22 +102,20 @@ func startService(cmd *cobra.Command, args []string) error {
 	defer func() {
 		_ = scm.Close()
 	}()
-	err = scm.Start()
-	if err != nil {
+	if err := scm.Start(); err != nil {
 		return fmt.Errorf("could not start fibratus service: %v", err)
 	}
 
 	start := time.Now()
-	var status svc.Status
-	for time.Since(start) > 5*time.Second {
-		status, err = scm.Query()
+	for time.Since(start) < 5*time.Second {
+		status, err := scm.Query()
 		if err != nil {
 			return fmt.Errorf("failed to get fibratus service status: %v", err)
 		}
-
 		if status.State == svc.Running {
 			return nil
 		}
+		time.Sleep(300 * time.Millisecond)
 	}
 	return nil
 }
@@ -129,7 +128,7 @@ func restartService(cmd *cobra.Command, args []string) error {
 	if err := stopSvc(); err != nil {
 		return err
 	}
-	return startService(cmd, args)
+	return StartService()
 }
 
 func stopSvc() error {

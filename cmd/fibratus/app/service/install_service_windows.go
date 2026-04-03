@@ -21,6 +21,8 @@ package service
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -35,10 +37,20 @@ var ErrServiceAlreadyInstalled = errors.New("fibratus service is already install
 var installCommand = &cobra.Command{
 	Use:   "install",
 	Short: "Install fibratus within the Windows service control manager",
-	RunE:  installService,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return InstallService(InstallServiceOpts{})
+	},
 }
 
-func installService(cmd *cobra.Command, args []string) error {
+// InstallServiceOpts configures service installation behavior.
+type InstallServiceOpts struct {
+	// WithRecovery configures the service to restart on failure (3 attempts, 60s delay).
+	WithRecovery bool
+}
+
+// InstallService creates the fibratus Windows service. If the service is
+// already installed, it returns ErrServiceAlreadyInstalled.
+func InstallService(opts InstallServiceOpts) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -78,5 +90,17 @@ func installService(cmd *cobra.Command, args []string) error {
 		}
 		return fmt.Errorf("couldn't create event log record: %v", err)
 	}
+
+	if opts.WithRecovery {
+		recoveryActions := []mgr.RecoveryAction{
+			{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
+			{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
+			{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
+		}
+		if err := s.SetRecoveryActions(recoveryActions, 86400); err != nil {
+			return fmt.Errorf("couldn't set recovery actions: %v", err)
+		}
+	}
+
 	return nil
 }

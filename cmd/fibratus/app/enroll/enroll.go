@@ -38,10 +38,10 @@ import (
 )
 
 var (
-	enrollToken  string
-	serverURL    string
-	dataDir      string
-	insecureTLS  bool
+	enrollToken string
+	serverURL   string
+	dataDir     string
+	insecureTLS bool
 )
 
 // Command is the enroll Cobra command.
@@ -69,18 +69,35 @@ func init() {
 	Command.MarkFlagRequired("server")
 }
 
-func runEnroll(cmd *cobra.Command, args []string) error {
-	// Determine data directory
-	if dataDir == "" {
-		exe, err := os.Executable()
-		if err != nil {
-			exe = "."
-		}
-		dataDir = filepath.Join(filepath.Dir(exe), "..", "data")
-	}
+// EnrollOpts contains the options for agent enrollment.
+type EnrollOpts struct {
+	Token       string
+	ServerURL   string
+	DataDir     string
+	InsecureTLS bool
+}
 
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return fmt.Errorf("failed to create data directory: %w", err)
+// ResolveDataDir returns the data directory path, applying the same
+// default logic used during enrollment.
+func ResolveDataDir(dataDir string) string {
+	if dataDir != "" {
+		return dataDir
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "."
+	}
+	return filepath.Join(filepath.Dir(exe), "..", "data")
+}
+
+// Enroll performs the full enrollment workflow: generates a key pair,
+// creates a CSR, sends it to the fleet server, and stores the resulting
+// certificates and identity data to the data directory.
+func Enroll(opts EnrollOpts) (*fleet.EnrollResponse, error) {
+	dir := ResolveDataDir(opts.DataDir)
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	hostname, err := os.Hostname()
@@ -88,13 +105,13 @@ func runEnroll(cmd *cobra.Command, args []string) error {
 		hostname = "unknown"
 	}
 
-	fmt.Printf("Enrolling agent %s with fleet server %s...\n", hostname, serverURL)
+	fmt.Printf("Enrolling agent %s with fleet server %s...\n", hostname, opts.ServerURL)
 
 	// 1. Generate RSA key pair
 	fmt.Println("  Generating key pair...")
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return fmt.Errorf("failed to generate key: %w", err)
+		return nil, fmt.Errorf("failed to generate key: %w", err)
 	}
 
 	// 2. Create CSR
@@ -105,14 +122,14 @@ func runEnroll(cmd *cobra.Command, args []string) error {
 	}
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, key)
 	if err != nil {
-		return fmt.Errorf("failed to create CSR: %w", err)
+		return nil, fmt.Errorf("failed to create CSR: %w", err)
 	}
 	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
 
 	// 3. Send enrollment request
 	fmt.Println("  Sending enrollment request...")
 	enrollReq := fleet.EnrollRequest{
-		Token:         enrollToken,
+		Token:         opts.Token,
 		Hostname:      hostname,
 		OSVersion:     osVersion(),
 		EngineVersion: version.Get(),
@@ -121,36 +138,35 @@ func runEnroll(cmd *cobra.Command, args []string) error {
 
 	reqBody, err := json.Marshal(enrollReq)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	httpClient := &http.Client{}
-	if insecureTLS {
-		// Allow self-signed server certs during enrollment
+	if opts.InsecureTLS {
 		httpClient.Transport = &http.Transport{
-			TLSClientConfig: nil, // Will be set properly in production
+			TLSClientConfig: nil,
 		}
 	}
 
-	url := serverURL + "/api/v1/enroll"
+	url := opts.ServerURL + "/api/v1/enroll"
 	resp, err := httpClient.Post(url, "application/json", bytes.NewReader(reqBody))
 	if err != nil {
-		return fmt.Errorf("enrollment request failed: %w", err)
+		return nil, fmt.Errorf("enrollment request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusCreated {
 		var apiResp fleet.Response
 		json.Unmarshal(body, &apiResp)
 		if apiResp.Error != nil {
-			return fmt.Errorf("enrollment failed: %s", apiResp.Error.Message)
+			return nil, fmt.Errorf("enrollment failed: %s", apiResp.Error.Message)
 		}
-		return fmt.Errorf("enrollment failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("enrollment failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	// 4. Parse response
@@ -158,58 +174,63 @@ func runEnroll(cmd *cobra.Command, args []string) error {
 		Data fleet.EnrollResponse `json:"data"`
 	}
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	enrollResp := apiResp.Data
 	if enrollResp.AgentID == "" || enrollResp.SignedCert == "" {
-		return fmt.Errorf("server returned incomplete enrollment response")
+		return nil, fmt.Errorf("server returned incomplete enrollment response")
 	}
 
 	// 5. Store certificates and key
 	fmt.Println("  Storing certificates...")
-	certDir := filepath.Join(dataDir, "certs")
+	certDir := filepath.Join(dir, "certs")
 	if err := os.MkdirAll(certDir, 0o700); err != nil {
-		return fmt.Errorf("failed to create cert directory: %w", err)
+		return nil, fmt.Errorf("failed to create cert directory: %w", err)
 	}
 
-	// Write private key
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
 	if err := os.WriteFile(filepath.Join(certDir, "agent.key"), keyPEM, 0o600); err != nil {
-		return fmt.Errorf("failed to write key: %w", err)
+		return nil, fmt.Errorf("failed to write key: %w", err)
 	}
-
-	// Write signed certificate
 	if err := os.WriteFile(filepath.Join(certDir, "agent.crt"), []byte(enrollResp.SignedCert), 0o644); err != nil {
-		return fmt.Errorf("failed to write cert: %w", err)
+		return nil, fmt.Errorf("failed to write cert: %w", err)
 	}
-
-	// Write CA certificate
 	if err := os.WriteFile(filepath.Join(certDir, "ca.crt"), []byte(enrollResp.CACert), 0o644); err != nil {
-		return fmt.Errorf("failed to write CA cert: %w", err)
+		return nil, fmt.Errorf("failed to write CA cert: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "agent-id"), []byte(enrollResp.AgentID), 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write agent ID: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "org-id"), []byte(enrollResp.OrgID), 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write org ID: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "server-url"), []byte(opts.ServerURL), 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write server URL: %w", err)
 	}
 
-	// Write agent ID
-	if err := os.WriteFile(filepath.Join(dataDir, "agent-id"), []byte(enrollResp.AgentID), 0o644); err != nil {
-		return fmt.Errorf("failed to write agent ID: %w", err)
+	return &enrollResp, nil
+}
+
+func runEnroll(cmd *cobra.Command, args []string) error {
+	resp, err := Enroll(EnrollOpts{
+		Token:       enrollToken,
+		ServerURL:   serverURL,
+		DataDir:     dataDir,
+		InsecureTLS: insecureTLS,
+	})
+	if err != nil {
+		return err
 	}
 
-	// Write org ID
-	if err := os.WriteFile(filepath.Join(dataDir, "org-id"), []byte(enrollResp.OrgID), 0o644); err != nil {
-		return fmt.Errorf("failed to write org ID: %w", err)
-	}
+	resolvedDir := ResolveDataDir(dataDir)
+	certDir := filepath.Join(resolvedDir, "certs")
 
-	// Write server URL so the agent can auto-connect on startup
-	if err := os.WriteFile(filepath.Join(dataDir, "server-url"), []byte(serverURL), 0o644); err != nil {
-		return fmt.Errorf("failed to write server URL: %w", err)
-	}
-
-	// 6. Print success
 	fmt.Println("")
 	fmt.Println("  Enrollment successful!")
 	fmt.Println("")
-	fmt.Printf("  Agent ID:      %s\n", enrollResp.AgentID)
-	fmt.Printf("  Organization:  %s\n", enrollResp.OrgID)
+	fmt.Printf("  Agent ID:      %s\n", resp.AgentID)
+	fmt.Printf("  Organization:  %s\n", resp.OrgID)
 	fmt.Printf("  Server:        %s\n", serverURL)
 	fmt.Printf("  Certificates:  %s\n", certDir)
 	fmt.Println("")

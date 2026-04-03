@@ -120,3 +120,15 @@ func removePrivileges(privs ...string) {
 	_ = windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_ADJUST_PRIVILEGES|windows.TOKEN_QUERY, &token)
 	_ = adjustTokenPrivileges(token, PrivilegeRemoved, privs...)
 }
+
+// IsElevated reports whether the current process token is elevated
+// (running as Administrator). Returns false on any error.
+func IsElevated() bool {
+	var token windows.Token
+	err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token)
+	if err != nil {
+		return false
+	}
+	defer token.Close()
+	return token.IsElevated()
+}

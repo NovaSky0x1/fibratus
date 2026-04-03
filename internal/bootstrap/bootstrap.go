@@ -32,6 +32,7 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/config"
 	"github.com/rabbitstack/fibratus/pkg/filament"
 	"github.com/rabbitstack/fibratus/pkg/filter"
+	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 	"github.com/rabbitstack/fibratus/pkg/handle"
 	"github.com/rabbitstack/fibratus/pkg/outputs"
@@ -170,6 +171,22 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 			}
 			if cfg.Fleet.Timeout <= 0 {
 				cfg.Fleet.Timeout = 10 * time.Second
+			}
+		}
+
+		// Verify enrollment data integrity if seal exists
+		if cfg.Fleet.Enabled {
+			if fileExists(filepath.Join(dataDir, ".seal")) {
+				if err := tamper.VerifySeal(dataDir); err != nil {
+					log.Errorf("CRITICAL: enrollment data integrity check failed: %v", err)
+					log.Error("CRITICAL: fleet mode disabled — enrollment data may have been tampered with")
+					cfg.Fleet.Enabled = false
+					cfg.Fleet.ServerURL = ""
+				} else {
+					log.Info("fleet: enrollment data integrity verified")
+				}
+			} else {
+				log.Warn("fleet: no integrity seal found — run 'fibratus setup' to generate one")
 			}
 		}
 	}
