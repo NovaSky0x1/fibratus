@@ -21,6 +21,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -85,10 +86,13 @@ func InstallService(opts InstallServiceOpts) error {
 
 	err = eventlog.InstallAsEventCreate(svcName, eventlog.Error|eventlog.Warning|eventlog.Info)
 	if err != nil {
-		if err := s.Delete(); err != nil {
-			return err
+		// Event log key may already exist from a previous install — not fatal.
+		if !strings.Contains(err.Error(), "already exists") {
+			if err := s.Delete(); err != nil {
+				return err
+			}
+			return fmt.Errorf("couldn't create event log record: %v", err)
 		}
-		return fmt.Errorf("couldn't create event log record: %v", err)
 	}
 
 	if opts.WithRecovery {
