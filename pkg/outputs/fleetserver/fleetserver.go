@@ -136,10 +136,40 @@ var telemetryEventNames = map[string]bool{
 
 // telemetryDropNames is a fast-reject set for noisy events that should
 // never be sent, even if they somehow have metadata attached.
+// telemetryDropNames is a fast-reject set for noisy events that should
+// never be sent, even if they somehow have metadata attached.
 var telemetryDropNames = map[string]bool{
 	"SubmitThreadpoolWork":     true,
 	"SubmitThreadpoolCallback": true,
 	"SetThreadpoolTimer":       true,
+	"VirtualAlloc":             true,
+	"VirtualFree":              true,
+	"MapViewFile":              true,
+	"UnmapViewFile":            true,
+	"CreateHandle":             true,
+	"CloseHandle":              true,
+	"DuplicateHandle":          true,
+	"ReadFile":                 true,
+	"CloseFile":                true,
+	"ReleaseFile":              true,
+	"EnumDirectory":            true,
+	"FileOpEnd":                true,
+	"FileRundown":              true,
+	"SetFileInformation":       true,
+	"RegOpenKey":               true,
+	"RegCloseKey":              true,
+	"RegQueryKey":              true,
+	"RegQueryValue":            true,
+	"RegKCBRundown":            true,
+	"RegCreateKCB":             true,
+	"MapFileRundown":           true,
+	"OpenThread":               true,
+	"ThreadRundown":            true,
+	"SetThreadContext":          true,
+	"ProcessRundown":           true,
+	"ImageRundown":             true,
+	"StackWalk":                true,
+	"CreateSymbolicLinkObject": true,
 }
 
 // securityRelevant filters the batch to only include events worth
