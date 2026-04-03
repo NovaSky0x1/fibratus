@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
@@ -33,13 +34,28 @@ import (
 
 // RuleHandler handles rule management API requests.
 type RuleHandler struct {
-	rules  store.RuleStore
-	agents store.AgentStore
+	rules      store.RuleStore
+	agents     store.AgentStore
+	macrosYAML string
 }
 
-// NewRuleHandler creates a new rule handler.
+// NewRuleHandler creates a new rule handler. It loads macros from the
+// rules/macros directory so they can be prepended to agent rule syncs.
 func NewRuleHandler(rules store.RuleStore, agents store.AgentStore) *RuleHandler {
-	return &RuleHandler{rules: rules, agents: agents}
+	h := &RuleHandler{rules: rules, agents: agents}
+	// Try to load macros from well-known locations
+	for _, path := range []string{
+		"rules/macros/macros.yml",
+		"/opt/fibratus-fleet/src/rules/macros/macros.yml",
+	} {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			h.macrosYAML = string(data)
+			log.Infof("fleet: loaded macros from %s (%d bytes)", path, len(data))
+			break
+		}
+	}
+	return h
 }
 
 // List handles GET /api/v1/orgs/{org_id}/rules
@@ -230,6 +246,12 @@ func (h *RuleHandler) GetForAgent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-yaml")
 	w.Header().Set("ETag", etag)
 	w.WriteHeader(http.StatusOK)
+
+	// Prepend macros so rules can reference them
+	if h.macrosYAML != "" {
+		w.Write([]byte(h.macrosYAML))
+		w.Write([]byte("\n---\n"))
+	}
 
 	for _, rule := range rules {
 		if rule.RawYAML != "" {
