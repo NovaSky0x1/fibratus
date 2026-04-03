@@ -92,7 +92,7 @@ func (h *MacroHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if macro.ID == "" {
-		macro.ID = generateID()
+		macro.ID = GenerateID()
 	}
 	macro.OrgID = orgID
 	if macro.RawYAML == "" {

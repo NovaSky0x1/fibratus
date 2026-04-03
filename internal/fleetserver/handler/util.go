@@ -44,8 +44,8 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	})
 }
 
-// generateID produces a random hex ID for entities.
-func generateID() string {
+// GenerateID produces a random hex ID for entities.
+func GenerateID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return hex.EncodeToString(b)

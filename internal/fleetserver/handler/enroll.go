@@ -97,7 +97,7 @@ func (h *EnrollHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Create agent record
-	agentID := generateID()
+	agentID := GenerateID()
 	now := time.Now().UTC()
 
 	agent := &fleet.Agent{

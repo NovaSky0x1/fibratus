@@ -68,7 +68,7 @@ func (h *EnrollmentTokenHandler) Create(w http.ResponseWriter, r *http.Request) 
 	}
 
 	token := &fleet.EnrollmentToken{
-		ID:        "ft-enroll-" + generateID(),
+		ID:        "ft-enroll-" + GenerateID(),
 		AccountID: accountID,
 		OrgID:     orgID,
 		Name:      req.Name,

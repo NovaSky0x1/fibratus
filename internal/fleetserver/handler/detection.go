@@ -82,7 +82,7 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	det := &fleet.Detection{
-		ID:            generateID(),
+		ID:            GenerateID(),
 		OrgID:         orgID,
 		AgentID:       agentID,
 		AgentHostname: hostname,

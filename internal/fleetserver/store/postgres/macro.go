@@ -89,6 +89,10 @@ func (s *MacroStore) Delete(ctx context.Context, orgID, id string) error {
 }
 
 // GetAllForOrg returns all macros for an org formatted as YAML for agent rule sync.
+// The format must match what the agent's LoadMacros expects:
+//
+//	- macro: spawn_process
+//	  expr: evt.name = 'CreateProcess'
 func (s *MacroStore) GetAllForOrg(ctx context.Context, orgID string) (string, error) {
 	macros, err := s.List(ctx, orgID)
 	if err != nil {
@@ -99,10 +103,11 @@ func (s *MacroStore) GetAllForOrg(ctx context.Context, orgID string) (string, er
 	}
 	var b strings.Builder
 	for _, m := range macros {
-		fmt.Fprintf(&b, "- macro:\n    id: %s\n    expr: >-\n      %s\n", m.Name, m.Expr)
+		fmt.Fprintf(&b, "- macro: %s\n  expr: %s\n", m.Name, m.Expr)
 		if m.Description != "" {
-			fmt.Fprintf(&b, "    description: %s\n", m.Description)
+			fmt.Fprintf(&b, "  description: %s\n", m.Description)
 		}
+		b.WriteByte('\n')
 	}
 	return b.String(), nil
 }

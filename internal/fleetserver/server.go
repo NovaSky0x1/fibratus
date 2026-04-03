@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -34,7 +35,9 @@ import (
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
+	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
 
 	_ "github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -118,6 +121,9 @@ func (s *Server) Run(ctx context.Context) error {
 	// Create stores for new features
 	macroStore := postgres.NewMacroStore(db)
 	auditStore := postgres.NewAuditStore(db)
+
+	// Auto-seed macros from filesystem for each org that has no macros in DB
+	seedMacrosFromFile(ctx, macroStore, orgStore, db)
 
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
@@ -461,6 +467,82 @@ func methodGuard(method string, h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		h(w, r)
+	}
+}
+
+// seedMacrosFromFile imports macros from the rules/macros/ filesystem into the
+// database for each org that has no macros yet. This ensures a smooth transition
+// from file-based macros to DB-managed macros.
+func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgStore store.OrgStore, db *sql.DB) {
+	// Check if there are any macros in the DB already
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM macros").Scan(&count); err != nil {
+		return
+	}
+	if count > 0 {
+		return // macros already seeded
+	}
+
+	// Try to load macros from well-known filesystem locations
+	var macrosData []byte
+	for _, path := range []string{
+		"rules/macros/macros.yml",
+		"/opt/fibratus-fleet/src/rules/macros/macros.yml",
+	} {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			macrosData = data
+			log.Infof("fleet: seeding macros from %s (%d bytes)", path, len(data))
+			break
+		}
+	}
+	if macrosData == nil {
+		return
+	}
+
+	// Parse macros YAML
+	type yamlMacro struct {
+		Name        string `yaml:"macro"`
+		Expr        string `yaml:"expr"`
+		Description string `yaml:"description"`
+	}
+	var macros []yamlMacro
+	if err := yaml.Unmarshal(macrosData, &macros); err != nil {
+		log.Warnf("fleet: failed to parse macros file: %v", err)
+		return
+	}
+
+	// Get all orgs and seed macros for each
+	rows, err := db.QueryContext(ctx, "SELECT id FROM organizations")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var orgIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			orgIDs = append(orgIDs, id)
+		}
+	}
+
+	for _, orgID := range orgIDs {
+		for _, m := range macros {
+			rawYAML := fmt.Sprintf("- macro: %s\n  expr: %s\n", m.Name, m.Expr)
+			macro := &fleet.Macro{
+				ID:          handler.GenerateID(),
+				OrgID:       orgID,
+				Name:        m.Name,
+				Expr:        m.Expr,
+				Description: m.Description,
+				RawYAML:     rawYAML,
+			}
+			if err := macroStore.Create(ctx, macro); err != nil {
+				continue
+			}
+		}
+		log.Infof("fleet: seeded %d macros for org %s", len(macros), orgID)
 	}
 }
 

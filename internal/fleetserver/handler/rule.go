@@ -110,7 +110,7 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if rule.ID == "" {
-		rule.ID = generateID()
+		rule.ID = GenerateID()
 	}
 	rule.OrgID = orgID
 	if rule.Version == "" {

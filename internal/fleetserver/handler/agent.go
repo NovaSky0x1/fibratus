@@ -88,7 +88,7 @@ func (h *AgentHandler) Register(w http.ResponseWriter, r *http.Request) {
 		agent = existing
 	} else {
 		agent = &fleet.Agent{
-			ID:            generateID(),
+			ID:            GenerateID(),
 			OrgID:         orgID,
 			Hostname:      req.Hostname,
 			OSVersion:     req.OSVersion,

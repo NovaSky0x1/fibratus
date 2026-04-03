@@ -98,7 +98,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	// Create account
-	accountID := generateID()
+	accountID := GenerateID()
 	account := &fleet.Account{
 		ID:        accountID,
 		Name:      req.AccountName,
@@ -117,7 +117,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	if orgName == "" {
 		orgName = req.AccountName
 	}
-	orgID := generateID()
+	orgID := GenerateID()
 	org := &fleet.Organization{
 		ID:        orgID,
 		AccountID: accountID,
@@ -133,7 +133,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create user
-	userID := generateID()
+	userID := GenerateID()
 	user := &fleet.User{
 		ID:        userID,
 		Email:     req.Email,
@@ -260,7 +260,7 @@ func (h *AuthHandler) CreateOrganization(w http.ResponseWriter, r *http.Request)
 	}
 
 	org := &fleet.Organization{
-		ID:        generateID(),
+		ID:        GenerateID(),
 		AccountID: accountID,
 		Name:      req.Name,
 		Slug:      req.Slug,

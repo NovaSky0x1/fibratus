@@ -110,7 +110,7 @@ func (h *CommandHandler) CreateCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmd := &fleet.Command{
-		ID:             generateID(),
+		ID:             GenerateID(),
 		OrgID:          orgID,
 		AgentID:        agentID,
 		Type:           req.Type,

@@ -94,7 +94,7 @@ func logAudit(r *http.Request, auditStore store.AuditStore, userStore store.User
 	}
 
 	entry := &fleet.AuditEntry{
-		ID:           generateID(),
+		ID:           GenerateID(),
 		OrgID:        orgID,
 		UserID:       userID,
 		UserEmail:    email,
