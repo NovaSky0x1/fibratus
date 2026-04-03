@@ -108,30 +108,15 @@ func (f *fleetOutput) Connect() error {
 
 func (f *fleetOutput) Close() error { return nil }
 
-// telemetryEventNames is the set of event names worth storing on the
-// fleet server. Only security-relevant events are included. High-volume
-// noise (file reads, registry reads, handle ops, threadpool callbacks,
-// DLL loads, memory ops) is excluded to keep telemetry sustainable.
-//
-// At ~1 agent: expect ~50-200 events/sec instead of ~5000+/sec.
+// telemetryEventNames is the minimal set of events stored on the fleet
+// server. Everything else is only sent if it triggered a detection rule
+// or evasion flag. This keeps per-agent volume to ~10-30 events/min.
 var telemetryEventNames = map[string]bool{
-	// Process lifecycle — core EDR visibility
-	"CreateProcess":    true,
-	"TerminateProcess": true,
-	// File mutations — persistence, staging, exfil indicators
-	"DeleteFile": true,
-	"RenameFile": true,
-	// Registry mutations — persistence, config tampering
-	"RegCreateKey":   true,
-	"RegSetValue":    true,
-	"RegDeleteKey":   true,
-	"RegDeleteValue": true,
-	// Network connections — C2, lateral movement, exfil
-	"Connect": true,
-	"Accept":  true,
-	// DNS — domain resolution for C2/exfil detection
-	"QueryDns": true,
-	"ReplyDns": true,
+	"CreateProcess": true, // process execution — core EDR visibility
+	"Connect":       true, // outbound connections — C2, lateral movement
+	"QueryDns":      true, // DNS resolution — C2/exfil domain detection
+	"ReplyDns":      true, // DNS answers
+	"RegSetValue":   true, // registry value writes — persistence, config tampering
 }
 
 // telemetryDropNames is a fast-reject set for noisy events that should

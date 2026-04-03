@@ -117,7 +117,7 @@ export default function FileBrowser({ agentId }: Props) {
           onError('Failed to poll command status')
         }
       }
-      pollRef.current = setInterval(poll, 2000)
+      pollRef.current = setInterval(poll, 500)
       // Also run immediately
       poll()
     },

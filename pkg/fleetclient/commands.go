@@ -89,8 +89,8 @@ func (c *Client) StartCommandLoop(executor CommandExecutor) {
 func (c *Client) commandLoop(executor CommandExecutor) {
 	defer c.wg.Done()
 
-	// Poll every 5 seconds for commands
-	ticker := time.NewTicker(5 * time.Second)
+	// Poll every second for commands — low latency for interactive use
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for {
