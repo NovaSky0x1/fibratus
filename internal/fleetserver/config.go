@@ -30,11 +30,22 @@ import (
 type Config struct {
 	Server        ServerConfig        `yaml:"server"`
 	Database      DatabaseConfig      `yaml:"database"`
+	ClickHouse    ClickHouseConfig    `yaml:"clickhouse"`
 	Elasticsearch ElasticsearchConfig `yaml:"elasticsearch"`
 	Auth          AuthConfig          `yaml:"auth"`
 	Agent         AgentConfig         `yaml:"agent"`
 	Logging       LoggingConfig       `yaml:"logging"`
 	Dashboard     DashboardConfig     `yaml:"dashboard"`
+}
+
+// ClickHouseConfig configures the ClickHouse connection for telemetry.
+type ClickHouseConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Database string `yaml:"database"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
 }
 
 // ServerConfig configures the HTTP server.
@@ -61,6 +72,15 @@ func (d DatabaseConfig) DSN() string {
 		"host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
 		d.Host, d.Port, d.Name, d.User, d.Password, d.SSLMode,
 	)
+}
+
+// DSN builds a ClickHouse connection string for database/sql.
+func (c ClickHouseConfig) DSN() string {
+	dsn := fmt.Sprintf("clickhouse://%s:%d/%s", c.Host, c.Port, c.Database)
+	if c.User != "" {
+		dsn += fmt.Sprintf("?username=%s&password=%s", c.User, c.Password)
+	}
+	return dsn
 }
 
 // ElasticsearchConfig configures the Elasticsearch connection.
@@ -120,6 +140,14 @@ func LoadConfig(path string) (*Config, error) {
 			User:           "fibratus",
 			SSLMode:        "disable",
 			MaxConnections: 50,
+		},
+		ClickHouse: ClickHouseConfig{
+			Enabled:  false,
+			Host:     "localhost",
+			Port:     9000,
+			Database: "fibratus",
+			User:     "default",
+			Password: "",
 		},
 		Elasticsearch: ElasticsearchConfig{
 			Servers:     []string{"http://localhost:9200"},

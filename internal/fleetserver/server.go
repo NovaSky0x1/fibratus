@@ -26,11 +26,17 @@ import (
 	"strings"
 	"time"
 
+	"database/sql"
+
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ca"
+	chstore "github.com/rabbitstack/fibratus/internal/fleetserver/store/clickhouse"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
 	log "github.com/sirupsen/logrus"
+
+	_ "github.com/ClickHouse/clickhouse-go/v2"
 )
 
 // Server is the fleet management HTTP server.
@@ -85,8 +91,28 @@ func (s *Server) Run(ctx context.Context) error {
 	detStore := postgres.NewDetectionStore(db)
 	ruleStore := postgres.NewRuleStore(db)
 	commandStore := postgres.NewCommandStore(db)
-	telemetryStore := postgres.NewTelemetryStore(db)
 	enrollStore := postgres.NewEnrollmentTokenStore(db)
+
+	// Telemetry store: use ClickHouse if configured, otherwise PostgreSQL
+	var telemetryStore store.TelemetryStore
+	if s.config.ClickHouse.Enabled {
+		chDB, err := sql.Open("clickhouse", s.config.ClickHouse.DSN())
+		if err != nil {
+			return fmt.Errorf("clickhouse connect: %w", err)
+		}
+		if err := chDB.Ping(); err != nil {
+			return fmt.Errorf("clickhouse ping: %w", err)
+		}
+		chTelemetry := chstore.NewTelemetryStore(chDB)
+		if err := chTelemetry.Migrate(ctx); err != nil {
+			return fmt.Errorf("clickhouse migrate: %w", err)
+		}
+		telemetryStore = chTelemetry
+		log.Info("fleet: using ClickHouse for telemetry storage")
+	} else {
+		telemetryStore = postgres.NewTelemetryStore(db)
+		log.Info("fleet: using PostgreSQL for telemetry storage")
+	}
 	caManager := ca.NewManager(db)
 
 	// Create handlers
