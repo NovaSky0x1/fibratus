@@ -124,6 +124,22 @@ type CommandStore interface {
 	Get(ctx context.Context, orgID, id string) (*fleet.Command, error)
 }
 
+// MacroStore manages macro persistence. All operations are org-scoped.
+type MacroStore interface {
+	Create(ctx context.Context, macro *fleet.Macro) error
+	Get(ctx context.Context, orgID, id string) (*fleet.Macro, error)
+	List(ctx context.Context, orgID string) ([]*fleet.Macro, error)
+	Update(ctx context.Context, macro *fleet.Macro) error
+	Delete(ctx context.Context, orgID, id string) error
+	GetAllForOrg(ctx context.Context, orgID string) (string, error) // returns combined YAML for agent sync
+}
+
+// AuditStore manages audit log persistence.
+type AuditStore interface {
+	Log(ctx context.Context, entry *fleet.AuditEntry) error
+	List(ctx context.Context, orgID string, opts fleet.ListOptions) ([]*fleet.AuditEntry, int, error)
+}
+
 // TelemetryStore manages telemetry event persistence and search.
 type TelemetryStore interface {
 	BulkIngest(ctx context.Context, orgID, agentID, hostname string, events []json.RawMessage) error

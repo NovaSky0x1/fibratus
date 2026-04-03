@@ -46,11 +46,13 @@ var allowedCommandTypes = map[string]bool{
 type CommandHandler struct {
 	commands store.CommandStore
 	agents   store.AgentStore
+	audit    store.AuditStore
+	users    store.UserStore
 }
 
 // NewCommandHandler creates a new command handler.
-func NewCommandHandler(commands store.CommandStore, agents store.AgentStore) *CommandHandler {
-	return &CommandHandler{commands: commands, agents: agents}
+func NewCommandHandler(commands store.CommandStore, agents store.AgentStore, audit store.AuditStore, users store.UserStore) *CommandHandler {
+	return &CommandHandler{commands: commands, agents: agents, audit: audit, users: users}
 }
 
 // CreateCommand handles POST /api/v1/orgs/{org_id}/agents/{id}/commands
@@ -98,15 +100,25 @@ func (h *CommandHandler) CreateCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := ctxutil.UserIDFromContext(r.Context())
+	userEmail := ""
+	if h.users != nil && userID != "" {
+		user, err := h.users.Get(r.Context(), userID)
+		if err == nil && user != nil {
+			userEmail = user.Email
+		}
+	}
+
 	cmd := &fleet.Command{
-		ID:        generateID(),
-		OrgID:     orgID,
-		AgentID:   agentID,
-		Type:      req.Type,
-		Payload:   req.Payload,
-		Status:    fleet.CmdStatusPending,
-		CreatedBy: ctxutil.UserIDFromContext(r.Context()),
-		CreatedAt: time.Now().UTC(),
+		ID:             generateID(),
+		OrgID:          orgID,
+		AgentID:        agentID,
+		Type:           req.Type,
+		Payload:        req.Payload,
+		Status:         fleet.CmdStatusPending,
+		CreatedBy:      userID,
+		CreatedByEmail: userEmail,
+		CreatedAt:      time.Now().UTC(),
 	}
 
 	if err := h.commands.Create(r.Context(), cmd); err != nil {
@@ -115,11 +127,15 @@ func (h *CommandHandler) CreateCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logAudit(r, h.audit, h.users, userID, orgID, "execute", "command", cmd.ID, req.Type,
+		map[string]interface{}{"agent_id": agentID, "agent_hostname": agent.Hostname, "command_type": req.Type})
+
 	log.WithFields(log.Fields{
 		"command": cmd.ID,
 		"agent":   agentID,
 		"type":    req.Type,
 		"org":     orgID,
+		"user":    userEmail,
 	}).Info("fleet: command queued")
 
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: cmd})

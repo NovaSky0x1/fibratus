@@ -220,10 +220,46 @@ type Command struct {
 	Status       string          `json:"status"`
 	Result       json.RawMessage `json:"result,omitempty"`
 	ErrorMessage string          `json:"error_message,omitempty"`
-	CreatedBy    string          `json:"created_by,omitempty"`
+	CreatedBy      string          `json:"created_by,omitempty"`
+	CreatedByEmail string          `json:"created_by_email,omitempty"`
 	CreatedAt    time.Time       `json:"created_at"`
 	StartedAt    *time.Time      `json:"started_at,omitempty"`
 	CompletedAt  *time.Time      `json:"completed_at,omitempty"`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Macros: reusable filter expressions for detection rules
+// ═══════════════════════════════════════════════════════════════
+
+// Macro represents a reusable filter expression that can be referenced in rule conditions.
+type Macro struct {
+	ID          string    `json:"id"`
+	OrgID       string    `json:"org_id,omitempty"`
+	Name        string    `json:"name"`
+	Expr        string    `json:"expr"`
+	Description string    `json:"description,omitempty"`
+	RawYAML     string    `json:"raw_yaml"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Audit log: tracks all admin actions
+// ═══════════════════════════════════════════════════════════════
+
+// AuditEntry represents a single auditable action taken in the portal.
+type AuditEntry struct {
+	ID           string          `json:"id"`
+	OrgID        string          `json:"org_id"`
+	UserID       string          `json:"user_id,omitempty"`
+	UserEmail    string          `json:"user_email,omitempty"`
+	Action       string          `json:"action"`
+	ResourceType string          `json:"resource_type"`
+	ResourceID   string          `json:"resource_id,omitempty"`
+	ResourceName string          `json:"resource_name,omitempty"`
+	Details      json.RawMessage `json:"details,omitempty"`
+	IPAddress    string          `json:"ip_address,omitempty"`
+	Timestamp    time.Time       `json:"timestamp"`
 }
 
 // ═══════════════════════════════════════════════════════════════

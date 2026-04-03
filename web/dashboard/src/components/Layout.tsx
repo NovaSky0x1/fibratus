@@ -9,6 +9,8 @@ const navigation = [
   { name: 'Detections', href: '/detections' },
   { name: 'Events', href: '/events' },
   { name: 'Rules', href: '/rules' },
+  { name: 'Macros', href: '/macros' },
+  { name: 'Audit Log', href: '/audit-log' },
   { name: 'Settings', href: '/settings' },
 ]
 

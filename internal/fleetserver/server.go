@@ -115,16 +115,22 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	caManager := ca.NewManager(db)
 
+	// Create stores for new features
+	macroStore := postgres.NewMacroStore(db)
+	auditStore := postgres.NewAuditStore(db)
+
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
 	agentHandler := handler.NewAgentHandler(agentStore)
-	commandHandler := handler.NewCommandHandler(commandStore, agentStore)
+	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore)
-	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore)
+	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore, macroStore, auditStore, userStore)
 	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)
 	telemetryHandler := handler.NewTelemetryHandler(telemetryStore, agentStore)
 	enrollTokenHandler := handler.NewEnrollmentTokenHandler(enrollStore)
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
+	macroHandler := handler.NewMacroHandler(macroStore, auditStore, userStore)
+	auditHandler := handler.NewAuditHandler(auditStore)
 
 	// ═══════════════════════════════════════════════════════════
 	// Route setup
@@ -252,6 +258,20 @@ func (s *Server) Run(ctx context.Context) error {
 		// Telemetry
 		case subpath == "/telemetry" && r.Method == http.MethodGet:
 			telemetryHandler.Search(w, r)
+
+		// Macros
+		case subpath == "/macros" && r.Method == http.MethodGet:
+			macroHandler.List(w, r)
+		case subpath == "/macros" && r.Method == http.MethodPost:
+			macroHandler.Create(w, r)
+		case strings.HasPrefix(subpath, "/macros/") && r.Method == http.MethodPut:
+			macroHandler.Update(w, r)
+		case strings.HasPrefix(subpath, "/macros/") && r.Method == http.MethodDelete:
+			macroHandler.Delete(w, r)
+
+		// Audit Log
+		case subpath == "/audit-log" && r.Method == http.MethodGet:
+			auditHandler.List(w, r)
 
 		default:
 			http.NotFound(w, r)

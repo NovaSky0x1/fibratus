@@ -434,6 +434,9 @@ export default function Agents() {
                         <span className={'inline-flex rounded-full px-2 py-0.5 text-xs font-medium ' + statusColor(cmd.status)}>
                           {cmd.status}
                         </span>
+                        {(cmd as Record<string, unknown>).created_by_email && (
+                          <span className="text-xs text-gray-400">by {(cmd as Record<string, unknown>).created_by_email as string}</span>
+                        )}
                       </div>
                       <span className="text-xs text-gray-500">{new Date(cmd.created_at).toLocaleString()}</span>
                     </div>

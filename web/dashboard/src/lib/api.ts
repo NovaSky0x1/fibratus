@@ -125,6 +125,31 @@ export interface Command {
   completed_at: string | null
 }
 
+export interface Macro {
+  id: string
+  org_id: string
+  name: string
+  expr: string
+  description: string
+  raw_yaml: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AuditEntry {
+  id: string
+  org_id: string
+  user_id: string
+  user_email: string
+  action: string
+  resource_type: string
+  resource_id: string
+  resource_name: string
+  details: unknown
+  ip_address: string
+  timestamp: string
+}
+
 export interface EnrollmentToken {
   id: string
   name: string
@@ -235,6 +260,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ type, payload: payload || {} }),
     }),
+
+  // Macros
+  getMacros: () => fetchApi<Macro[]>(orgPath('/macros')),
+  createMacro: (data: Partial<Macro>) =>
+    fetchApi<Macro>(orgPath('/macros'), { method: 'POST', body: JSON.stringify(data) }),
+  updateMacro: (id: string, data: Partial<Macro>) =>
+    fetchApi<Macro>(orgPath(`/macros/${id}`), { method: 'PUT', body: JSON.stringify(data) }),
+  deleteMacro: (id: string) => fetchApi<void>(orgPath(`/macros/${id}`), { method: 'DELETE' }),
+
+  // Audit Log
+  getAuditLog: (params?: Record<string, string>) => {
+    const q = new URLSearchParams(params || {}).toString()
+    return fetchApi<AuditEntry[]>(orgPath(`/audit-log?${q}`))
+  },
 
   // Enrollment Tokens
   getEnrollmentTokens: () => fetchApi<EnrollmentToken[]>(orgPath('/enrollment-tokens')),

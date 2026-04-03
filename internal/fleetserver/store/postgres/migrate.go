@@ -262,6 +262,49 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry_events(org_id, t
 CREATE INDEX IF NOT EXISTS idx_telemetry_event_name ON telemetry_events(org_id, event_name);
 CREATE INDEX IF NOT EXISTS idx_telemetry_process ON telemetry_events(org_id, process_name);
 CREATE INDEX IF NOT EXISTS idx_telemetry_pid ON telemetry_events(org_id, pid);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Macros: reusable filter expressions for detection rules
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS macros (
+    id          TEXT PRIMARY KEY,
+    org_id      TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    expr        TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    raw_yaml    TEXT NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(org_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_macros_org ON macros(org_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Audit log: tracks all admin actions in the portal
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id              TEXT PRIMARY KEY,
+    org_id          TEXT NOT NULL,
+    user_id         TEXT DEFAULT '',
+    user_email      TEXT DEFAULT '',
+    action          TEXT NOT NULL,
+    resource_type   TEXT NOT NULL,
+    resource_id     TEXT DEFAULT '',
+    resource_name   TEXT DEFAULT '',
+    details         JSONB DEFAULT '{}',
+    ip_address      TEXT DEFAULT '',
+    timestamp       TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_org ON audit_log(org_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(org_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(org_id, action);
+
+-- Add created_by_email to commands for display
+ALTER TABLE commands ADD COLUMN IF NOT EXISTS created_by_email TEXT DEFAULT '';
 `
 
 // Migrate runs the database schema migrations.

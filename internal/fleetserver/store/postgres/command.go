@@ -42,9 +42,9 @@ func (s *CommandStore) Create(ctx context.Context, cmd *fleet.Command) error {
 		payload = json.RawMessage(`{}`)
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO commands (id, org_id, agent_id, type, payload, status, created_by, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		cmd.ID, cmd.OrgID, cmd.AgentID, cmd.Type, payload, cmd.Status, cmd.CreatedBy, cmd.CreatedAt,
+		`INSERT INTO commands (id, org_id, agent_id, type, payload, status, created_by, created_by_email, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		cmd.ID, cmd.OrgID, cmd.AgentID, cmd.Type, payload, cmd.Status, cmd.CreatedBy, cmd.CreatedByEmail, cmd.CreatedAt,
 	)
 	return err
 }
@@ -52,7 +52,7 @@ func (s *CommandStore) Create(ctx context.Context, cmd *fleet.Command) error {
 func (s *CommandStore) GetPendingForAgent(ctx context.Context, agentID string) ([]*fleet.Command, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, org_id, agent_id, type, payload, status, result, error_message,
-				created_by, created_at, started_at, completed_at
+				created_by, created_by_email, created_at, started_at, completed_at
 		 FROM commands WHERE agent_id = $1 AND status = 'pending'
 		 ORDER BY created_at ASC`, agentID)
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *CommandStore) ListByAgent(ctx context.Context, orgID, agentID string, l
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, org_id, agent_id, type, payload, status, result, error_message,
-				created_by, created_at, started_at, completed_at
+				created_by, created_by_email, created_at, started_at, completed_at
 		 FROM commands WHERE org_id = $1 AND agent_id = $2
 		 ORDER BY created_at DESC LIMIT $3`, orgID, agentID, limit)
 	if err != nil {
@@ -115,7 +115,7 @@ func (s *CommandStore) ListByAgent(ctx context.Context, orgID, agentID string, l
 func (s *CommandStore) Get(ctx context.Context, orgID, id string) (*fleet.Command, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, org_id, agent_id, type, payload, status, result, error_message,
-				created_by, created_at, started_at, completed_at
+				created_by, created_by_email, created_at, started_at, completed_at
 		 FROM commands WHERE org_id = $1 AND id = $2`, orgID, id)
 	return scanCommandRow(row)
 }
@@ -127,7 +127,7 @@ func scanCommandRow(row *sql.Row) (*fleet.Command, error) {
 
 	err := row.Scan(
 		&cmd.ID, &cmd.OrgID, &cmd.AgentID, &cmd.Type, &payload, &cmd.Status, &result,
-		&cmd.ErrorMessage, &cmd.CreatedBy, &cmd.CreatedAt, &startedAt, &completedAt,
+		&cmd.ErrorMessage, &cmd.CreatedBy, &cmd.CreatedByEmail, &cmd.CreatedAt, &startedAt, &completedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -154,7 +154,7 @@ func scanCommandRows(rows *sql.Rows) (*fleet.Command, error) {
 
 	err := rows.Scan(
 		&cmd.ID, &cmd.OrgID, &cmd.AgentID, &cmd.Type, &payload, &cmd.Status, &result,
-		&cmd.ErrorMessage, &cmd.CreatedBy, &cmd.CreatedAt, &startedAt, &completedAt,
+		&cmd.ErrorMessage, &cmd.CreatedBy, &cmd.CreatedByEmail, &cmd.CreatedAt, &startedAt, &completedAt,
 	)
 	if err != nil {
 		return nil, err

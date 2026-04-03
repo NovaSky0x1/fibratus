@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
@@ -34,28 +33,16 @@ import (
 
 // RuleHandler handles rule management API requests.
 type RuleHandler struct {
-	rules      store.RuleStore
-	agents     store.AgentStore
-	macrosYAML string
+	rules  store.RuleStore
+	agents store.AgentStore
+	macros store.MacroStore
+	audit  store.AuditStore
+	users  store.UserStore
 }
 
-// NewRuleHandler creates a new rule handler. It loads macros from the
-// rules/macros directory so they can be prepended to agent rule syncs.
-func NewRuleHandler(rules store.RuleStore, agents store.AgentStore) *RuleHandler {
-	h := &RuleHandler{rules: rules, agents: agents}
-	// Try to load macros from well-known locations
-	for _, path := range []string{
-		"rules/macros/macros.yml",
-		"/opt/fibratus-fleet/src/rules/macros/macros.yml",
-	} {
-		data, err := os.ReadFile(path)
-		if err == nil {
-			h.macrosYAML = string(data)
-			log.Infof("fleet: loaded macros from %s (%d bytes)", path, len(data))
-			break
-		}
-	}
-	return h
+// NewRuleHandler creates a new rule handler.
+func NewRuleHandler(rules store.RuleStore, agents store.AgentStore, macros store.MacroStore, audit store.AuditStore, users store.UserStore) *RuleHandler {
+	return &RuleHandler{rules: rules, agents: agents, macros: macros, audit: audit, users: users}
 }
 
 // List handles GET /api/v1/orgs/{org_id}/rules
@@ -140,6 +127,8 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := ctxutil.UserIDFromContext(r.Context())
+	logAudit(r, h.audit, h.users, userID, orgID, "create", "rule", rule.ID, rule.Name, nil)
 	log.Infof("fleet: rule created: %s (%s) in org %s", rule.Name, rule.ID, orgID)
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: rule})
 }
@@ -207,12 +196,15 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := ctxutil.UserIDFromContext(r.Context())
+	logAudit(r, h.audit, h.users, userID, orgID, "update", "rule", ruleID, rule.Name, nil)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: rule})
 }
 
 // Delete handles DELETE /api/v1/orgs/{org_id}/rules/{id}
 func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
+	userID := ctxutil.UserIDFromContext(r.Context())
 	parts := strings.Split(r.URL.Path, "/rules/")
 	if len(parts) < 2 || parts[1] == "" {
 		writeError(w, http.StatusBadRequest, "rule ID required")
@@ -220,10 +212,18 @@ func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	ruleID := strings.TrimSuffix(parts[1], "/")
 
+	// Get name for audit before deleting
+	existing, _ := h.rules.Get(r.Context(), orgID, ruleID)
+	name := ""
+	if existing != nil {
+		name = existing.Name
+	}
+
 	if err := h.rules.Delete(r.Context(), orgID, ruleID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete rule")
 		return
 	}
+	logAudit(r, h.audit, h.users, userID, orgID, "delete", "rule", ruleID, name, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -263,10 +263,15 @@ func (h *RuleHandler) GetForAgent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", etag)
 	w.WriteHeader(http.StatusOK)
 
-	// Prepend macros so rules can reference them
-	if h.macrosYAML != "" {
-		w.Write([]byte(h.macrosYAML))
-		w.Write([]byte("\n---\n"))
+	// Prepend macros from DB so rules can reference them
+	if h.macros != nil {
+		macrosYAML, err := h.macros.GetAllForOrg(r.Context(), orgID)
+		if err != nil {
+			log.Warnf("fleet: failed to load macros for agent sync: %v", err)
+		} else if macrosYAML != "" {
+			w.Write([]byte(macrosYAML))
+			w.Write([]byte("\n---\n"))
+		}
 	}
 
 	for _, rule := range rules {
