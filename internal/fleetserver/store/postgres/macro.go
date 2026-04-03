@@ -20,10 +20,13 @@ package postgres
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"gopkg.in/yaml.v3"
 )
@@ -40,23 +43,28 @@ func NewMacroStore(db *sql.DB) *MacroStore {
 
 func (s *MacroStore) Create(ctx context.Context, macro *fleet.Macro) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO macros (id, org_id, name, expr, description, raw_yaml, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
-		macro.ID, macro.OrgID, macro.Name, macro.Expr, macro.Description, macro.RawYAML,
+		`INSERT INTO macros (id, org_id, name, expr, list_values, description, raw_yaml, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+		macro.ID, macro.OrgID, macro.Name, macro.Expr, pq.Array(macro.List), macro.Description, macro.RawYAML,
 	)
 	return err
 }
 
 func (s *MacroStore) Get(ctx context.Context, orgID, id string) (*fleet.Macro, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, org_id, name, expr, description, raw_yaml, created_at, updated_at
+		`SELECT id, org_id, name, expr, list_values, description, raw_yaml, created_at, updated_at
 		 FROM macros WHERE id=$1 AND org_id=$2`, id, orgID)
-	return scanMacro(row)
+	m := &fleet.Macro{}
+	err := row.Scan(&m.ID, &m.OrgID, &m.Name, &m.Expr, pq.Array(&m.List), &m.Description, &m.RawYAML, &m.CreatedAt, &m.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return m, err
 }
 
 func (s *MacroStore) List(ctx context.Context, orgID string) ([]*fleet.Macro, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, org_id, name, expr, description, raw_yaml, created_at, updated_at
+		`SELECT id, org_id, name, expr, list_values, description, raw_yaml, created_at, updated_at
 		 FROM macros WHERE org_id=$1 ORDER BY name ASC`, orgID)
 	if err != nil {
 		return nil, err
@@ -66,7 +74,7 @@ func (s *MacroStore) List(ctx context.Context, orgID string) ([]*fleet.Macro, er
 	var macros []*fleet.Macro
 	for rows.Next() {
 		m := &fleet.Macro{}
-		if err := rows.Scan(&m.ID, &m.OrgID, &m.Name, &m.Expr, &m.Description, &m.RawYAML, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.OrgID, &m.Name, &m.Expr, pq.Array(&m.List), &m.Description, &m.RawYAML, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		macros = append(macros, m)
@@ -76,9 +84,9 @@ func (s *MacroStore) List(ctx context.Context, orgID string) ([]*fleet.Macro, er
 
 func (s *MacroStore) Update(ctx context.Context, macro *fleet.Macro) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE macros SET name=$3, expr=$4, description=$5, raw_yaml=$6, updated_at=NOW()
+		`UPDATE macros SET name=$3, expr=$4, list_values=$5, description=$6, raw_yaml=$7, updated_at=NOW()
 		 WHERE id=$1 AND org_id=$2`,
-		macro.ID, macro.OrgID, macro.Name, macro.Expr, macro.Description, macro.RawYAML,
+		macro.ID, macro.OrgID, macro.Name, macro.Expr, pq.Array(macro.List), macro.Description, macro.RawYAML,
 	)
 	return err
 }
@@ -89,7 +97,8 @@ func (s *MacroStore) Delete(ctx context.Context, orgID, id string) error {
 }
 
 // GetAllForOrg returns all macros for an org formatted as YAML for agent rule sync.
-// Uses proper YAML marshaling to handle special characters in expressions.
+// Uses proper YAML marshaling to handle special characters. Supports both
+// expression macros (expr) and list macros (list).
 func (s *MacroStore) GetAllForOrg(ctx context.Context, orgID string) (string, error) {
 	macros, err := s.List(ctx, orgID)
 	if err != nil {
@@ -100,21 +109,27 @@ func (s *MacroStore) GetAllForOrg(ctx context.Context, orgID string) (string, er
 	}
 
 	type yamlMacro struct {
-		Macro       string `yaml:"macro"`
-		Expr        string `yaml:"expr"`
-		Description string `yaml:"description,omitempty"`
+		Macro       string   `yaml:"macro"`
+		Expr        string   `yaml:"expr,omitempty"`
+		List        []string `yaml:"list,omitempty,flow"`
+		Description string   `yaml:"description,omitempty"`
 	}
 
 	out := make([]yamlMacro, 0, len(macros))
 	for _, m := range macros {
-		if m.Expr == "" {
-			continue // skip macros with empty expressions
+		if m.Expr == "" && len(m.List) == 0 {
+			continue // skip macros with no expression or list
 		}
-		out = append(out, yamlMacro{
+		ym := yamlMacro{
 			Macro:       m.Name,
-			Expr:        m.Expr,
 			Description: m.Description,
-		})
+		}
+		if len(m.List) > 0 {
+			ym.List = m.List
+		} else {
+			ym.Expr = m.Expr
+		}
+		out = append(out, ym)
 	}
 
 	data, err := yaml.Marshal(out)
@@ -122,15 +137,6 @@ func (s *MacroStore) GetAllForOrg(ctx context.Context, orgID string) (string, er
 		return "", fmt.Errorf("marshal macros: %w", err)
 	}
 	return string(data), nil
-}
-
-func scanMacro(row *sql.Row) (*fleet.Macro, error) {
-	m := &fleet.Macro{}
-	err := row.Scan(&m.ID, &m.OrgID, &m.Name, &m.Expr, &m.Description, &m.RawYAML, &m.CreatedAt, &m.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	return m, err
 }
 
 // MacroETag computes a simple ETag for macro change detection.
@@ -142,4 +148,54 @@ func (s *MacroStore) MacroETag(ctx context.Context, orgID string) (string, error
 		return "", err
 	}
 	return fmt.Sprintf("macros-%d", maxUpdated.UnixNano()), nil
+}
+
+// ImportFromYAML imports macros from a YAML file for a specific org.
+// It handles both expression and list macro types.
+func (s *MacroStore) ImportFromYAML(ctx context.Context, orgID string, data []byte) (int, error) {
+	type yamlMacro struct {
+		Name        string   `yaml:"macro"`
+		Expr        string   `yaml:"expr"`
+		List        []string `yaml:"list"`
+		Description string   `yaml:"description"`
+	}
+	var macros []yamlMacro
+	if err := yaml.Unmarshal(data, &macros); err != nil {
+		return 0, err
+	}
+
+	imported := 0
+	for _, m := range macros {
+		if m.Name == "" {
+			continue
+		}
+		// Clean list values — remove quotes and spaces
+		cleanList := make([]string, 0, len(m.List))
+		for _, v := range m.List {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				cleanList = append(cleanList, v)
+			}
+		}
+
+		macro := &fleet.Macro{
+			ID:          macroID(),
+			OrgID:       orgID,
+			Name:        m.Name,
+			Expr:        m.Expr,
+			List:        cleanList,
+			Description: m.Description,
+		}
+		if err := s.Create(ctx, macro); err != nil {
+			continue // skip duplicates
+		}
+		imported++
+	}
+	return imported, nil
+}
+
+func macroID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }

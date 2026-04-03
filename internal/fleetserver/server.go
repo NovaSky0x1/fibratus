@@ -35,9 +35,7 @@ import (
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
-	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v3"
 
 	_ "github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -500,18 +498,6 @@ func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgSto
 		return
 	}
 
-	// Parse macros YAML
-	type yamlMacro struct {
-		Name        string `yaml:"macro"`
-		Expr        string `yaml:"expr"`
-		Description string `yaml:"description"`
-	}
-	var macros []yamlMacro
-	if err := yaml.Unmarshal(macrosData, &macros); err != nil {
-		log.Warnf("fleet: failed to parse macros file: %v", err)
-		return
-	}
-
 	// Get all orgs and seed macros for each
 	rows, err := db.QueryContext(ctx, "SELECT id FROM organizations")
 	if err != nil {
@@ -527,22 +513,19 @@ func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgSto
 		}
 	}
 
+	pStore, ok := macroStore.(*postgres.MacroStore)
+	if !ok {
+		return
+	}
 	for _, orgID := range orgIDs {
-		for _, m := range macros {
-			rawYAML := fmt.Sprintf("- macro: %s\n  expr: %s\n", m.Name, m.Expr)
-			macro := &fleet.Macro{
-				ID:          handler.GenerateID(),
-				OrgID:       orgID,
-				Name:        m.Name,
-				Expr:        m.Expr,
-				Description: m.Description,
-				RawYAML:     rawYAML,
-			}
-			if err := macroStore.Create(ctx, macro); err != nil {
-				continue
-			}
+		n, err := pStore.ImportFromYAML(ctx, orgID, macrosData)
+		if err != nil {
+			log.Warnf("fleet: failed to seed macros for org %s: %v", orgID, err)
+			continue
 		}
-		log.Infof("fleet: seeded %d macros for org %s", len(macros), orgID)
+		if n > 0 {
+			log.Infof("fleet: seeded %d macros for org %s", n, orgID)
+		}
 	}
 }
 

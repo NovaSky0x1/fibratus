@@ -305,6 +305,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(org_id, action);
 
 -- Add created_by_email to commands for display
 ALTER TABLE commands ADD COLUMN IF NOT EXISTS created_by_email TEXT DEFAULT '';
+
+-- Add list_values to macros for list-type macros (web_browser_binaries, etc.)
+ALTER TABLE macros ADD COLUMN IF NOT EXISTS list_values TEXT[] DEFAULT '{}';
 `
 
 // Migrate runs the database schema migrations.

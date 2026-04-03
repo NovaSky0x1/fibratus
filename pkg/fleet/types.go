@@ -237,6 +237,7 @@ type Macro struct {
 	OrgID       string    `json:"org_id,omitempty"`
 	Name        string    `json:"name"`
 	Expr        string    `json:"expr"`
+	List        []string  `json:"list,omitempty"`
 	Description string    `json:"description,omitempty"`
 	RawYAML     string    `json:"raw_yaml"`
 	CreatedAt   time.Time `json:"created_at"`
