@@ -67,7 +67,6 @@ func New(config Config, dataDir string) (*Client, error) {
 	// Check if enrollment certificates exist (from `fibratus enroll`)
 	certFile := filepath.Join(dataDir, "certs", "agent.crt")
 	keyFile := filepath.Join(dataDir, "certs", "agent.key")
-	caFile := filepath.Join(dataDir, "certs", "ca.crt")
 
 	// Build TLS: use system CA pool for server trust (Let's Encrypt).
 	// Optionally load enrollment client cert for mTLS.
