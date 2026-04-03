@@ -21,6 +21,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/rabbitstack/fibratus/internal/evasion"
 	"github.com/rabbitstack/fibratus/pkg/aggregator"
 	"github.com/rabbitstack/fibratus/pkg/alertsender"
@@ -315,8 +316,11 @@ func (f *App) Run(args []string) error {
 		}
 	}
 	// Initialize fleet client if fleet mode is enabled (set in NewApp via enrollment detection)
+	fmt.Printf("\n\n=== FLEET MODE: enabled=%v server=%s org=%s ===\n\n", cfg.Fleet.Enabled, cfg.Fleet.ServerURL, cfg.Fleet.OrgID)
 	if cfg.Fleet.Enabled {
+		fmt.Println("=== FLEET: INITIALIZING CLIENT ===")
 		if err := f.initFleetClient(cfg); err != nil {
+			fmt.Printf("=== FLEET: INIT FAILED: %v ===\n", err)
 			log.Warnf("fleet: failed to initialize: %v", err)
 		}
 	}
