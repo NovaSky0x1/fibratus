@@ -23,9 +23,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
+	log "github.com/sirupsen/logrus"
 )
 
 // TelemetryStore implements store.TelemetryStore backed by PostgreSQL.
@@ -108,11 +111,14 @@ func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostnam
 
 		_, err := stmt.ExecContext(ctx,
 			orgID, agentID, hostname, seq, ts,
-			eventName, eventCategory, pid, tid, processName, processExe,
-			processCmdline, parentPID, parentName, params, metadata, raw,
+			eventName, eventCategory, pid, tid,
+			sanitizeUTF8(processName), sanitizeUTF8(processExe),
+			sanitizeUTF8(processCmdline), parentPID, sanitizeUTF8(parentName),
+			sanitizeUTF8JSON(params), sanitizeUTF8JSON(metadata), sanitizeUTF8JSON(raw),
 		)
 		if err != nil {
-			return fmt.Errorf("insert event: %w", err)
+			log.Warnf("fleet: skip event insert: %v", err)
+			continue
 		}
 	}
 
@@ -285,6 +291,26 @@ func (s *TelemetryStore) CountByAgent(ctx context.Context, orgID string) (map[st
 		counts[agentID] = count
 	}
 	return counts, rows.Err()
+}
+
+// sanitizeUTF8 replaces invalid UTF-8 bytes with the Unicode replacement character.
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return strings.ToValidUTF8(s, "\uFFFD")
+}
+
+// sanitizeUTF8JSON replaces invalid UTF-8 bytes in raw JSON.
+func sanitizeUTF8JSON(raw json.RawMessage) json.RawMessage {
+	if raw == nil {
+		return raw
+	}
+	s := string(raw)
+	if utf8.ValidString(s) {
+		return raw
+	}
+	return json.RawMessage(strings.ToValidUTF8(s, "\uFFFD"))
 }
 
 // jsonString extracts a string from a JSON raw value.
