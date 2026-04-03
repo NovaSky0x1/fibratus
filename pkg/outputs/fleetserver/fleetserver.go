@@ -112,11 +112,15 @@ func (f *fleetOutput) Close() error { return nil }
 // server. Everything else is only sent if it triggered a detection rule
 // or evasion flag. This keeps per-agent volume to ~10-30 events/min.
 var telemetryEventNames = map[string]bool{
-	"CreateProcess": true, // process execution — core EDR visibility
-	"Connect":       true, // outbound connections — C2, lateral movement
-	"QueryDns":      true, // DNS resolution — C2/exfil domain detection
-	"ReplyDns":      true, // DNS answers
-	"RegSetValue":   true, // registry value writes — persistence, config tampering
+	"CreateProcess":    true, // process execution — core EDR visibility
+	"TerminateProcess": true, // process exit
+	"OpenProcess":      true, // process handle access — injection, credential theft
+	"Connect":          true, // outbound connections — C2, lateral movement
+	"Accept":           true, // inbound connections
+	"QueryDns":         true, // DNS resolution — C2/exfil domain detection
+	"ReplyDns":         true, // DNS answers
+	"RegSetValue":      true, // registry value writes — persistence, config tampering
+	"LoadImage":        true, // DLL/module loads — injection, LOLBins
 }
 
 // telemetryDropNames is a fast-reject set for noisy events that should

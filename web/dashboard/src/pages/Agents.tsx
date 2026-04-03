@@ -215,7 +215,7 @@ export default function Agents() {
       </div>
 
       {/* Agent detail + response slide-out */}
-      <SlidePanel open={!!selectedAgent} title={selectedAgent?.hostname || 'Agent'} onClose={() => setSelectedAgent(null)}>
+      <SlidePanel open={!!selectedAgent} title={selectedAgent?.hostname || 'Agent'} onClose={() => setSelectedAgent(null)} wide>
         {selectedAgent && (
           <div>
             {/* Tabs */}
