@@ -170,13 +170,18 @@ func (c *Client) Register() error {
 		return fmt.Errorf("fleet register: decode response: %w", err)
 	}
 
+	agentID := apiResp.Data.AgentID
+	if agentID == "" {
+		return fmt.Errorf("fleet register: server returned empty agent ID")
+	}
+
 	c.mu.Lock()
-	c.agentID = apiResp.Data.AgentID
+	c.agentID = agentID
 	c.mu.Unlock()
 
-	c.persistAgentID(apiResp.Data.AgentID)
+	c.persistAgentID(agentID)
 
-	log.Infof("fleet: registered with server as agent %s", apiResp.Data.AgentID)
+	log.Infof("fleet: registered with server as agent %s", agentID)
 	return nil
 }
 

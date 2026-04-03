@@ -22,8 +22,9 @@ const sealFile = ".seal"
 
 // sealedFiles defines the fixed order of enrollment files included
 // in the integrity seal. Changing this order invalidates existing seals.
+// sealedFiles excludes agent-id because it is written by the fleet
+// client Register() call after enrollment, not during enrollment itself.
 var sealedFiles = []string{
-	"agent-id",
 	"org-id",
 	"server-url",
 	"certs/agent.crt",

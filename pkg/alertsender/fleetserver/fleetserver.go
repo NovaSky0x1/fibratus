@@ -19,6 +19,9 @@
 package fleetserver
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/rabbitstack/fibratus/pkg/alertsender"
 	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 	log "github.com/sirupsen/logrus"
@@ -37,7 +40,12 @@ func makeSender(config alertsender.Config) (alertsender.Sender, error) {
 	if !ok {
 		return nil, alertsender.ErrInvalidConfig(alertsender.FleetServer)
 	}
-	client, err := fleetclient.New(cfg, "")
+	exe, _ := os.Executable()
+	if exe == "" {
+		exe = "."
+	}
+	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+	client, err := fleetclient.New(cfg, dataDir)
 	if err != nil {
 		return nil, err
 	}

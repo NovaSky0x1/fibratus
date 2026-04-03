@@ -37,7 +37,7 @@ func MakeConfig(certFile, keyFile, caFile string, insecureSkipVerify bool) (*tls
 	}
 
 	// load certificate/key
-	if certFile != "" && keyFile == "" {
+	if certFile != "" && keyFile != "" {
 		var err error
 		cert, err = tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {

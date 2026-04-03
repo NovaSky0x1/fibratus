@@ -332,7 +332,11 @@ func (f *App) Run(args []string) error {
 		if cfg.Fleet.Enabled && cfg.Output.Type == outputs.Null {
 			log.Info("fleet: auto-enabling fleet server telemetry output")
 			cfg.Output.Type = outputs.FleetServer
-			cfg.Output.Output = fleetoutput.Config{Enabled: true}
+			cfg.Output.Output = fleetoutput.Config{
+				Enabled:   true,
+				ServerURL: cfg.Fleet.ServerURL,
+				OrgID:     cfg.Fleet.OrgID,
+			}
 		}
 
 		// set up the aggregator that forwards events to outputs
@@ -351,7 +355,7 @@ func (f *App) Run(args []string) error {
 	// Initialize fleet client if fleet mode is enabled (set in NewApp via enrollment detection)
 	if cfg.Fleet.Enabled {
 		if err := f.initFleetClient(cfg); err != nil {
-			log.Warnf("fleet: failed to initialize: %v", err)
+			log.Errorf("fleet: failed to initialize client: %v", err)
 		}
 	}
 
