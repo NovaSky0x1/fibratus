@@ -48,7 +48,7 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
-		rule.Tags, rule.References, rule.RawYAML, rule.Enabled,
+		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
 	)
 	return err
 }
@@ -112,7 +112,7 @@ func (s *RuleStore) Update(ctx context.Context, rule *fleet.Rule) error {
 		 WHERE id=$1 AND org_id=$2`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
-		rule.Tags, rule.References, rule.RawYAML, rule.Enabled,
+		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
 	)
 	return err
 }
