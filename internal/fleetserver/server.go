@@ -120,6 +120,9 @@ func (s *Server) Run(ctx context.Context) error {
 	// Enrollment route (token-based auth, no API key or JWT needed)
 	mux.HandleFunc("/api/v1/enroll", methodGuard(http.MethodPost, enrollHandler.Enroll))
 
+	// Agent registration (public — new agents don't have credentials yet)
+	mux.HandleFunc("/api/v1/agents/register", methodGuard(http.MethodPost, agentHandler.Register))
+
 	// ── Agent routes (API key auth for Phase 1 compat) ───────
 
 	agentMux := http.NewServeMux()
@@ -260,7 +263,7 @@ func (s *Server) Run(ctx context.Context) error {
 		path := r.URL.Path
 
 		// Public routes (no auth required)
-		if strings.HasPrefix(path, "/api/v1/auth/") || path == "/api/v1/enroll" {
+		if strings.HasPrefix(path, "/api/v1/auth/") || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
 			mux.ServeHTTP(w, r)
 			return
 		}
