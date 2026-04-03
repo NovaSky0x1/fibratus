@@ -114,11 +114,9 @@ func (f *fleetOutput) Close() error { return nil }
 var telemetryEventNames = map[string]bool{
 	"CreateProcess": true, // process spawn — core EDR visibility
 	"Connect":       true, // outbound connections — C2, lateral movement
-	"Accept":        true, // inbound connections
 	"QueryDns":      true, // DNS resolution — C2/exfil domain detection
 	"ReplyDns":      true, // DNS answers
-	"RegSetValue":   true, // registry value writes — persistence, config tampering
-	"LoadImage":     true, // DLL/module loads — injection, LOLBins
+	"RegSetValue":   true, // registry value writes — persistence
 }
 
 // telemetryDropNames is a fast-reject set for noisy events that should
@@ -152,6 +150,11 @@ var telemetryDropNames = map[string]bool{
 	"MapFileRundown":           true,
 	"OpenProcess":              true,
 	"TerminateProcess":         true,
+	"Accept":                   true,
+	"LoadImage":                true,
+	"UnloadImage":              true,
+	"CreateThread":             true,
+	"TerminateThread":          true,
 	"OpenThread":               true,
 	"ThreadRundown":            true,
 	"SetThreadContext":          true,

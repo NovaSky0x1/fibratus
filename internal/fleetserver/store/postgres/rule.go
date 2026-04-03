@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/lib/pq"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 )
 
@@ -175,7 +176,7 @@ func scanRule(row *sql.Row) (*fleet.Rule, error) {
 	err := row.Scan(
 		&r.ID, &r.OrgID, &r.Name, &r.Version, &r.Description,
 		&r.Condition, &r.Output, &r.Severity, &labelsJSON,
-		&r.Tags, &r.References, &r.RawYAML, &r.Enabled,
+		pq.Array(&r.Tags), pq.Array(&r.References), &r.RawYAML, &r.Enabled,
 		&r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
@@ -194,7 +195,7 @@ func scanRuleRows(rows *sql.Rows) (*fleet.Rule, error) {
 	err := rows.Scan(
 		&r.ID, &r.OrgID, &r.Name, &r.Version, &r.Description,
 		&r.Condition, &r.Output, &r.Severity, &labelsJSON,
-		&r.Tags, &r.References, &r.RawYAML, &r.Enabled,
+		pq.Array(&r.Tags), pq.Array(&r.References), &r.RawYAML, &r.Enabled,
 		&r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
