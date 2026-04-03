@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 )
 
@@ -46,7 +47,7 @@ func (s *DetectionStore) Create(ctx context.Context, det *fleet.Detection) error
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		det.ID, det.OrgID, det.AgentID, det.AgentHostname, det.RuleID, det.RuleName,
 		det.Title, det.Text, det.Description, det.Severity, labels,
-		det.Tags, det.Events, det.Timestamp,
+		pq.Array(det.Tags), det.Events, det.Timestamp,
 	)
 	return err
 }
