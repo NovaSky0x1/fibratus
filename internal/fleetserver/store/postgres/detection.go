@@ -63,7 +63,7 @@ func (s *DetectionStore) Get(ctx context.Context, orgID, id string) (*fleet.Dete
 	err := row.Scan(
 		&det.ID, &det.OrgID, &det.AgentID, &det.AgentHostname, &det.RuleID, &det.RuleName,
 		&det.Title, &det.Text, &det.Description, &det.Severity, &labelsJSON,
-		&det.Tags, &det.Events, &det.Timestamp,
+		pq.Array(&det.Tags), &det.Events, &det.Timestamp,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -151,7 +151,7 @@ func (s *DetectionStore) List(ctx context.Context, orgID string, opts fleet.Dete
 		err := rows.Scan(
 			&det.ID, &det.OrgID, &det.AgentID, &det.AgentHostname, &det.RuleID, &det.RuleName,
 			&det.Title, &det.Text, &det.Description, &det.Severity, &labelsJSON,
-			&det.Tags, &det.Events, &det.Timestamp,
+			pq.Array(&det.Tags), &det.Events, &det.Timestamp,
 		)
 		if err != nil {
 			return nil, 0, err
