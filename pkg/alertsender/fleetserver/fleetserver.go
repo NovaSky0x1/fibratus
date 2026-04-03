@@ -28,7 +28,9 @@ import (
 )
 
 type sender struct {
-	client *fleetclient.Client
+	client  *fleetclient.Client
+	queue   chan []byte
+	stopCh  chan struct{}
 }
 
 func init() {
@@ -49,24 +51,55 @@ func makeSender(config alertsender.Config) (alertsender.Sender, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sender{client: client}, nil
+	s := &sender{
+		client: client,
+		queue:  make(chan []byte, 256),
+		stopCh: make(chan struct{}),
+	}
+	go s.run()
+	return s, nil
 }
 
+// Send queues the alert for async delivery — never blocks the rule engine.
 func (s *sender) Send(alert alertsender.Alert) error {
 	data, err := alert.MarshalJSON()
 	if err != nil {
 		return err
 	}
-	if err := s.client.SendDetection(data); err != nil {
-		log.Warnf("fleet: failed to send detection: %v", err)
-		return err
+	select {
+	case s.queue <- data:
+	default:
+		log.Warn("fleet: detection queue full, dropping alert")
 	}
 	return nil
+}
+
+// run processes queued detections in the background.
+func (s *sender) run() {
+	for {
+		select {
+		case data := <-s.queue:
+			if err := s.client.SendDetection(data); err != nil {
+				log.Warnf("fleet: failed to send detection: %v", err)
+			}
+		case <-s.stopCh:
+			// drain remaining
+			for {
+				select {
+				case data := <-s.queue:
+					s.client.SendDetection(data)
+				default:
+					return
+				}
+			}
+		}
+	}
 }
 
 func (s *sender) Type() alertsender.Type { return alertsender.FleetServer }
 
 func (s *sender) Shutdown() error {
+	close(s.stopCh)
 	if s.client != nil {
 		return s.client.Close()
 	}
