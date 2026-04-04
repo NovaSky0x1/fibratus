@@ -13,6 +13,7 @@ interface DetectionEvent {
     cmdline?: string; parent_name?: string; parent_cmdline?: string
     cwd?: string; sid?: string; username?: string; domain?: string
     session_id?: number; integrity_level?: string; ancestors?: string[]
+    sha256?: string; md5?: string
   }
 }
 
@@ -274,6 +275,16 @@ function EventCard({ evt }: { evt: DetectionEvent }) {
           </div>
           {proc.cmdline && (
             <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.cmdline}</div>
+          )}
+          {(proc.sha256 || proc.md5) && (
+            <div className="space-y-1">
+              {proc.sha256 && (
+                <div><span className="text-[10px] text-gray-400">SHA256</span> <span className="text-[10px] font-mono text-gray-600 break-all block">{proc.sha256}</span></div>
+              )}
+              {proc.md5 && (
+                <div><span className="text-[10px] text-gray-400">MD5</span> <span className="text-[10px] font-mono text-gray-600 break-all block">{proc.md5}</span></div>
+              )}
+            </div>
           )}
           {proc.ancestors && proc.ancestors.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap">

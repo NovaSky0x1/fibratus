@@ -546,6 +546,18 @@ func (e *Event) MarshalJSON() []byte {
 		js.writeObjectField("exe").writeEscapeString(ps.Exe).writeMore()
 		js.writeObjectField("sha256").writeString(ps.SHA256).writeMore()
 		js.writeObjectField("md5").writeString(ps.MD5).writeMore()
+		if ps.PE != nil {
+			js.writeObjectField("is_signed").writeBool(ps.PE.IsSigned).writeMore()
+			js.writeObjectField("is_trusted").writeBool(ps.PE.IsTrusted).writeMore()
+			certSubject := ""
+			certIssuer := ""
+			if ps.PE.Cert != nil {
+				certSubject = ps.PE.Cert.Subject
+				certIssuer = ps.PE.Cert.Issuer
+			}
+			js.writeObjectField("cert_subject").writeEscapeString(certSubject).writeMore()
+			js.writeObjectField("cert_issuer").writeEscapeString(certIssuer).writeMore()
+		}
 		js.writeObjectField("cwd").writeEscapeString(ps.Cwd).writeMore()
 		js.writeObjectField("sid").writeEscapeString(ps.SID).writeMore()
 

@@ -246,33 +246,105 @@ export default function Events() {
             {/* Process info */}
             <div>
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Process</h4>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ['Name', selectedEvent.process_name],
-                  ['PID', String(selectedEvent.pid)],
-                  ['TID', String(selectedEvent.tid)],
-                  ['Parent PID', String(selectedEvent.parent_pid)],
-                  ['Parent', selectedEvent.parent_name],
-                  ['Host', selectedEvent.agent_hostname],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded bg-gray-50 px-2 py-1.5">
-                    <span className="text-xs text-gray-500">{label}</span>
-                    <p className="text-sm font-medium text-gray-900 font-mono break-all" title={value}>{value || '-'}</p>
+              {(() => {
+                const raw = selectedEvent.raw_event as Record<string, unknown> | null
+                const ps = (raw?.ps || {}) as Record<string, unknown>
+                const parent = (ps?.parent || {}) as Record<string, unknown>
+                return (<>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      ['Name', selectedEvent.process_name],
+                      ['PID', String(selectedEvent.pid)],
+                      ['TID', String(selectedEvent.tid)],
+                      ['Parent PID', String(selectedEvent.parent_pid)],
+                      ['Parent', selectedEvent.parent_name],
+                      ['Host', selectedEvent.agent_hostname],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded bg-gray-50 px-2 py-1.5">
+                        <span className="text-xs text-gray-500">{label}</span>
+                        <p className="text-sm font-medium text-gray-900 font-mono break-all">{value || '-'}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              {selectedEvent.process_exe && (
-                <div className="mt-2 rounded bg-gray-50 px-2 py-1.5">
-                  <span className="text-xs text-gray-500">Executable</span>
-                  <p className="text-sm text-gray-900 font-mono break-all">{selectedEvent.process_exe}</p>
-                </div>
-              )}
-              {selectedEvent.process_cmdline && (
-                <div className="mt-2 rounded bg-gray-50 px-2 py-1.5">
-                  <span className="text-xs text-gray-500">Command Line</span>
-                  <p className="text-sm text-gray-900 font-mono break-all">{selectedEvent.process_cmdline}</p>
-                </div>
-              )}
+                  {selectedEvent.process_exe && (
+                    <div className="mt-2 rounded bg-gray-50 px-2 py-1.5">
+                      <span className="text-xs text-gray-500">Executable</span>
+                      <p className="text-sm text-gray-900 font-mono break-all">{selectedEvent.process_exe}</p>
+                    </div>
+                  )}
+                  {selectedEvent.process_cmdline && (
+                    <div className="mt-2 rounded bg-gray-50 px-2 py-1.5">
+                      <span className="text-xs text-gray-500">Command Line</span>
+                      <p className="text-sm text-gray-900 font-mono break-all">{selectedEvent.process_cmdline}</p>
+                    </div>
+                  )}
+                  {(ps.sha256 || ps.md5) && (
+                    <div className="mt-2 space-y-1">
+                      {ps.sha256 && (
+                        <div className="rounded bg-gray-50 px-2 py-1.5">
+                          <span className="text-xs text-gray-500">SHA256</span>
+                          <p className="text-xs text-gray-900 font-mono break-all">{String(ps.sha256)}</p>
+                        </div>
+                      )}
+                      {ps.md5 && (
+                        <div className="rounded bg-gray-50 px-2 py-1.5">
+                          <span className="text-xs text-gray-500">MD5</span>
+                          <p className="text-xs text-gray-900 font-mono break-all">{String(ps.md5)}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(ps.is_signed !== undefined || ps.cert_subject) && (
+                    <div className="mt-2 space-y-1">
+                      <div className="flex gap-2">
+                        {ps.is_signed !== undefined && (
+                          <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' +
+                            (ps.is_signed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
+                            {ps.is_signed ? 'Signed' : 'Unsigned'}
+                          </span>
+                        )}
+                        {ps.is_trusted !== undefined && ps.is_signed && (
+                          <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' +
+                            (ps.is_trusted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+                            {ps.is_trusted ? 'Trusted' : 'Untrusted'}
+                          </span>
+                        )}
+                      </div>
+                      {ps.cert_subject && (
+                        <div className="rounded bg-gray-50 px-2 py-1.5">
+                          <span className="text-xs text-gray-500">Certificate Subject</span>
+                          <p className="text-xs text-gray-900 break-all">{String(ps.cert_subject)}</p>
+                        </div>
+                      )}
+                      {ps.cert_issuer && (
+                        <div className="rounded bg-gray-50 px-2 py-1.5">
+                          <span className="text-xs text-gray-500">Certificate Issuer</span>
+                          <p className="text-xs text-gray-900 break-all">{String(ps.cert_issuer)}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(parent.sha256 || parent.md5) && (
+                    <div className="mt-2">
+                      <span className="text-[10px] text-gray-400 uppercase">Parent Hashes</span>
+                      <div className="space-y-1 mt-1">
+                        {parent.sha256 && (
+                          <div className="rounded bg-gray-50 px-2 py-1.5">
+                            <span className="text-xs text-gray-500">SHA256</span>
+                            <p className="text-xs text-gray-900 font-mono break-all">{String(parent.sha256)}</p>
+                          </div>
+                        )}
+                        {parent.md5 && (
+                          <div className="rounded bg-gray-50 px-2 py-1.5">
+                            <span className="text-xs text-gray-500">MD5</span>
+                            <p className="text-xs text-gray-900 font-mono break-all">{String(parent.md5)}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>)
+              })()}
             </div>
 
             {/* Parameters */}

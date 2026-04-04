@@ -450,11 +450,15 @@ func (s *snapshotter) newProcState(pid, ppid uint32, e *event.Event) (*pstypes.P
 		return proc, err
 	}
 
-	// set process executable hashes from PE or compute directly
-	if proc.PE != nil && proc.PE.FileSHA256 != "" {
-		proc.SHA256 = proc.PE.FileSHA256
-		proc.MD5 = proc.PE.FileMD5
-	} else if proc.Exe != "" {
+	// set process executable hashes and verify signature
+	if proc.PE != nil {
+		proc.PE.VerifySignature()
+		if proc.PE.FileSHA256 != "" {
+			proc.SHA256 = proc.PE.FileSHA256
+			proc.MD5 = proc.PE.FileMD5
+		}
+	}
+	if proc.SHA256 == "" && proc.Exe != "" {
 		h := s.hashCache.Get(proc.Exe)
 		proc.SHA256 = h.SHA256
 		proc.MD5 = h.MD5
@@ -635,11 +639,15 @@ func (s *snapshotter) Find(pid uint32) (bool, *pstypes.PS) {
 		return false, proc
 	}
 
-	// set process executable hashes
-	if proc.PE != nil && proc.PE.FileSHA256 != "" {
-		proc.SHA256 = proc.PE.FileSHA256
-		proc.MD5 = proc.PE.FileMD5
-	} else if proc.Exe != "" {
+	// set process executable hashes and verify signature
+	if proc.PE != nil {
+		proc.PE.VerifySignature()
+		if proc.PE.FileSHA256 != "" {
+			proc.SHA256 = proc.PE.FileSHA256
+			proc.MD5 = proc.PE.FileMD5
+		}
+	}
+	if proc.SHA256 == "" && proc.Exe != "" {
 		h := s.hashCache.Get(proc.Exe)
 		proc.SHA256 = h.SHA256
 		proc.MD5 = h.MD5
