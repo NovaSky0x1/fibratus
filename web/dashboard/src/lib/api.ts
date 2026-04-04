@@ -217,6 +217,8 @@ export const api = {
     const q = new URLSearchParams(params || {}).toString()
     return fetchApi<TimelineBucket[]>(orgPath(`/detections/timeline?${q}`))
   },
+  getDetectionProcessTree: (id: string) =>
+    fetchApi<{ detection: Detection; events: unknown[] }>(orgPath(`/detections/${id}/process-tree`)),
 
   // Rules (org-scoped)
   getRules: (params?: Record<string, string>) => {

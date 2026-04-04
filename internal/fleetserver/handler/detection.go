@@ -34,11 +34,12 @@ import (
 type DetectionHandler struct {
 	detections store.DetectionStore
 	agents     store.AgentStore
+	telemetry  store.TelemetryStore
 }
 
 // NewDetectionHandler creates a new detection handler.
-func NewDetectionHandler(detections store.DetectionStore, agents store.AgentStore) *DetectionHandler {
-	return &DetectionHandler{detections: detections, agents: agents}
+func NewDetectionHandler(detections store.DetectionStore, agents store.AgentStore, telemetry store.TelemetryStore) *DetectionHandler {
+	return &DetectionHandler{detections: detections, agents: agents, telemetry: telemetry}
 }
 
 // Ingest handles POST /api/v1/detections (agent route, API key auth)
@@ -218,6 +219,78 @@ func (h *DetectionHandler) MitreHeatmap(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: cells})
+}
+
+// ProcessTree handles GET /api/v1/orgs/{org_id}/detections/{id}/process-tree
+// Returns telemetry events scoped to the detection's time window and agent,
+// filtered to process-relevant event types for building a visual process tree.
+func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
+	// Extract detection ID from path: .../detections/{id}/process-tree
+	parts := strings.Split(r.URL.Path, "/detections/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "detection ID required")
+		return
+	}
+	detID := strings.TrimSuffix(parts[1], "/process-tree")
+	detID = strings.TrimSuffix(detID, "/process-tree/")
+	if detID == "" || strings.Contains(detID, "/") {
+		writeError(w, http.StatusBadRequest, "detection ID required")
+		return
+	}
+
+	det, err := h.detections.Get(r.Context(), orgID, detID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if det == nil {
+		writeError(w, http.StatusNotFound, "detection not found")
+		return
+	}
+
+	// Query telemetry within ±10 minutes of detection, filtered to
+	// process-relevant events for tree construction.
+	from := det.Timestamp.Add(-10 * time.Minute)
+	to := det.Timestamp.Add(10 * time.Minute)
+
+	events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+		AgentID: det.AgentID,
+		From:    from,
+		To:      to,
+		Limit:   5000,
+	})
+	if err != nil {
+		log.Errorf("fleet: detection process tree error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Filter to process-relevant event types
+	processEventTypes := map[string]bool{
+		"CreateProcess": true, "LoadImage": true,
+		"CreateFile": true, "DeleteFile": true, "RenameFile": true, "WriteFile": true,
+		"Connect": true, "QueryDns": true, "ReplyDns": true,
+		"RegSetValue": true, "RegCreateKey": true, "RegDeleteKey": true, "RegDeleteValue": true,
+	}
+	filtered := make([]store.TelemetryEvent, 0, len(events))
+	for _, evt := range events {
+		if processEventTypes[evt.EventName] {
+			filtered = append(filtered, evt)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{
+		Data: map[string]interface{}{
+			"detection": det,
+			"events":    filtered,
+		},
+	})
 }
 
 func parseTime(s string, defaultVal time.Time) time.Time {

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, type Detection, type Rule } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
-import ProcessInvestigation from '../components/ProcessInvestigation'
+import DetectionProcessGraph from '../components/DetectionProcessGraph'
 
 interface DetectionEvent {
   name?: string; category?: string; timestamp?: string
@@ -241,18 +241,10 @@ export default function Detections() {
             )}
 
             {detailView === 'tree' && (
-              <ProcessInvestigation
-                agentId={selectedDet.agent_id}
+              <DetectionProcessGraph
+                detection={selectedDet}
                 focusPid={focusProc?.pid}
                 focusProcessName={focusProc?.name}
-                detection={{
-                  title: selectedDet.title,
-                  severity: selectedDet.severity,
-                  hostname: selectedDet.agent_hostname,
-                  timestamp: selectedDet.timestamp,
-                  ruleName: selectedDet.rule_name,
-                  labels: selectedDet.labels || {},
-                }}
               />
             )}
           </div>

@@ -127,7 +127,7 @@ func (s *Server) Run(ctx context.Context) error {
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
 	agentHandler := handler.NewAgentHandler(agentStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
-	detHandler := handler.NewDetectionHandler(detStore, agentStore)
+	detHandler := handler.NewDetectionHandler(detStore, agentStore, telemetryStore)
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore, macroStore, auditStore, userStore)
 	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)
 	telemetryHandler := handler.NewTelemetryHandler(telemetryStore, agentStore)
@@ -258,6 +258,8 @@ func (s *Server) Run(ctx context.Context) error {
 			detHandler.Timeline(w, r)
 		case subpath == "/detections/mitre" && r.Method == http.MethodGet:
 			detHandler.MitreHeatmap(w, r)
+		case strings.HasPrefix(subpath, "/detections/") && strings.HasSuffix(subpath, "/process-tree") && r.Method == http.MethodGet:
+			detHandler.ProcessTree(w, r)
 		case strings.HasPrefix(subpath, "/detections/") && r.Method == http.MethodGet:
 			detHandler.Get(w, r)
 

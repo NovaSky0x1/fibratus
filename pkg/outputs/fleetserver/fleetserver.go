@@ -108,19 +108,23 @@ func (f *fleetOutput) Connect() error {
 
 func (f *fleetOutput) Close() error { return nil }
 
-// telemetryEventNames is the minimal set of events stored on the fleet
+// telemetryEventNames is the set of events always stored on the fleet
 // server. Everything else is only sent if it triggered a detection rule
-// or evasion flag. This keeps per-agent volume to ~10-30 events/min.
+// or evasion flag.
 var telemetryEventNames = map[string]bool{
 	"CreateProcess": true, // process spawn — core EDR visibility
 	"Connect":       true, // outbound connections — C2, lateral movement
 	"QueryDns":      true, // DNS resolution — C2/exfil domain detection
 	"ReplyDns":      true, // DNS answers
-	"RegSetValue":   true, // registry value writes — persistence
+	"LoadImage":     true, // module/DLL loads — sideloading, injection detection
+	"CreateFile":    true, // file creation — malware drops, staging
+	"DeleteFile":    true, // file deletion — covering tracks
+	"RenameFile":    true, // file renames — evasion techniques
+	"RegCreateKey":  true, // registry key creation — persistence
+	"RegDeleteKey":  true, // registry key deletion — defense evasion
+	"RegDeleteValue": true, // registry value deletion — defense evasion
 }
 
-// telemetryDropNames is a fast-reject set for noisy events that should
-// never be sent, even if they somehow have metadata attached.
 // telemetryDropNames is a fast-reject set for noisy events that should
 // never be sent, even if they somehow have metadata attached.
 var telemetryDropNames = map[string]bool{
@@ -145,19 +149,19 @@ var telemetryDropNames = map[string]bool{
 	"RegCloseKey":              true,
 	"RegQueryKey":              true,
 	"RegQueryValue":            true,
+	"RegSetValue":              true,
 	"RegKCBRundown":            true,
 	"RegCreateKCB":             true,
 	"MapFileRundown":           true,
 	"OpenProcess":              true,
 	"TerminateProcess":         true,
 	"Accept":                   true,
-	"LoadImage":                true,
 	"UnloadImage":              true,
 	"CreateThread":             true,
 	"TerminateThread":          true,
 	"OpenThread":               true,
 	"ThreadRundown":            true,
-	"SetThreadContext":          true,
+	"SetThreadContext":         true,
 	"ProcessRundown":           true,
 	"ImageRundown":             true,
 	"StackWalk":                true,
