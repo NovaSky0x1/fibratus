@@ -40,12 +40,15 @@ type Config struct {
 
 // ClickHouseConfig configures the ClickHouse connection for telemetry.
 type ClickHouseConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	Database string `yaml:"database"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
+	Enabled        bool   `yaml:"enabled"`
+	Host           string `yaml:"host"`
+	Port           int    `yaml:"port"`
+	Database       string `yaml:"database"`
+	User           string `yaml:"user"`
+	Password       string `yaml:"password"`
+	MaxOpenConns   int    `yaml:"max-open-conns"`
+	MaxIdleConns   int    `yaml:"max-idle-conns"`
+	ConnMaxLifetime int   `yaml:"conn-max-lifetime-secs"`
 }
 
 // ServerConfig configures the HTTP server.
@@ -142,12 +145,15 @@ func LoadConfig(path string) (*Config, error) {
 			MaxConnections: 50,
 		},
 		ClickHouse: ClickHouseConfig{
-			Enabled:  false,
-			Host:     "localhost",
-			Port:     9000,
-			Database: "fibratus",
-			User:     "default",
-			Password: "",
+			Enabled:         false,
+			Host:            "localhost",
+			Port:            9000,
+			Database:        "fibratus",
+			User:            "default",
+			Password:        "",
+			MaxOpenConns:    20,
+			MaxIdleConns:    10,
+			ConnMaxLifetime: 3600,
 		},
 		Elasticsearch: ElasticsearchConfig{
 			Servers:     []string{"http://localhost:9200"},

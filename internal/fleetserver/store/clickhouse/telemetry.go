@@ -32,33 +32,38 @@ import (
 )
 
 // Schema is the ClickHouse DDL for the telemetry table.
-// MergeTree engine with partition by day and ordering optimized for
-// time-range queries filtered by org + agent.
+// Uses compression codecs optimized for EDR telemetry:
+//   - ZSTD for large/variable string columns (high compression)
+//   - Delta+ZSTD for monotonic numerics (PIDs, sequence numbers)
+//   - DoubleDelta+ZSTD for timestamps (extremely compact for time-series)
+//   - LowCardinality for enum-like columns (event names, categories)
 const Schema = `
 CREATE TABLE IF NOT EXISTS telemetry_events (
-    id           UInt64,
-    org_id       String,
-    agent_id     String,
-    agent_hostname String,
-    seq          UInt64,
-    timestamp    DateTime64(6, 'UTC'),
-    event_name   LowCardinality(String),
+    id             UInt64,
+    org_id         LowCardinality(String),
+    agent_id       LowCardinality(String),
+    agent_hostname LowCardinality(String),
+    seq            UInt64      CODEC(Delta, ZSTD(1)),
+    timestamp      DateTime64(6, 'UTC') CODEC(DoubleDelta, ZSTD(1)),
+    event_name     LowCardinality(String),
     event_category LowCardinality(String),
-    pid          UInt32,
-    tid          UInt32,
-    process_name String,
-    process_exe  String,
-    process_cmdline String,
-    parent_pid   UInt32,
-    parent_name  String,
-    params       String,
-    metadata     String,
-    raw_event    String
+    pid            UInt32      CODEC(Delta, ZSTD(1)),
+    tid            UInt32      CODEC(Delta, ZSTD(1)),
+    process_name   LowCardinality(String),
+    process_exe    String      CODEC(ZSTD(3)),
+    process_cmdline String     CODEC(ZSTD(3)),
+    parent_pid     UInt32      CODEC(Delta, ZSTD(1)),
+    parent_name    LowCardinality(String),
+    params         String      CODEC(ZSTD(3)),
+    metadata       String      CODEC(ZSTD(3)),
+    raw_event      String      CODEC(ZSTD(1))
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(timestamp)
-ORDER BY (org_id, agent_id, timestamp)
-TTL toDateTime(timestamp) + INTERVAL 30 DAY
-SETTINGS index_granularity = 8192
+ORDER BY (org_id, agent_id, timestamp, pid)
+TTL toDateTime(timestamp) + INTERVAL 30 DAY DELETE
+SETTINGS index_granularity = 8192,
+         min_bytes_for_wide_part = 10485760,
+         merge_with_ttl_timeout = 86400
 `
 
 // TelemetryStore implements store.TelemetryStore backed by ClickHouse.
@@ -77,7 +82,14 @@ func (s *TelemetryStore) Migrate(ctx context.Context) error {
 	return err
 }
 
+// BulkIngest inserts a batch of events using a single prepared statement
+// within a transaction. clickhouse-go v2 accumulates all rows in the
+// transaction and sends them as one columnar block on Commit().
 func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostname string, events []json.RawMessage) error {
+	if len(events) == 0 {
+		return nil
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
@@ -95,6 +107,8 @@ func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostnam
 	defer stmt.Close()
 
 	now := time.Now().UnixNano()
+	inserted := 0
+
 	for i, raw := range events {
 		var evt map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &evt); err != nil {
@@ -140,17 +154,22 @@ func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostnam
 
 		id := uint64(now) + uint64(i)
 
-		_, err := stmt.ExecContext(ctx,
+		if _, err := stmt.ExecContext(ctx,
 			id, orgID, agentID, hostname, seq, ts,
 			eventName, eventCategory, pid, tid,
 			sanitizeUTF8(processName), sanitizeUTF8(processExe),
 			sanitizeUTF8(processCmdline), parentPID, sanitizeUTF8(parentName),
 			params, metadata, rawEvent,
-		)
-		if err != nil {
-			log.Warnf("fleet: skip clickhouse insert: %v", err)
+		); err != nil {
+			log.Warnf("fleet: skip clickhouse row: %v", err)
 			continue
 		}
+		inserted++
+	}
+
+	if inserted == 0 {
+		tx.Rollback()
+		return nil
 	}
 
 	return tx.Commit()
@@ -279,8 +298,7 @@ func (s *TelemetryStore) GetLatestForAgent(ctx context.Context, orgID, agentID s
 }
 
 func (s *TelemetryStore) Purge(ctx context.Context, retentionDays int) (int64, error) {
-	// ClickHouse TTL handles retention automatically via the table definition.
-	// This is a no-op but satisfies the interface.
+	// ClickHouse TTL handles retention automatically.
 	return 0, nil
 }
 

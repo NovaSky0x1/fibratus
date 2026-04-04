@@ -101,6 +101,9 @@ func (s *Server) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("clickhouse connect: %w", err)
 		}
+		chDB.SetMaxOpenConns(s.config.ClickHouse.MaxOpenConns)
+		chDB.SetMaxIdleConns(s.config.ClickHouse.MaxIdleConns)
+		chDB.SetConnMaxLifetime(time.Duration(s.config.ClickHouse.ConnMaxLifetime) * time.Second)
 		if err := chDB.Ping(); err != nil {
 			return fmt.Errorf("clickhouse ping: %w", err)
 		}
@@ -108,8 +111,16 @@ func (s *Server) Run(ctx context.Context) error {
 		if err := chTelemetry.Migrate(ctx); err != nil {
 			return fmt.Errorf("clickhouse migrate: %w", err)
 		}
-		telemetryStore = chTelemetry
-		log.Info("fleet: using ClickHouse for telemetry storage")
+		// Wrap with buffer for high-throughput batch inserts.
+		buffered := store.NewBufferedTelemetryStore(chTelemetry, store.BufferConfig{
+			FlushInterval: 2 * time.Second,
+			FlushSize:     50000,
+		})
+		buffered.Start()
+		defer buffered.Stop()
+		telemetryStore = buffered
+		log.Infof("fleet: using ClickHouse for telemetry (pool: %d open, %d idle, buffered)",
+			s.config.ClickHouse.MaxOpenConns, s.config.ClickHouse.MaxIdleConns)
 	} else {
 		telemetryStore = postgres.NewTelemetryStore(db)
 		log.Info("fleet: using PostgreSQL for telemetry storage")
