@@ -22,23 +22,25 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/event"
 	"github.com/rabbitstack/fibratus/pkg/event/params"
 	"github.com/rabbitstack/fibratus/pkg/ps"
+	"github.com/rabbitstack/fibratus/pkg/util/hashers"
 )
 
 type moduleProcessor struct {
-	psnap ps.Snapshotter
+	psnap     ps.Snapshotter
+	hashCache *hashers.FileHashCache
 }
 
 func newModuleProcessor(psnap ps.Snapshotter) Processor {
-	m := &moduleProcessor{psnap: psnap}
-
-	return m
+	return &moduleProcessor{
+		psnap:     psnap,
+		hashCache: hashers.NewFileHashCache(50000),
+	}
 }
 
 func (*moduleProcessor) Name() ProcessorType { return Image }
 
 func (m *moduleProcessor) ProcessEvent(e *event.Event) (*event.Event, bool, error) {
 	if e.IsLoadImageInternal() {
-		// state management
 		return e, false, m.psnap.AddModule(e)
 	}
 
@@ -52,6 +54,18 @@ func (m *moduleProcessor) ProcessEvent(e *event.Event) (*event.Event, bool, erro
 	}
 
 	if e.IsLoadImage() || e.IsImageRundown() {
+		// Compute file hashes and inject into event params before
+		// the event reaches the aggregator/output pipeline.
+		filePath := e.GetParamAsString(params.ImagePath)
+		if filePath != "" {
+			h := m.hashCache.Get(filePath)
+			if h.SHA256 != "" {
+				e.Params.Append(params.ImageSHA256, params.UnicodeString, h.SHA256)
+			}
+			if h.MD5 != "" {
+				e.Params.Append(params.ImageMD5, params.UnicodeString, h.MD5)
+			}
+		}
 		return e, false, m.psnap.AddModule(e)
 	}
 

@@ -177,6 +177,10 @@ const (
 	ImageCertNotBefore = "cert_not_before"
 	// ImageCertNotAfter is the parameter that specifies the certificate won't be valid after this timestamp.
 	ImageCertNotAfter = "cert_not_after"
+	// ImageSHA256 is the hex-encoded SHA256 digest of the image file.
+	ImageSHA256 = "sha256"
+	// ImageMD5 is the hex-encoded MD5 digest of the image file.
+	ImageMD5 = "md5"
 
 	// NetSize identifies the parameter name that represents the packet size.
 	NetSize = "size"
