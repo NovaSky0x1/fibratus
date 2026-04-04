@@ -13,6 +13,7 @@ import AuditLog from './pages/AuditLog'
 import Settings from './pages/Settings'
 import Users from './pages/Users'
 import Groups from './pages/Groups'
+import Management from './pages/Management'
 import Admin from './pages/Admin'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -43,6 +44,7 @@ export default function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="/groups" element={<Groups />} />
+                <Route path="/management" element={<Management />} />
                 <Route path="/admin" element={<Admin />} />
               </Routes>
             </Layout>

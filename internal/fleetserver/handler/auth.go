@@ -303,7 +303,70 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.Password = ""
-	writeJSON(w, http.StatusOK, fleet.Response{Data: user})
+
+	// Include account settings (2FA enforcement)
+	account, _ := h.accounts.Get(r.Context(), user.AccountID)
+	resp := map[string]interface{}{
+		"id":           user.ID,
+		"email":        user.Email,
+		"name":         user.Name,
+		"account_id":   user.AccountID,
+		"role":         user.Role,
+		"totp_enabled": user.TOTPEnabled,
+		"created_at":   user.CreatedAt,
+	}
+	if account != nil {
+		resp["account_name"] = account.Name
+		resp["require_2fa"] = account.Require2FA
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
+}
+
+// UpdateAccountSettings handles PUT /api/v1/account/settings
+func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	var req struct {
+		Require2FA bool `json:"require_2fa"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.accounts.UpdateSettings(r.Context(), accountID, req.Require2FA); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update settings")
+		return
+	}
+
+	log.Infof("fleet: account %s 2FA enforcement set to %v", accountID, req.Require2FA)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"require_2fa": req.Require2FA}})
+}
+
+// GetAccountSettings handles GET /api/v1/account/settings
+func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	account, err := h.accounts.Get(r.Context(), accountID)
+	if err != nil || account == nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"require_2fa":  account.Require2FA,
+		"account_name": account.Name,
+		"plan":         account.Plan,
+	}})
 }
 
 // ListOrganizations handles GET /api/v1/account/organizations

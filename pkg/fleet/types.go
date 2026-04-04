@@ -29,13 +29,14 @@ import (
 
 // Account represents a top-level billing entity (company/customer).
 type Account struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Plan      string    `json:"plan"`
-	OrgCount  int       `json:"org_count,omitempty"`
-	UserCount int       `json:"user_count,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Plan            string    `json:"plan"`
+	Require2FA      bool      `json:"require_2fa"`
+	OrgCount        int       `json:"org_count,omitempty"`
+	UserCount       int       `json:"user_count,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Organization represents a logical unit within an account

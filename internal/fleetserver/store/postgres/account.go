@@ -46,11 +46,11 @@ func (s *AccountStore) Create(ctx context.Context, account *fleet.Account) error
 
 func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, name, plan, created_at, updated_at
+		`SELECT id, name, plan, COALESCE(require_2fa, false), created_at, updated_at
 		 FROM accounts WHERE id = $1`, id)
 
 	a := &fleet.Account{}
-	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -87,6 +87,13 @@ func (s *AccountStore) ListAll(ctx context.Context) ([]*fleet.Account, error) {
 
 func (s *AccountStore) Delete(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM accounts WHERE id = $1`, id)
+	return err
+}
+
+func (s *AccountStore) UpdateSettings(ctx context.Context, id string, require2FA bool) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE accounts SET require_2fa = $2, updated_at = NOW() WHERE id = $1`,
+		id, require2FA)
 	return err
 }
 

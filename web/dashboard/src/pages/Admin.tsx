@@ -78,6 +78,15 @@ export default function Admin() {
     },
   })
 
+  // Toggle 2FA enforcement per account
+  const toggle2FAMut = useMutation({
+    mutationFn: (data: { accountId: string; require_2fa: boolean }) =>
+      api.adminUpdateAccount(data.accountId, { require_2fa: data.require_2fa }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-accounts'] })
+    },
+  })
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -153,6 +162,7 @@ export default function Admin() {
                   <tr>
                     <th className="px-6 py-3 font-medium text-gray-500">Name</th>
                     <th className="px-6 py-3 font-medium text-gray-500">Plan</th>
+                    <th className="px-6 py-3 font-medium text-gray-500">2FA Required</th>
                     <th className="px-6 py-3 font-medium text-gray-500">Orgs</th>
                     <th className="px-6 py-3 font-medium text-gray-500">Users</th>
                     <th className="px-6 py-3 font-medium text-gray-500">Created</th>
@@ -161,7 +171,7 @@ export default function Admin() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {accountsLoading && (
-                    <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
                   )}
                   {!accountsLoading && accounts.map(acct => (
                     <tr key={acct.id} className="hover:bg-gray-50/50">
@@ -177,6 +187,26 @@ export default function Admin() {
                         <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                           {acct.plan}
                         </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <button
+                          onClick={() => toggle2FAMut.mutate({ accountId: acct.id, require_2fa: !acct.require_2fa })}
+                          disabled={toggle2FAMut.isPending}
+                          className={
+                            'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ' +
+                            (acct.require_2fa ? 'bg-emerald-500' : 'bg-gray-200')
+                          }
+                          role="switch"
+                          aria-checked={acct.require_2fa || false}
+                          title={acct.require_2fa ? '2FA enforced - click to disable' : '2FA not enforced - click to enable'}
+                        >
+                          <span
+                            className={
+                              'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
+                              (acct.require_2fa ? 'translate-x-4' : 'translate-x-0')
+                            }
+                          />
+                        </button>
                       </td>
                       <td className="px-6 py-3 text-gray-600">{acct.org_count}</td>
                       <td className="px-6 py-3 text-gray-600">{acct.user_count}</td>
@@ -211,7 +241,7 @@ export default function Admin() {
                     </tr>
                   ))}
                   {!accountsLoading && accounts.length === 0 && (
-                    <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">No accounts found.</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">No accounts found.</td></tr>
                   )}
                 </tbody>
               </table>

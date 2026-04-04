@@ -375,6 +375,16 @@ func (s *Server) Run(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	dashMux.HandleFunc("/api/v1/account/settings", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			authHandler.GetAccountSettings(w, r)
+		case http.MethodPut:
+			requirePermission(fleetauth.PermManageSettings, authHandler.UpdateAccountSettings)(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	// Admin routes (JWT auth, root only — permission checked inside handlers)
 	dashMux.HandleFunc("/api/v1/admin/accounts", func(w http.ResponseWriter, r *http.Request) {
@@ -392,6 +402,8 @@ func (s *Server) Run(ctx context.Context) error {
 			adminHandler.ListAccountOrgs(w, r)
 		} else if r.Method == http.MethodDelete {
 			adminHandler.DeleteAccount(w, r)
+		} else if r.Method == http.MethodPut {
+			adminHandler.UpdateAccount(w, r)
 		} else {
 			http.NotFound(w, r)
 		}

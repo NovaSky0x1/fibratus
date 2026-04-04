@@ -155,6 +155,7 @@ export interface Account {
   id: string
   name: string
   plan: string
+  require_2fa: boolean
   org_count: number
   user_count: number
   created_at: string
@@ -357,6 +358,11 @@ export const api = {
   triggerGitHubSync: () =>
     fetchApi<{ created: number; updated: number; skipped: number; errors: string[]; duration: string }>(orgPath('/github-sync/trigger'), { method: 'POST' }),
 
+  // Account Settings
+  getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string }>('/account/settings'),
+  updateAccountSettings: (data: { require_2fa: boolean }) =>
+    fetchApi<{ require_2fa: boolean }>('/account/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
   // Admin (root only)
   adminGetAccounts: () => fetchApi<unknown[]>('/admin/accounts'),
   adminCreateAccount: (data: { name: string; plan: string }) =>
@@ -366,6 +372,8 @@ export const api = {
   adminGetAccountOrgs: (accountId: string) =>
     fetchApi<unknown[]>(`/admin/accounts/${accountId}/orgs`),
   adminGetAllUsers: () => fetchApi<unknown[]>('/admin/users'),
+  adminUpdateAccount: (accountId: string, data: { require_2fa: boolean }) =>
+    fetchApi<{ require_2fa: boolean }>(`/admin/accounts/${accountId}`, { method: 'PUT', body: JSON.stringify(data) }),
   adminSwitchAccount: (accountId: string) =>
     fetchApi<{ account_id: string; account_name: string }>('/admin/switch-account', { method: 'POST', body: JSON.stringify({ account_id: accountId }) }),
 

@@ -333,6 +333,8 @@ CREATE TABLE IF NOT EXISTS user_group_members (
     group_id    TEXT REFERENCES user_groups(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, group_id)
 );
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS require_2fa BOOLEAN DEFAULT FALSE;
 `
 
 // Migrate runs the database schema migrations.

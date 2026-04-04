@@ -103,6 +103,38 @@ func (h *AdminHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UpdateAccount handles PUT /api/v1/admin/accounts/{id}
+func (h *AdminHandler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	accountID := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/accounts/")
+	accountID = strings.TrimSuffix(accountID, "/")
+	if accountID == "" || strings.Contains(accountID, "/") {
+		writeError(w, http.StatusBadRequest, "account ID required")
+		return
+	}
+
+	var req struct {
+		Require2FA bool `json:"require_2fa"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.accounts.UpdateSettings(r.Context(), accountID, req.Require2FA); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update account")
+		return
+	}
+
+	log.Infof("fleet: account %s updated by root: require_2fa=%v", accountID, req.Require2FA)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"require_2fa": req.Require2FA}})
+}
+
 // ListAccountOrgs handles GET /api/v1/admin/accounts/{id}/orgs
 func (h *AdminHandler) ListAccountOrgs(w http.ResponseWriter, r *http.Request) {
 	role := ctxutil.RoleFromContext(r.Context())

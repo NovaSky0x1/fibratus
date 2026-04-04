@@ -32,6 +32,7 @@ type AccountStore interface {
 	Get(ctx context.Context, id string) (*fleet.Account, error)
 	ListAll(ctx context.Context) ([]*fleet.Account, error)
 	Delete(ctx context.Context, id string) error
+	UpdateSettings(ctx context.Context, id string, require2FA bool) error
 }
 
 // OrgStore manages organization persistence.
