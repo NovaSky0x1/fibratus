@@ -153,6 +153,18 @@ type AuditStore interface {
 	List(ctx context.Context, orgID string, opts fleet.ListOptions) ([]*fleet.AuditEntry, int, error)
 }
 
+// UserGroupStore manages user group persistence.
+type UserGroupStore interface {
+	Create(ctx context.Context, group *fleet.UserGroup) error
+	Get(ctx context.Context, id string) (*fleet.UserGroup, error)
+	List(ctx context.Context, accountID string) ([]*fleet.UserGroup, error)
+	Update(ctx context.Context, group *fleet.UserGroup) error
+	Delete(ctx context.Context, id string) error
+	AddMember(ctx context.Context, userID, groupID string) error
+	RemoveMember(ctx context.Context, userID, groupID string) error
+	GetUserGroups(ctx context.Context, userID string) ([]fleet.UserGroupMembership, error)
+}
+
 // TelemetryStore manages telemetry event persistence and search.
 type TelemetryStore interface {
 	BulkIngest(ctx context.Context, orgID, agentID, hostname string, events []json.RawMessage) error

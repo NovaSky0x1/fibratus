@@ -315,6 +315,24 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_codes TEXT DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS org_restrictions TEXT DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS user_groups (
+    id              TEXT PRIMARY KEY,
+    account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    description     TEXT DEFAULT '',
+    permissions     JSONB DEFAULT '[]',
+    org_restrictions JSONB DEFAULT 'null',
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_group_members (
+    user_id     TEXT REFERENCES users(id) ON DELETE CASCADE,
+    group_id    TEXT REFERENCES user_groups(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, group_id)
+);
 `
 
 // Migrate runs the database schema migrations.

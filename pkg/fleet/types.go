@@ -61,11 +61,32 @@ type User struct {
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 
+	OrgRestrictions string `json:"org_restrictions,omitempty"` // JSON array of org IDs, empty = all
+	Groups          []UserGroupMembership `json:"groups,omitempty"`
+
 	LoginAttempts int       `json:"-"`
 	LockedUntil   time.Time `json:"-"`
 	TOTPSecret    string    `json:"-"`
 	TOTPEnabled   bool      `json:"totp_enabled"`
 	RecoveryCodes string    `json:"-"`
+}
+
+// UserGroup defines a permission group with optional org restrictions.
+type UserGroup struct {
+	ID              string    `json:"id"`
+	AccountID       string    `json:"account_id"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description"`
+	Permissions     []string  `json:"permissions"`      // list of permission strings
+	OrgRestrictions []string  `json:"org_restrictions"`  // org IDs, null/empty = all
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// UserGroupMembership is a lightweight reference for user → group.
+type UserGroupMembership struct {
+	GroupID   string `json:"group_id"`
+	GroupName string `json:"group_name"`
 }
 
 // UserOrg maps a user's access and role within a specific organization.

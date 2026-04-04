@@ -152,6 +152,8 @@ func (s *Server) Run(ctx context.Context) error {
 	installHandler := handler.NewInstallHandler(enrollStore,
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
+	groupStore := postgres.NewUserGroupStore(db)
+	groupHandler := handler.NewGroupHandler(groupStore)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 
@@ -332,6 +334,22 @@ func (s *Server) Run(ctx context.Context) error {
 			requirePermission(fleetauth.PermManageUsers, userHandler.Update)(w, r)
 		case strings.HasPrefix(subpath, "/users/") && r.Method == http.MethodDelete:
 			requirePermission(fleetauth.PermManageUsers, userHandler.Delete)(w, r)
+
+		// User Groups
+		case subpath == "/groups" && r.Method == http.MethodGet:
+			groupHandler.List(w, r)
+		case subpath == "/groups" && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageUsers, groupHandler.Create)(w, r)
+		case strings.HasPrefix(subpath, "/groups/") && strings.HasSuffix(subpath, "/members") && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageUsers, groupHandler.AddMember)(w, r)
+		case strings.HasPrefix(subpath, "/groups/") && strings.Contains(subpath, "/members/") && r.Method == http.MethodDelete:
+			requirePermission(fleetauth.PermManageUsers, groupHandler.RemoveMember)(w, r)
+		case strings.HasPrefix(subpath, "/groups/") && r.Method == http.MethodPut:
+			requirePermission(fleetauth.PermManageUsers, groupHandler.Update)(w, r)
+		case strings.HasPrefix(subpath, "/groups/") && r.Method == http.MethodDelete:
+			requirePermission(fleetauth.PermManageUsers, groupHandler.Delete)(w, r)
+		case subpath == "/permissions" && r.Method == http.MethodGet:
+			groupHandler.GetPermissions(w, r)
 
 		default:
 			http.NotFound(w, r)
