@@ -190,6 +190,23 @@ export interface AuthResponse {
   org_id?: string
 }
 
+export interface UserGroup {
+  id: string
+  account_id: string
+  name: string
+  description: string
+  permissions: string[]
+  org_restrictions: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface PermissionDef {
+  id: string
+  name: string
+  category: string
+}
+
 // ═════════════════════════════════════════════════
 // API Client
 // ═════════════════════════════════════════════════
@@ -243,6 +260,20 @@ export const api = {
     fetchApi<{ status: string }>(orgPath(`/users/${id}/totp`), { method: 'DELETE' }),
   deleteUser: (id: string) =>
     fetchApi<{ status: string }>(orgPath(`/users/${id}`), { method: 'DELETE' }),
+
+  // User Groups
+  getGroups: () => fetchApi<unknown[]>(orgPath('/groups')),
+  createGroup: (data: { name: string; description: string; permissions: string[]; org_restrictions: string[] }) =>
+    fetchApi<unknown>(orgPath('/groups'), { method: 'POST', body: JSON.stringify(data) }),
+  updateGroup: (id: string, data: { name: string; description: string; permissions: string[]; org_restrictions: string[] }) =>
+    fetchApi<unknown>(orgPath(`/groups/${id}`), { method: 'PUT', body: JSON.stringify(data) }),
+  deleteGroup: (id: string) =>
+    fetchApi<void>(orgPath(`/groups/${id}`), { method: 'DELETE' }),
+  addGroupMember: (groupId: string, userId: string) =>
+    fetchApi<unknown>(orgPath(`/groups/${groupId}/members`), { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+  removeGroupMember: (groupId: string, userId: string) =>
+    fetchApi<void>(orgPath(`/groups/${groupId}/members/${userId}`), { method: 'DELETE' }),
+  getPermissions: () => fetchApi<{ id: string; name: string; category: string }[]>(orgPath('/permissions')),
 
   // Detections
   getDetections: (params?: Record<string, string>) => {

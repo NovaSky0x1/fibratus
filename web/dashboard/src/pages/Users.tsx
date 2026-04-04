@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type User } from '../lib/api'
+import { api, type User, type UserGroup } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
 
 const roleBadge: Record<string, string> = {
@@ -36,6 +36,21 @@ export default function Users() {
     queryFn: () => api.getUsers(),
   })
   const users = (data?.data || []) as User[]
+
+  const { data: groupsData } = useQuery({
+    queryKey: ['groups'],
+    queryFn: () => api.getGroups(),
+  })
+  const groups = (groupsData?.data || []) as (UserGroup & { members?: { id: string }[] })[]
+
+  // Build a map of userId -> group names
+  const userGroupMap: Record<string, string[]> = {}
+  groups.forEach(g => {
+    (g.members || []).forEach(m => {
+      if (!userGroupMap[m.id]) userGroupMap[m.id] = []
+      userGroupMap[m.id].push(g.name)
+    })
+  })
 
   const isAdmin = currentUser?.role === 'admin'
 
@@ -96,6 +111,7 @@ export default function Users() {
                 <th className="px-6 py-3 font-medium text-gray-500">Name</th>
                 <th className="px-6 py-3 font-medium text-gray-500">Email</th>
                 <th className="px-6 py-3 font-medium text-gray-500">Role</th>
+                <th className="px-6 py-3 font-medium text-gray-500">Groups</th>
                 <th className="px-6 py-3 font-medium text-gray-500">2FA</th>
                 <th className="px-6 py-3 font-medium text-gray-500">Created</th>
                 <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
@@ -103,7 +119,7 @@ export default function Users() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {isLoading && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
               )}
               {!isLoading && users.map(user => {
                 const isSelf = currentUser?.id === user.id
@@ -132,6 +148,18 @@ export default function Users() {
                           {user.role}
                         </span>
                       )}
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(userGroupMap[user.id] || []).map(gName => (
+                          <span key={gName} className="inline-flex rounded-full bg-fibratus-50 text-fibratus-700 px-2 py-0.5 text-[10px] font-medium">
+                            {gName}
+                          </span>
+                        ))}
+                        {!(userGroupMap[user.id] || []).length && (
+                          <span className="text-[10px] text-gray-400">--</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-3">
                       <span className={'rounded-full px-2 py-0.5 text-[10px] font-medium ' +
@@ -185,29 +213,56 @@ export default function Users() {
                 )
               })}
               {!isLoading && users.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">No users yet.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">No users yet.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Roles legend */}
+      {/* Roles permission matrix */}
       <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Role Permissions</h3>
-        <div className="grid grid-cols-3 gap-4 text-xs">
-          <div>
-            <span className="rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 font-medium">Admin</span>
-            <p className="mt-1 text-gray-500">Full access -- manage users, rules, agents, settings, active response commands</p>
-          </div>
-          <div>
-            <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 font-medium">Analyst</span>
-            <p className="mt-1 text-gray-500">Investigation -- view/manage detections, events, rules. No active response or settings</p>
-          </div>
-          <div>
-            <span className="rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 font-medium">Viewer</span>
-            <p className="mt-1 text-gray-500">Read-only -- view detections, events, agents. No modifications</p>
-          </div>
+        <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">Role Permissions</h3>
+        <div className="grid grid-cols-3 gap-6 text-xs">
+          <RolePermissionCard
+            role="Admin"
+            badgeClass="bg-purple-100 text-purple-700"
+            permissions={{
+              Agents:           ['View', 'Manage', 'Delete'],
+              Detections:       ['View'],
+              Events:           ['View'],
+              Rules:            ['View', 'Create/Edit/Delete'],
+              Macros:           ['View', 'Create/Edit/Delete'],
+              'Active Response': ['View', 'Execute'],
+              Settings:         ['View', 'Manage'],
+              'User Management': ['Manage Users'],
+              Audit:            ['View'],
+              Organizations:    ['Manage'],
+            }}
+          />
+          <RolePermissionCard
+            role="Analyst"
+            badgeClass="bg-blue-100 text-blue-700"
+            permissions={{
+              Agents:           ['View'],
+              Detections:       ['View'],
+              Events:           ['View'],
+              Rules:            ['View', 'Create/Edit/Delete'],
+              Macros:           ['View', 'Create/Edit/Delete'],
+              'Active Response': ['View'],
+            }}
+          />
+          <RolePermissionCard
+            role="Viewer"
+            badgeClass="bg-gray-100 text-gray-600"
+            permissions={{
+              Agents:           ['View'],
+              Detections:       ['View'],
+              Events:           ['View'],
+              Rules:            ['View'],
+              Macros:           ['View'],
+            }}
+          />
         </div>
       </div>
 
@@ -295,6 +350,48 @@ export default function Users() {
           onDeleted={() => { setEditingUser(null) }}
         />
       )}
+    </div>
+  )
+}
+
+const permCategoryColors: Record<string, { bg: string; text: string }> = {
+  Agents:           { bg: 'bg-blue-50',    text: 'text-blue-700' },
+  Detections:       { bg: 'bg-amber-50',   text: 'text-amber-700' },
+  Events:           { bg: 'bg-cyan-50',    text: 'text-cyan-700' },
+  Rules:            { bg: 'bg-purple-50',   text: 'text-purple-700' },
+  Macros:           { bg: 'bg-indigo-50',  text: 'text-indigo-700' },
+  'Active Response': { bg: 'bg-red-50',    text: 'text-red-700' },
+  Settings:         { bg: 'bg-gray-100',   text: 'text-gray-700' },
+  'User Management': { bg: 'bg-emerald-50', text: 'text-emerald-700' },
+  Audit:            { bg: 'bg-orange-50',  text: 'text-orange-700' },
+  Organizations:    { bg: 'bg-teal-50',    text: 'text-teal-700' },
+}
+
+function RolePermissionCard({ role, badgeClass, permissions }: {
+  role: string
+  badgeClass: string
+  permissions: Record<string, string[]>
+}) {
+  return (
+    <div>
+      <span className={`rounded-full px-2 py-0.5 font-medium ${badgeClass}`}>{role}</span>
+      <div className="mt-2 space-y-1.5">
+        {Object.entries(permissions).map(([category, perms]) => {
+          const colors = permCategoryColors[category] || { bg: 'bg-gray-100', text: 'text-gray-700' }
+          return (
+            <div key={category} className="flex items-start gap-1.5">
+              <span className="text-[10px] text-gray-500 w-24 shrink-0 pt-0.5">{category}:</span>
+              <div className="flex flex-wrap gap-1">
+                {perms.map(p => (
+                  <span key={p} className={`inline-flex rounded-full px-1.5 py-0 text-[10px] font-medium ${colors.bg} ${colors.text}`}>
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
