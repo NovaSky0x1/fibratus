@@ -97,6 +97,25 @@ func (s *AccountStore) UpdateSettings(ctx context.Context, id string, require2FA
 	return err
 }
 
+func (s *AccountStore) UpdateProfile(ctx context.Context, id, name, plan string) error {
+	if name != "" && plan != "" {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE accounts SET name = $2, plan = $3, updated_at = NOW() WHERE id = $1`, id, name, plan)
+		return err
+	}
+	if name != "" {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE accounts SET name = $2, updated_at = NOW() WHERE id = $1`, id, name)
+		return err
+	}
+	if plan != "" {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE accounts SET plan = $2, updated_at = NOW() WHERE id = $1`, id, plan)
+		return err
+	}
+	return nil
+}
+
 // OrgStore implements store.OrgStore backed by PostgreSQL.
 type OrgStore struct {
 	db *sql.DB

@@ -180,6 +180,7 @@ export interface User {
   account_id: string
   role: string
   totp_enabled: boolean
+  locked: boolean
   created_at: string
 }
 
@@ -372,10 +373,20 @@ export const api = {
   adminGetAccountOrgs: (accountId: string) =>
     fetchApi<unknown[]>(`/admin/accounts/${accountId}/orgs`),
   adminGetAllUsers: () => fetchApi<unknown[]>('/admin/users'),
-  adminUpdateAccount: (accountId: string, data: { require_2fa: boolean }) =>
-    fetchApi<{ require_2fa: boolean }>(`/admin/accounts/${accountId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  adminUpdateAccount: (accountId: string, data: { name?: string; plan?: string; require_2fa?: boolean }) =>
+    fetchApi<Account>(`/admin/accounts/${accountId}`, { method: 'PUT', body: JSON.stringify(data) }),
   adminSwitchAccount: (accountId: string) =>
     fetchApi<{ account_id: string; account_name: string }>('/admin/switch-account', { method: 'POST', body: JSON.stringify({ account_id: accountId }) }),
+  adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string }) =>
+    fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  adminDeleteUser: (id: string) =>
+    fetchApi<void>(`/admin/users/${id}`, { method: 'DELETE' }),
+  adminUnlockUser: (id: string) =>
+    fetchApi<{ status: string }>(`/admin/users/${id}/unlock`, { method: 'POST' }),
+  adminResetPassword: (id: string, password: string) =>
+    fetchApi<{ status: string }>(`/admin/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
+  adminDisableTOTP: (id: string) =>
+    fetchApi<{ status: string }>(`/admin/users/${id}/disable-totp`, { method: 'POST' }),
 
   // Enrollment Tokens
   getEnrollmentTokens: () => fetchApi<EnrollmentToken[]>(orgPath('/enrollment-tokens')),

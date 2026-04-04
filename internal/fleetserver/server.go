@@ -409,6 +409,22 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	})
 	dashMux.HandleFunc("/api/v1/admin/users", methodGuard(http.MethodGet, adminHandler.ListAllUsers))
+	dashMux.HandleFunc("/api/v1/admin/users/", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/unlock") && r.Method == http.MethodPost:
+			adminHandler.UnlockUser(w, r)
+		case strings.HasSuffix(r.URL.Path, "/reset-password") && r.Method == http.MethodPost:
+			adminHandler.ResetUserPassword(w, r)
+		case strings.HasSuffix(r.URL.Path, "/disable-totp") && r.Method == http.MethodPost:
+			adminHandler.DisableUserTOTP(w, r)
+		case r.Method == http.MethodPut:
+			adminHandler.UpdateUser(w, r)
+		case r.Method == http.MethodDelete:
+			adminHandler.DeleteUser(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
 	dashMux.HandleFunc("/api/v1/admin/switch-account", methodGuard(http.MethodPost, adminHandler.SwitchAccount))
 
 	// TOTP 2FA routes (JWT auth, user-scoped)

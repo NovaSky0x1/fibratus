@@ -119,20 +119,30 @@ func (h *AdminHandler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Require2FA bool `json:"require_2fa"`
+		Name       string `json:"name"`
+		Plan       string `json:"plan"`
+		Require2FA *bool  `json:"require_2fa"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if err := h.accounts.UpdateSettings(r.Context(), accountID, req.Require2FA); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to update account")
-		return
+	// Update 2FA if provided
+	if req.Require2FA != nil {
+		if err := h.accounts.UpdateSettings(r.Context(), accountID, *req.Require2FA); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update account")
+			return
+		}
 	}
 
-	log.Infof("fleet: account %s updated by root: require_2fa=%v", accountID, req.Require2FA)
-	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"require_2fa": req.Require2FA}})
+	// Update name/plan if provided
+	if req.Name != "" || req.Plan != "" {
+		h.accounts.UpdateProfile(r.Context(), accountID, req.Name, req.Plan)
+	}
+
+	log.Infof("fleet: account %s updated by root", accountID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated"}})
 }
 
 // ListAccountOrgs handles GET /api/v1/admin/accounts/{id}/orgs
@@ -181,6 +191,154 @@ func (h *AdminHandler) ListAllUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: users})
+}
+
+// UnlockUser handles POST /api/v1/admin/users/{id}/unlock
+func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	userID := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
+	userID = strings.TrimSuffix(userID, "/unlock")
+	if userID == "" {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+
+	if err := h.users.ResetLoginAttempts(r.Context(), userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to unlock user")
+		return
+	}
+
+	log.Infof("fleet: user %s unlocked by root", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "unlocked"}})
+}
+
+// UpdateUser handles PUT /api/v1/admin/users/{id}
+func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	userID := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
+	userID = strings.TrimSuffix(userID, "/")
+	if userID == "" || strings.Contains(userID, "/") {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+
+	var req struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Name != "" || req.Email != "" {
+		h.users.UpdateProfile(r.Context(), userID, req.Name, req.Email)
+	}
+
+	log.Infof("fleet: user %s updated by root", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated"}})
+}
+
+// DeleteUser handles DELETE /api/v1/admin/users/{id}
+func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	userID := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
+	userID = strings.TrimSuffix(userID, "/")
+	if userID == "" {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+
+	if err := h.users.Delete(r.Context(), userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete user")
+		return
+	}
+
+	log.Infof("fleet: user %s deleted by root", userID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ResetUserPassword handles POST /api/v1/admin/users/{id}/reset-password
+func (h *AdminHandler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	userID := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
+	userID = strings.TrimSuffix(userID, "/reset-password")
+	if userID == "" {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "password is required")
+		return
+	}
+
+	if err := fleetauth.ValidatePasswordPolicy(req.Password); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	hashed, err := fleetauth.HashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := h.users.UpdatePassword(r.Context(), userID, hashed); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reset password")
+		return
+	}
+
+	log.Infof("fleet: user %s password reset by root", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "password_reset"}})
+}
+
+// DisableUserTOTP handles POST /api/v1/admin/users/{id}/disable-totp
+func (h *AdminHandler) DisableUserTOTP(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	userID := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/users/")
+	userID = strings.TrimSuffix(userID, "/disable-totp")
+	if userID == "" {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+
+	if err := h.users.SetTOTP(r.Context(), userID, "", false, ""); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to disable 2FA")
+		return
+	}
+
+	log.Infof("fleet: user %s 2FA disabled by root", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "totp_disabled"}})
 }
 
 // SwitchAccount handles POST /api/v1/admin/switch-account
