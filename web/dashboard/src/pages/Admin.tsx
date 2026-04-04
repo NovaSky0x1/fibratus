@@ -21,7 +21,6 @@ const passwordRules = [
 ]
 
 export default function Admin() {
-  const _queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('accounts')
   const [filterAccountId, setFilterAccountId] = useState<string | null>(null)
 
