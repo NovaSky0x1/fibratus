@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { api, type Rule, type ApiResponse } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
@@ -7,6 +8,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Rules() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [showUpload, setShowUpload] = useState(false)
   const [yamlContent, setYamlContent] = useState('')
   const [uploadError, setUploadError] = useState('')
@@ -74,6 +76,18 @@ export default function Rules() {
         r.labels?.['technique.id']?.toLowerCase().includes(search.toLowerCase()))
     : allRules
   const total = data?.meta?.total ?? allRules.length
+
+  // Auto-open rule from URL ?rule=ID (linked from detection page)
+  useEffect(() => {
+    const ruleId = searchParams.get('rule')
+    if (ruleId && allRules.length > 0) {
+      const found = allRules.find(r => r.id === ruleId)
+      if (found) {
+        openEditor(found)
+        setSearchParams({}, { replace: true })
+      }
+    }
+  }, [searchParams, allRules])
 
   const openEditor = (rule: Rule) => {
     setEditRule(rule)

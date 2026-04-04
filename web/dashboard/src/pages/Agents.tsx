@@ -6,7 +6,7 @@ import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import RemoteShell from '../components/RemoteShell'
 import FileBrowser from '../components/FileBrowser'
-import ProcessTree from '../components/ProcessTree'
+import ProcessInvestigation from '../components/ProcessInvestigation'
 
 interface TelemetryEvent {
   id: number; timestamp: string; event_name: string; event_category: string;
@@ -413,7 +413,7 @@ export default function Agents() {
 
             {/* Process Tree Tab */}
             {activeTab === 'processes' && (
-              <ProcessTree agentId={selectedAgent.id} />
+              <ProcessInvestigation agentId={selectedAgent.id} />
             )}
 
             {/* Command History Tab */}
