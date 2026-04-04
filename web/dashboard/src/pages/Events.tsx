@@ -248,8 +248,12 @@ export default function Events() {
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Process</h4>
               {(() => {
                 const raw = selectedEvent.raw_event as Record<string, unknown> | null
-                const ps = (raw?.ps || {}) as Record<string, unknown>
-                const parent = (ps?.parent || {}) as Record<string, unknown>
+                const psRaw = (raw?.ps || {}) as Record<string, unknown>
+                const parentRaw = (psRaw?.parent || {}) as Record<string, unknown>
+                const ps = { sha256: String(psRaw.sha256 || ''), md5: String(psRaw.md5 || ''),
+                  is_signed: psRaw.is_signed as boolean | undefined, is_trusted: psRaw.is_trusted as boolean | undefined,
+                  cert_subject: String(psRaw.cert_subject || ''), cert_issuer: String(psRaw.cert_issuer || '') }
+                const parent = { sha256: String(parentRaw.sha256 || ''), md5: String(parentRaw.md5 || '') }
                 return (<>
                   <div className="grid grid-cols-2 gap-2">
                     {[
