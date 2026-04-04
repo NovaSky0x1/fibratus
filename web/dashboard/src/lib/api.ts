@@ -174,6 +174,7 @@ export interface User {
 
 export interface AuthResponse {
   token: string
+  totp_required?: boolean
   user?: User
   account_id?: string
   org_id?: string
@@ -188,8 +189,17 @@ export const api = {
   signup: (data: { account_name: string; org_name: string; email: string; name: string; password: string }) =>
     fetchApi<AuthResponse>('/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
 
-  login: (data: { email: string; password: string }) =>
+  login: (data: { email: string; password: string; totp_code?: string }) =>
     fetchApi<AuthResponse>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+
+  // TOTP 2FA
+  getTOTPStatus: () => fetchApi<{ enabled: boolean }>('/auth/totp/status'),
+  setupTOTP: () => fetchApi<{ secret: string; uri: string }>('/auth/totp/setup', { method: 'POST' }),
+  verifyTOTP: (code: string) => fetchApi<{ enabled: boolean; recovery_codes: string[] }>('/auth/totp/verify', { method: 'POST', body: JSON.stringify({ code }) }),
+  disableTOTP: (password: string) => fetchApi<{ status: string }>('/auth/totp/disable', { method: 'POST', body: JSON.stringify({ password }) }),
+
+  // User profile
+  getCurrentUser: () => fetchApi<User>('/auth/me'),
 
   // Organizations
   getOrganizations: () => fetchApi<Organization[]>('/account/organizations'),

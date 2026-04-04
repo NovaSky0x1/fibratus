@@ -330,6 +330,7 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/auth/totp/verify", methodGuard(http.MethodPost, totpHandler.Verify))
 	dashMux.HandleFunc("/api/v1/auth/totp/disable", methodGuard(http.MethodPost, totpHandler.Disable))
 	dashMux.HandleFunc("/api/v1/auth/totp/status", methodGuard(http.MethodGet, totpHandler.Status))
+	dashMux.HandleFunc("/api/v1/auth/me", methodGuard(http.MethodGet, authHandler.GetCurrentUser))
 
 	// Wrap dashboard routes with JWT auth
 	dashAuthenticated := jwtAuth(s.config.Auth.JWTSecret, dashMux)
@@ -344,14 +345,15 @@ func (s *Server) Run(ctx context.Context) error {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 	rootMux.HandleFunc("/api/v1/auth/totp/", dashAuthenticated.ServeHTTP)
+	rootMux.HandleFunc("/api/v1/auth/me", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/", mux.ServeHTTP)
 
 	// Route dispatcher — determines auth path based on URL prefix
 	rootMux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Public routes (no auth required) — TOTP routes require JWT
-		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/")) || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
+		// Public routes (no auth required) — TOTP and /me routes require JWT
+		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/") && path != "/api/v1/auth/me") || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
 			mux.ServeHTTP(w, r)
 			return
 		}

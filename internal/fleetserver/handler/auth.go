@@ -288,6 +288,24 @@ func useRecoveryCode(ctx context.Context, users store.UserStore, user *fleet.Use
 	return false
 }
 
+// GetCurrentUser handles GET /api/v1/auth/me
+func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	user, err := h.users.Get(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	user.Password = ""
+	writeJSON(w, http.StatusOK, fleet.Response{Data: user})
+}
+
 // ListOrganizations handles GET /api/v1/account/organizations
 func (h *AuthHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
 	accountID := ctxutil.AccountIDFromContext(r.Context())

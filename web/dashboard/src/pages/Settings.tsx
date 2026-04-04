@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type EnrollmentToken, type Organization } from '../lib/api'
+import { api, type EnrollmentToken, type Organization, type User } from '../lib/api'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Settings() {
@@ -380,6 +380,11 @@ export default function Settings() {
       </div>
 
       {/* ──────────────────────────────────────────── */}
+      {/* Security — User Profile & 2FA */}
+      {/* ──────────────────────────────────────────── */}
+      <SecuritySection />
+
+      {/* ──────────────────────────────────────────── */}
       {/* Detection as Code — GitHub Sync */}
       {/* ──────────────────────────────────────────── */}
       <GitHubSyncSection />
@@ -399,6 +404,331 @@ export default function Settings() {
         }}
         onCancel={() => setDeleteTokenTarget(null)}
       />
+    </div>
+  )
+}
+
+function SecuritySection() {
+  const queryClient = useQueryClient()
+
+  // User profile
+  const { data: userData } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: () => api.getCurrentUser(),
+  })
+  const user = userData?.data as User | undefined
+
+  // TOTP status
+  const { data: totpData } = useQuery({
+    queryKey: ['totp-status'],
+    queryFn: () => api.getTOTPStatus(),
+  })
+  const totpEnabled = (totpData?.data as { enabled: boolean } | undefined)?.enabled ?? false
+
+  // Setup flow state
+  const [setupStep, setSetupStep] = useState<'idle' | 'setup' | 'verify' | 'done'>('idle')
+  const [totpSecret, setTotpSecret] = useState('')
+  const [totpUri, setTotpUri] = useState('')
+  const [verifyCode, setVerifyCode] = useState('')
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
+  const [setupError, setSetupError] = useState('')
+
+  // Disable flow state
+  const [showDisable, setShowDisable] = useState(false)
+  const [disablePassword, setDisablePassword] = useState('')
+  const [disableError, setDisableError] = useState('')
+
+  const setupMutation = useMutation({
+    mutationFn: () => api.setupTOTP(),
+    onSuccess: (res) => {
+      if (res.error) {
+        setSetupError(res.error.message)
+        return
+      }
+      const data = res.data as { secret: string; uri: string } | undefined
+      if (data) {
+        setTotpSecret(data.secret)
+        setTotpUri(data.uri)
+        setSetupStep('verify')
+      }
+    },
+    onError: () => setSetupError('Failed to start 2FA setup'),
+  })
+
+  const verifyMutation = useMutation({
+    mutationFn: () => api.verifyTOTP(verifyCode),
+    onSuccess: (res) => {
+      if (res.error) {
+        setSetupError(res.error.message)
+        return
+      }
+      const data = res.data as { enabled: boolean; recovery_codes: string[] } | undefined
+      if (data) {
+        setRecoveryCodes(data.recovery_codes || [])
+        setSetupStep('done')
+        queryClient.invalidateQueries({ queryKey: ['totp-status'] })
+      }
+    },
+    onError: () => setSetupError('Failed to verify code'),
+  })
+
+  const disableMutation = useMutation({
+    mutationFn: () => api.disableTOTP(disablePassword),
+    onSuccess: (res) => {
+      if (res.error) {
+        setDisableError(res.error.message)
+        return
+      }
+      setShowDisable(false)
+      setDisablePassword('')
+      setDisableError('')
+      queryClient.invalidateQueries({ queryKey: ['totp-status'] })
+    },
+    onError: () => setDisableError('Failed to disable 2FA'),
+  })
+
+  const resetSetup = () => {
+    setSetupStep('idle')
+    setTotpSecret('')
+    setTotpUri('')
+    setVerifyCode('')
+    setRecoveryCodes([])
+    setSetupError('')
+  }
+
+  const copyRecoveryCodes = () => {
+    navigator.clipboard.writeText(recoveryCodes.join('\n'))
+  }
+
+  const roleLabel = (role: string) => {
+    switch (role) {
+      case 'admin': return 'Admin'
+      case 'analyst': return 'Analyst'
+      case 'viewer': return 'Viewer'
+      default: return role
+    }
+  }
+
+  const roleBadgeColor = (role: string) => {
+    switch (role) {
+      case 'admin': return 'text-purple-700 bg-purple-50 border-purple-200'
+      case 'analyst': return 'text-blue-700 bg-blue-50 border-blue-200'
+      case 'viewer': return 'text-gray-700 bg-gray-50 border-gray-200'
+      default: return 'text-gray-700 bg-gray-50 border-gray-200'
+    }
+  }
+
+  return (
+    <div className="mt-12">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900">Security</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Manage your account security and two-factor authentication.
+        </p>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm divide-y divide-gray-100">
+        {/* User Profile */}
+        {user && (
+          <div className="px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-900">{user.name || user.email}</p>
+                <p className="text-sm text-gray-500">{user.email}</p>
+              </div>
+              <span className={'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ' + roleBadgeColor(user.role)}>
+                {roleLabel(user.role)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 2FA Status & Controls */}
+        <div className="px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Two-Factor Authentication</p>
+                <p className="text-sm text-gray-500">
+                  {totpEnabled
+                    ? 'Your account is protected with 2FA.'
+                    : 'Add an extra layer of security to your account.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={
+                'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ' +
+                (totpEnabled ? 'text-emerald-700 bg-emerald-50' : 'text-gray-500 bg-gray-100')
+              }>
+                {totpEnabled ? 'Enabled' : 'Disabled'}
+              </span>
+              {!totpEnabled && setupStep === 'idle' && (
+                <button
+                  onClick={() => { setSetupError(''); setupMutation.mutate() }}
+                  disabled={setupMutation.isPending}
+                  className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+                >
+                  {setupMutation.isPending ? 'Setting up...' : 'Enable 2FA'}
+                </button>
+              )}
+              {totpEnabled && !showDisable && (
+                <button
+                  onClick={() => setShowDisable(true)}
+                  className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  Disable 2FA
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Setup error */}
+          {setupError && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+              {setupError}
+            </div>
+          )}
+
+          {/* Setup Step: Verify -- show secret & URI, code input */}
+          {setupStep === 'verify' && (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-900">1. Add to your authenticator app</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Copy the secret key below into your authenticator app (Google Authenticator, Authy, etc.)
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Secret Key</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 select-all rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 break-all">
+                    {totpSecret}
+                  </code>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(totpSecret)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Provisioning URI</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 select-all rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-600 break-all">
+                    {totpUri}
+                  </code>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(totpUri)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">2. Enter the verification code</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Enter the 6-digit code shown in your authenticator app to verify setup.
+                </p>
+                <div className="mt-2 flex items-center gap-3">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    value={verifyCode}
+                    onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm text-center font-mono tracking-widest focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                    placeholder="000000"
+                  />
+                  <button
+                    onClick={() => { setSetupError(''); verifyMutation.mutate() }}
+                    disabled={verifyCode.length !== 6 || verifyMutation.isPending}
+                    className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+                  >
+                    {verifyMutation.isPending ? 'Verifying...' : 'Verify'}
+                  </button>
+                  <button
+                    onClick={resetSetup}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Setup Step: Done -- show recovery codes */}
+          {setupStep === 'done' && recoveryCodes.length > 0 && (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-800">Two-factor authentication enabled</p>
+                  <p className="text-xs text-emerald-600">
+                    Save these recovery codes in a secure location. Each code can only be used once.
+                  </p>
+                </div>
+                <button
+                  onClick={copyRecoveryCodes}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                >
+                  Copy All
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {recoveryCodes.map((code, i) => (
+                  <code key={i} className="rounded border border-emerald-200 bg-white px-3 py-1.5 font-mono text-sm text-gray-900 text-center">
+                    {code}
+                  </code>
+                ))}
+              </div>
+              <button
+                onClick={resetSetup}
+                className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+              >
+                Done
+              </button>
+            </div>
+          )}
+
+          {/* Disable 2FA */}
+          {showDisable && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+              <p className="text-sm font-medium text-red-800">Confirm password to disable 2FA</p>
+              {disableError && (
+                <div className="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700">
+                  {disableError}
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <input
+                  type="password"
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-64 rounded-lg border border-red-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                />
+                <button
+                  onClick={() => { setDisableError(''); disableMutation.mutate() }}
+                  disabled={!disablePassword || disableMutation.isPending}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {disableMutation.isPending ? 'Disabling...' : 'Disable 2FA'}
+                </button>
+                <button
+                  onClick={() => { setShowDisable(false); setDisablePassword(''); setDisableError('') }}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

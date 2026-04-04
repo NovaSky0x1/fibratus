@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Organization } from '../lib/api'
+import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Organization, type User } from '../lib/api'
 
 const navigation = [
   { name: 'Overview', href: '/' },
@@ -19,11 +19,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [currentOrg, setCurrentOrg] = useState(getCurrentOrgId())
+  const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
     api.getOrganizations().then(res => {
       const data = res.data as Organization[] | undefined
       if (data) setOrgs(data)
+    })
+    api.getCurrentUser().then(res => {
+      const data = res.data as User | undefined
+      if (data) setUser(data)
     })
   }, [])
 
@@ -83,8 +88,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        {/* Logout */}
+        {/* User info + Logout */}
         <div className="px-3 py-4 border-t border-gray-800">
+          {user && (
+            <div className="px-3 mb-3">
+              <p className="text-sm font-medium text-gray-200 truncate">{user.name || user.email}</p>
+              <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+            </div>
+          )}
           <button
             onClick={handleLogout}
             className="flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"

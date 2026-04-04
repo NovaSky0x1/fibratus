@@ -254,8 +254,16 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract PIDs from detection events to scope the tree.
-	focusPIDs := extractDetectionPIDs(det.Events)
+	// Extract the triggering PID(s) and the full ancestry set.
+	triggerPIDs, ancestryPIDs := extractDetectionPIDs(det.Events)
+
+	// The relevant set is ONLY:
+	// 1. The exact ancestry chain from the detection (focusPIDs)
+	// 2. Direct children of the triggering PID(s) (not ancestors)
+	relevant := make(map[int]bool)
+	for pid := range ancestryPIDs {
+		relevant[pid] = true
+	}
 
 	// Query telemetry within ±10 minutes of detection.
 	from := det.Timestamp.Add(-10 * time.Minute)
@@ -273,86 +281,26 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build a process map: PID -> parent PID and children.
+	// Walk DOWN only from the triggering PID(s) — NOT ancestors.
+	// This prevents pulling in all children of services.exe, etc.
 	type procInfo struct {
-		parentPID int
-		children  map[int]bool
+		children map[int]bool
 	}
 	procMap := make(map[int]*procInfo)
 	for _, evt := range allEvents {
-		if evt.PID <= 0 {
-			continue
-		}
-		pi, ok := procMap[evt.PID]
-		if !ok {
-			pi = &procInfo{children: make(map[int]bool)}
-			procMap[evt.PID] = pi
-		}
-		if evt.ParentPID > 0 && pi.parentPID == 0 {
-			pi.parentPID = evt.ParentPID
-		}
-		// Register as child of parent
-		if evt.ParentPID > 0 && evt.ParentPID != evt.PID {
-			parent, ok := procMap[evt.ParentPID]
+		if evt.ParentPID > 0 && evt.PID > 0 && evt.ParentPID != evt.PID {
+			pi, ok := procMap[evt.ParentPID]
 			if !ok {
-				parent = &procInfo{children: make(map[int]bool)}
-				procMap[evt.ParentPID] = parent
+				pi = &procInfo{children: make(map[int]bool)}
+				procMap[evt.ParentPID] = pi
 			}
-			parent.children[evt.PID] = true
+			pi.children[evt.PID] = true
 		}
 	}
 
-	// Relevant = the exact ancestor chain from the detection +
-	// descendants of the triggering PID(s). Nothing else.
-	relevant := make(map[int]bool)
-	for pid := range focusPIDs {
-		relevant[pid] = true
-	}
-
-	// Walk UP from each focus PID — but ONLY follow PIDs that
-	// were already identified in the detection's ancestor list.
-	for pid := range focusPIDs {
-		cur := pid
-		for i := 0; i < 20; i++ {
-			pi, ok := procMap[cur]
-			if !ok || pi.parentPID <= 0 || pi.parentPID == cur {
-				break
-			}
-			// Only include the parent if it's a known detection PID
-			// or if we can verify the chain links to one.
-			if focusPIDs[pi.parentPID] {
-				relevant[pi.parentPID] = true
-				cur = pi.parentPID
-				continue
-			}
-			// If the parent isn't a known detection PID, check if
-			// it eventually links to one (follow up to 5 more).
-			found := false
-			check := pi.parentPID
-			for j := 0; j < 5; j++ {
-				if focusPIDs[check] {
-					found = true
-					break
-				}
-				cpi, ok := procMap[check]
-				if !ok || cpi.parentPID <= 0 {
-					break
-				}
-				check = cpi.parentPID
-			}
-			if found {
-				relevant[pi.parentPID] = true
-				cur = pi.parentPID
-			} else {
-				break
-			}
-		}
-	}
-
-	// Walk DOWN: descendants of each focus PID.
 	var walkDown func(pid int, depth int)
 	walkDown = func(pid int, depth int) {
-		if depth > 15 {
+		if depth > 10 {
 			return
 		}
 		pi, ok := procMap[pid]
@@ -364,12 +312,13 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 			walkDown(child, depth+1)
 		}
 	}
-	for pid := range focusPIDs {
+	// Only walk down from triggering PIDs, not ancestry
+	for pid := range triggerPIDs {
 		walkDown(pid, 0)
 	}
 
 	// Filter events to only relevant PIDs.
-	filtered := make([]store.TelemetryEvent, 0, len(allEvents)/2)
+	filtered := make([]store.TelemetryEvent, 0, len(allEvents)/4)
 	for _, evt := range allEvents {
 		if relevant[evt.PID] {
 			filtered = append(filtered, evt)
@@ -378,17 +327,19 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{
-			"detection": det,
-			"events":    filtered,
-			"focus_pids": focusPIDs,
+			"detection":  det,
+			"events":     filtered,
+			"focus_pids": triggerPIDs,
 		},
 	})
 }
 
-// extractDetectionPIDs parses the detection events JSON to extract
-// the triggering process PIDs, parent PIDs, and ancestor PIDs.
-func extractDetectionPIDs(eventsRaw json.RawMessage) map[int]bool {
-	pids := make(map[int]bool)
+// extractDetectionPIDs parses the detection events JSON and returns:
+//   - triggerPIDs: the PIDs that directly triggered the detection (proc.pid)
+//   - allPIDs: triggerPIDs + parent PIDs + ancestor PIDs (the full lineage)
+func extractDetectionPIDs(eventsRaw json.RawMessage) (triggerPIDs, allPIDs map[int]bool) {
+	triggerPIDs = make(map[int]bool)
+	allPIDs = make(map[int]bool)
 
 	var events []struct {
 		Proc struct {
@@ -398,28 +349,28 @@ func extractDetectionPIDs(eventsRaw json.RawMessage) map[int]bool {
 		} `json:"proc"`
 	}
 	if err := json.Unmarshal(eventsRaw, &events); err != nil {
-		return pids
+		return
 	}
 
 	for _, evt := range events {
 		if evt.Proc.PID > 0 {
-			pids[evt.Proc.PID] = true
+			triggerPIDs[evt.Proc.PID] = true
+			allPIDs[evt.Proc.PID] = true
 		}
 		if evt.Proc.PPID > 0 {
-			pids[evt.Proc.PPID] = true
+			allPIDs[evt.Proc.PPID] = true
 		}
-		// Ancestors are formatted as "name (pid)"
 		for _, a := range evt.Proc.Ancestors {
 			if idx := strings.LastIndex(a, "("); idx >= 0 {
 				pidStr := strings.TrimSuffix(strings.TrimSpace(a[idx+1:]), ")")
 				if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
-					pids[pid] = true
+					allPIDs[pid] = true
 				}
 			}
 		}
 	}
 
-	return pids
+	return
 }
 
 // ProcessContext handles GET /api/v1/orgs/{org_id}/detections/{id}/process-context?pid=X
