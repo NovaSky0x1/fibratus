@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Organization, type UserGroup, type User, type PermissionDef } from '../lib/api'
+import Users from './Users'
 
-type Tab = 'account' | 'organizations' | 'groups'
+type Tab = 'account' | 'organizations' | 'groups' | 'users'
 
 // Category display order and colors (same as Groups page)
 const categoryMeta: Record<string, { color: string; bg: string }> = {
@@ -52,6 +53,7 @@ export default function Management() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'account', label: 'Account' },
+    { key: 'users', label: 'Users' },
     { key: 'organizations', label: 'Organizations' },
     { key: 'groups', label: 'User Groups' },
   ]
@@ -84,6 +86,7 @@ export default function Management() {
       </div>
 
       {tab === 'account' && <AccountSettingsTab />}
+      {tab === 'users' && <UsersTab />}
       {tab === 'organizations' && <OrganizationsTab />}
       {tab === 'groups' && <UserGroupsTab />}
     </div>
@@ -92,6 +95,12 @@ export default function Management() {
 
 // ================================================================
 // Account Settings Tab
+// ================================================================
+
+function UsersTab() {
+  return <Users />
+}
+
 // ================================================================
 
 function AccountSettingsTab() {

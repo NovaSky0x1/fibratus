@@ -11,8 +11,6 @@ const navigation = [
   { name: 'Rules', href: '/rules' },
   { name: 'Macros', href: '/macros' },
   { name: 'Audit Log', href: '/audit-log' },
-  { name: 'Users', href: '/users' },
-  { name: 'Groups', href: '/groups' },
   { name: 'Settings', href: '/settings' },
 ]
 
