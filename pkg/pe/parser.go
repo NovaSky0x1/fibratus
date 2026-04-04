@@ -31,6 +31,7 @@ import (
 
 	"github.com/rabbitstack/fibratus/pkg/sys"
 	"github.com/rabbitstack/fibratus/pkg/util/format"
+	"github.com/rabbitstack/fibratus/pkg/util/hashers"
 	"github.com/rabbitstack/fibratus/pkg/util/va"
 	peparser "github.com/saferwall/pe"
 	peparserlog "github.com/saferwall/pe/log"
@@ -400,6 +401,15 @@ func parse(path string, data []byte, options ...Option) (*PE, error) {
 	p.IsExecutable = pe.IsEXE()
 	p.IsDotnet = pe.HasCLR
 	p.Anomalies = pe.Anomalies
+
+	// Compute file-level hashes if parsing from disk.
+	if path != "" {
+		h, err := hashers.ComputeFileHash(path)
+		if err == nil {
+			p.FileSHA256 = h.SHA256
+			p.FileMD5 = h.MD5
+		}
+	}
 
 	return p, nil
 }

@@ -104,6 +104,10 @@ type PE struct {
 	IsModified bool `json:"is_modified"`
 	// Exports contains exported function names indexed by RVA
 	Exports map[uint32]string `json:"exports"`
+	// FileSHA256 is the hex-encoded SHA256 digest of the PE file.
+	FileSHA256 string `json:"file_sha256"`
+	// FileMD5 is the hex-encoded MD5 digest of the PE file.
+	FileMD5 string `json:"file_md5"`
 
 	dosHeader      peparser.ImageDOSHeader
 	ntHeader       peparser.ImageNtHeader

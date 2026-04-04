@@ -636,7 +636,9 @@ func (e *Event) MarshalJSON() []byte {
 				writeMore := js.shouldWriteMore(i, len(ps.Modules))
 				js.writeObjectStart()
 				js.writeObjectField("name").writeEscapeString(m.Name).writeMore()
-				js.writeObjectField("size").writeUint64(m.Size)
+				js.writeObjectField("size").writeUint64(m.Size).writeMore()
+				js.writeObjectField("sha256").writeString(m.SHA256).writeMore()
+				js.writeObjectField("md5").writeString(m.MD5)
 				js.writeObjectEnd()
 				if writeMore {
 					js.writeMore()
@@ -771,6 +773,13 @@ func (e *Event) MarshalJSON() []byte {
 					i++
 				}
 				js.writeObjectEnd()
+			}
+
+			// file-level hashes
+			if pe.FileSHA256 != "" || pe.FileMD5 != "" {
+				js.writeMore()
+				js.writeObjectField("file_sha256").writeString(pe.FileSHA256).writeMore()
+				js.writeObjectField("file_md5").writeString(pe.FileMD5)
 			}
 
 			// end PE

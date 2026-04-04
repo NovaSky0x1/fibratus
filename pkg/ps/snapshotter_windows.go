@@ -37,6 +37,7 @@ import (
 	htypes "github.com/rabbitstack/fibratus/pkg/handle/types"
 	"github.com/rabbitstack/fibratus/pkg/pe"
 	pstypes "github.com/rabbitstack/fibratus/pkg/ps/types"
+	"github.com/rabbitstack/fibratus/pkg/util/hashers"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -58,24 +59,26 @@ var (
 )
 
 type snapshotter struct {
-	mu      sync.RWMutex
-	procs   map[uint32]*pstypes.PS
-	dirty   map[uint32]*pstypes.PS
-	dmu     sync.RWMutex
-	quit    chan struct{}
-	config  *config.Config
-	hsnap   handle.Snapshotter
-	capture bool
+	mu        sync.RWMutex
+	procs     map[uint32]*pstypes.PS
+	dirty     map[uint32]*pstypes.PS
+	dmu       sync.RWMutex
+	quit      chan struct{}
+	config    *config.Config
+	hsnap     handle.Snapshotter
+	capture   bool
+	hashCache *hashers.FileHashCache
 }
 
 // NewSnapshotter returns a new instance of the process snapshotter.
 func NewSnapshotter(hsnap handle.Snapshotter, config *config.Config) Snapshotter {
 	s := &snapshotter{
-		procs:  make(map[uint32]*pstypes.PS),
-		dirty:  make(map[uint32]*pstypes.PS),
-		quit:   make(chan struct{}, 1),
-		config: config,
-		hsnap:  hsnap,
+		procs:     make(map[uint32]*pstypes.PS),
+		dirty:     make(map[uint32]*pstypes.PS),
+		quit:      make(chan struct{}, 1),
+		config:    config,
+		hsnap:     hsnap,
+		hashCache: hashers.NewFileHashCache(50000),
 	}
 
 	s.mu.Lock()
@@ -270,6 +273,13 @@ func (s *snapshotter) AddModule(e *event.Event) error {
 
 	module.SignatureLevel, _ = e.Params.GetUint32(params.ImageSignatureLevel)
 	module.SignatureType, _ = e.Params.GetUint32(params.ImageSignatureType)
+
+	// Compute file hashes (cached to avoid repeated I/O for common DLLs).
+	if module.Name != "" {
+		h := s.hashCache.Get(module.Name)
+		module.SHA256 = h.SHA256
+		module.MD5 = h.MD5
+	}
 
 	if strings.EqualFold(proc.Name, filepath.Base(module.Name)) && len(proc.Exe) < len(module.Name) {
 		// if the module is loaded for the process executable, and

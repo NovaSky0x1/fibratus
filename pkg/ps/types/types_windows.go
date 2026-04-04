@@ -369,6 +369,10 @@ type Module struct {
 	SignatureLevel uint32
 	// SignatureType designates the image signature type (e.g. EMBEDDED)
 	SignatureType uint32
+	// SHA256 is the hex-encoded SHA256 digest of the file.
+	SHA256 string
+	// MD5 is the hex-encoded MD5 digest of the file.
+	MD5 string
 }
 
 // String returns the string representation of the module.
