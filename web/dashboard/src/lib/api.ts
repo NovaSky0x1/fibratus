@@ -206,6 +206,8 @@ export const api = {
   getOrganizations: () => fetchApi<Organization[]>('/account/organizations'),
   createOrganization: (data: { name: string; slug: string }) =>
     fetchApi<Organization>('/account/organizations', { method: 'POST', body: JSON.stringify(data) }),
+  deleteOrganization: (id: string) =>
+    fetchApi<void>(`/account/organizations/${id}`, { method: 'DELETE' }),
 
   // Dashboard
   getDashboardOverview: () => fetchApi<FleetOverview>(orgPath('/dashboard/overview')),

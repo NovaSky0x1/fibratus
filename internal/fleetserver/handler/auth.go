@@ -363,6 +363,40 @@ func (h *AuthHandler) CreateOrganization(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: org})
 }
 
+// DeleteOrganization handles DELETE /api/v1/account/organizations/{id}
+func (h *AuthHandler) DeleteOrganization(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	// Extract org ID from the URL path
+	orgID := strings.TrimPrefix(r.URL.Path, "/api/v1/account/organizations/")
+	if orgID == "" || orgID == r.URL.Path {
+		writeError(w, http.StatusBadRequest, "organization ID required")
+		return
+	}
+
+	// Verify the org belongs to this account
+	org, err := h.orgs.Get(r.Context(), orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if org == nil || org.AccountID != accountID {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+
+	if err := h.orgs.Delete(r.Context(), orgID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete organization")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // slugify converts a name to a URL-friendly slug.
 func slugify(name string) string {
 	slug := strings.ToLower(name)

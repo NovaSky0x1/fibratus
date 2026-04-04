@@ -342,6 +342,14 @@ func (s *Server) Run(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	dashMux.HandleFunc("/api/v1/account/organizations/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodDelete:
+			authHandler.DeleteOrganization(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	// TOTP 2FA routes (JWT auth, user-scoped)
 	dashMux.HandleFunc("/api/v1/auth/totp/setup", methodGuard(http.MethodPost, totpHandler.Setup))

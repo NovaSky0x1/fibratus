@@ -118,3 +118,8 @@ func (s *OrgStore) ListByAccount(ctx context.Context, accountID string) ([]*flee
 	}
 	return orgs, rows.Err()
 }
+
+func (s *OrgStore) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM organizations WHERE id = $1`, id)
+	return err
+}
