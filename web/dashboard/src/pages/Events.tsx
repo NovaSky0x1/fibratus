@@ -244,114 +244,79 @@ export default function Events() {
             </div>
 
             {/* Process info */}
-            <div>
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Process</h4>
-              {(() => {
-                const raw = selectedEvent.raw_event as Record<string, unknown> | null
-                const psRaw = (raw?.ps || {}) as Record<string, unknown>
-                const parentRaw = (psRaw?.parent || {}) as Record<string, unknown>
-                const toBool = (v: unknown) => v === true || v === 'true'
-                const ps = { sha256: String(psRaw.sha256 || ''), md5: String(psRaw.md5 || ''),
-                  is_signed: psRaw.is_signed !== undefined ? toBool(psRaw.is_signed) : undefined,
-                  is_trusted: psRaw.is_trusted !== undefined ? toBool(psRaw.is_trusted) : undefined,
-                  cert_subject: String(psRaw.cert_subject || ''), cert_issuer: String(psRaw.cert_issuer || '') }
-                const parent = { sha256: String(parentRaw.sha256 || ''), md5: String(parentRaw.md5 || '') }
-                return (<>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      ['Name', selectedEvent.process_name],
-                      ['PID', String(selectedEvent.pid)],
-                      ['TID', String(selectedEvent.tid)],
-                      ['Parent PID', String(selectedEvent.parent_pid)],
-                      ['Parent', selectedEvent.parent_name],
-                      ['Host', selectedEvent.agent_hostname],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded bg-gray-50 px-2 py-1.5">
-                        <span className="text-xs text-gray-500">{label}</span>
-                        <p className="text-sm font-medium text-gray-900 font-mono break-all">{value || '-'}</p>
-                      </div>
-                    ))}
+            {(() => {
+              const raw = selectedEvent.raw_event as Record<string, unknown> | null
+              const psRaw = (raw?.ps || {}) as Record<string, unknown>
+              const parentRaw = (psRaw?.parent || {}) as Record<string, unknown>
+              const toBool = (v: unknown) => v === true || v === 'true'
+              const ps = { sha256: String(psRaw.sha256 || ''), md5: String(psRaw.md5 || ''),
+                is_signed: psRaw.is_signed !== undefined ? toBool(psRaw.is_signed) : undefined,
+                is_trusted: psRaw.is_trusted !== undefined ? toBool(psRaw.is_trusted) : undefined,
+                cert_subject: String(psRaw.cert_subject || ''), cert_issuer: String(psRaw.cert_issuer || '') }
+              const parentName = String(parentRaw.name || selectedEvent.parent_name || '')
+              const parentExe = String(parentRaw.exe || '')
+              const parentCmdline = String(parentRaw.cmdline || '')
+              return (<>
+                {/* ── Process Card ── */}
+                <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Process</span>
+                    <span className="font-medium text-sm text-gray-900">{selectedEvent.process_name}</span>
+                    <span className="text-xs text-gray-400 font-mono">PID {selectedEvent.pid}</span>
+                    <span className="text-xs text-gray-400 font-mono">TID {selectedEvent.tid}</span>
+                    <span className="ml-auto text-xs text-gray-400">{selectedEvent.agent_hostname}</span>
                   </div>
                   {selectedEvent.process_exe && (
-                    <div className="mt-2 rounded bg-gray-50 px-2 py-1.5">
-                      <span className="text-xs text-gray-500">Executable</span>
-                      <p className="text-sm text-gray-900 font-mono break-all">{selectedEvent.process_exe}</p>
-                    </div>
+                    <div><span className="text-[10px] text-gray-400">Executable</span><p className="text-xs text-gray-800 font-mono break-all">{selectedEvent.process_exe}</p></div>
                   )}
                   {selectedEvent.process_cmdline && (
-                    <div className="mt-2 rounded bg-gray-50 px-2 py-1.5">
-                      <span className="text-xs text-gray-500">Command Line</span>
-                      <p className="text-sm text-gray-900 font-mono break-all">{selectedEvent.process_cmdline}</p>
-                    </div>
+                    <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{selectedEvent.process_cmdline}</div>
                   )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {ps.is_signed !== undefined && (
+                      <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (ps.is_signed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
+                        {ps.is_signed ? 'Signed' : 'Unsigned'}
+                      </span>
+                    )}
+                    {ps.is_trusted !== undefined && ps.is_signed && (
+                      <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (ps.is_trusted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+                        {ps.is_trusted ? 'Trusted' : 'Untrusted'}
+                      </span>
+                    )}
+                    {ps.cert_subject && <span className="text-[10px] text-gray-500">{ps.cert_subject}</span>}
+                  </div>
                   {(ps.sha256 || ps.md5) && (
-                    <div className="mt-2 space-y-1">
-                      {ps.sha256 && (
-                        <div className="rounded bg-gray-50 px-2 py-1.5">
-                          <span className="text-xs text-gray-500">SHA256</span>
-                          <p className="text-xs text-gray-900 font-mono break-all">{String(ps.sha256)}</p>
-                        </div>
-                      )}
-                      {ps.md5 && (
-                        <div className="rounded bg-gray-50 px-2 py-1.5">
-                          <span className="text-xs text-gray-500">MD5</span>
-                          <p className="text-xs text-gray-900 font-mono break-all">{String(ps.md5)}</p>
-                        </div>
-                      )}
+                    <div className="space-y-0.5">
+                      {ps.sha256 && <div><span className="text-[10px] text-gray-400">SHA256</span><p className="text-[10px] text-gray-700 font-mono break-all">{ps.sha256}</p></div>}
+                      {ps.md5 && <div><span className="text-[10px] text-gray-400">MD5</span><p className="text-[10px] text-gray-700 font-mono break-all">{ps.md5}</p></div>}
                     </div>
                   )}
-                  {(ps.is_signed !== undefined || ps.cert_subject) && (
-                    <div className="mt-2 space-y-1">
-                      <div className="flex gap-2">
-                        {ps.is_signed !== undefined && (
-                          <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' +
-                            (ps.is_signed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
-                            {ps.is_signed ? 'Signed' : 'Unsigned'}
-                          </span>
-                        )}
-                        {ps.is_trusted !== undefined && ps.is_signed && (
-                          <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' +
-                            (ps.is_trusted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
-                            {ps.is_trusted ? 'Trusted' : 'Untrusted'}
-                          </span>
-                        )}
+                </div>
+
+                {/* ── Parent Process Card ── */}
+                {parentName && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 space-y-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Parent</span>
+                      <span className="font-medium text-sm text-gray-900">{parentName}</span>
+                      <span className="text-xs text-gray-400 font-mono">PID {selectedEvent.parent_pid}</span>
+                    </div>
+                    {parentExe && (
+                      <div><span className="text-[10px] text-gray-400">Executable</span><p className="text-xs text-gray-800 font-mono break-all">{parentExe}</p></div>
+                    )}
+                    {parentCmdline && (
+                      <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{parentCmdline}</div>
+                    )}
+                    {(String(parentRaw.sha256 || '') || String(parentRaw.md5 || '')) && (
+                      <div className="space-y-0.5">
+                        {parentRaw.sha256 && <div><span className="text-[10px] text-gray-400">SHA256</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.sha256)}</p></div>}
+                        {parentRaw.md5 && <div><span className="text-[10px] text-gray-400">MD5</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.md5)}</p></div>}
                       </div>
-                      {ps.cert_subject && (
-                        <div className="rounded bg-gray-50 px-2 py-1.5">
-                          <span className="text-xs text-gray-500">Certificate Subject</span>
-                          <p className="text-xs text-gray-900 break-all">{String(ps.cert_subject)}</p>
-                        </div>
-                      )}
-                      {ps.cert_issuer && (
-                        <div className="rounded bg-gray-50 px-2 py-1.5">
-                          <span className="text-xs text-gray-500">Certificate Issuer</span>
-                          <p className="text-xs text-gray-900 break-all">{String(ps.cert_issuer)}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {(parent.sha256 || parent.md5) && (
-                    <div className="mt-2">
-                      <span className="text-[10px] text-gray-400 uppercase">Parent Hashes</span>
-                      <div className="space-y-1 mt-1">
-                        {parent.sha256 && (
-                          <div className="rounded bg-gray-50 px-2 py-1.5">
-                            <span className="text-xs text-gray-500">SHA256</span>
-                            <p className="text-xs text-gray-900 font-mono break-all">{String(parent.sha256)}</p>
-                          </div>
-                        )}
-                        {parent.md5 && (
-                          <div className="rounded bg-gray-50 px-2 py-1.5">
-                            <span className="text-xs text-gray-500">MD5</span>
-                            <p className="text-xs text-gray-900 font-mono break-all">{String(parent.md5)}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </>)
-              })()}
-            </div>
+                    )}
+                  </div>
+                )}
+              </>)
+            })()}
 
             {/* Parameters */}
             {selectedEvent.params && Object.keys(selectedEvent.params).length > 0 && (

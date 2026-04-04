@@ -268,28 +268,22 @@ function EventCard({ evt }: { evt: DetectionEvent }) {
         {evt.timestamp && <span className="ml-auto text-xs text-gray-400">{new Date(evt.timestamp).toLocaleString()}</span>}
       </div>
       {proc && (
-        <div className="px-3 py-2.5 space-y-2">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            {proc.name && <div><span className="text-xs text-gray-400">Process</span> <span className="text-xs font-mono text-gray-700">{proc.name}</span></div>}
-            {proc.pid != null && <div><span className="text-xs text-gray-400">PID</span> <span className="text-xs font-mono text-gray-700">{proc.pid}</span></div>}
-            {proc.parent_name && <div><span className="text-xs text-gray-400">Parent</span> <span className="text-xs font-mono text-gray-700">{proc.parent_name}</span></div>}
-            {proc.username && <div><span className="text-xs text-gray-400">User</span> <span className="text-xs text-gray-700">{proc.domain}\\{proc.username}</span></div>}
-            {proc.integrity_level && <div><span className="text-xs text-gray-400">Integrity</span> <span className="text-xs text-gray-700">{proc.integrity_level}</span></div>}
-          </div>
-          {proc.cmdline && (
-            <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.cmdline}</div>
-          )}
-          {(proc.sha256 || proc.md5) && (
-            <div className="space-y-1">
-              {proc.sha256 && (
-                <div><span className="text-[10px] text-gray-400">SHA256</span> <span className="text-[10px] font-mono text-gray-600 break-all block">{proc.sha256}</span></div>
-              )}
-              {proc.md5 && (
-                <div><span className="text-[10px] text-gray-400">MD5</span> <span className="text-[10px] font-mono text-gray-600 break-all block">{proc.md5}</span></div>
-              )}
+        <div className="px-3 py-2.5 space-y-3">
+          {/* ── Process Card ── */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Process</span>
+              <span className="font-medium text-sm text-gray-900">{proc.name}</span>
+              {proc.pid != null && <span className="text-xs text-gray-400 font-mono">PID {proc.pid}</span>}
+              {proc.username && <span className="text-xs text-gray-500">{proc.domain}\\{proc.username}</span>}
+              {proc.integrity_level && <span className="rounded bg-gray-100 text-gray-600 px-1 py-0.5 text-[10px]">{proc.integrity_level}</span>}
+              {proc.is_wow64 && <span className="rounded bg-yellow-50 text-yellow-700 px-1 py-0.5 text-[10px] font-medium">WOW64</span>}
+              {proc.is_protected && <span className="rounded bg-blue-50 text-blue-700 px-1 py-0.5 text-[10px] font-medium">Protected</span>}
             </div>
-          )}
-          {(proc.is_signed !== undefined || proc.cert_subject) && (
+            {proc.exe && <div><span className="text-[10px] text-gray-400">Executable</span><p className="text-xs text-gray-800 font-mono break-all">{proc.exe}</p></div>}
+            {proc.cmdline && (
+              <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.cmdline}</div>
+            )}
             <div className="flex items-center gap-2 flex-wrap">
               {proc.is_signed !== undefined && (
                 <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (proc.is_signed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
@@ -303,25 +297,40 @@ function EventCard({ evt }: { evt: DetectionEvent }) {
               )}
               {proc.cert_subject && <span className="text-[10px] text-gray-500">{proc.cert_subject}</span>}
             </div>
-          )}
-          {(proc.is_wow64 || proc.is_protected) && (
-            <div className="flex gap-1">
-              {proc.is_wow64 && <span className="rounded bg-yellow-50 text-yellow-700 px-1 py-0.5 text-[10px] font-medium">WOW64</span>}
-              {proc.is_protected && <span className="rounded bg-blue-50 text-blue-700 px-1 py-0.5 text-[10px] font-medium">Protected</span>}
+            {(proc.sha256 || proc.md5) && (
+              <div className="space-y-0.5">
+                {proc.sha256 && <div><span className="text-[10px] text-gray-400">SHA256</span><p className="text-[10px] text-gray-700 font-mono break-all">{proc.sha256}</p></div>}
+                {proc.md5 && <div><span className="text-[10px] text-gray-400">MD5</span><p className="text-[10px] text-gray-700 font-mono break-all">{proc.md5}</p></div>}
+              </div>
+            )}
+          </div>
+
+          {/* ── Parent Process Card ── */}
+          {proc.parent_name && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Parent</span>
+                <span className="font-medium text-sm text-gray-900">{proc.parent_name}</span>
+                {proc.ppid != null && <span className="text-xs text-gray-400 font-mono">PID {proc.ppid}</span>}
+              </div>
+              {proc.parent_cmdline && (
+                <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.parent_cmdline}</div>
+              )}
             </div>
           )}
-          {proc.exe && (
-            <div><span className="text-[10px] text-gray-400">Executable</span> <span className="text-[10px] font-mono text-gray-600 break-all block">{proc.exe}</span></div>
-          )}
+
+          {/* ── Ancestry Chain ── */}
           {proc.ancestors && proc.ancestors.length > 0 && (
-            <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-[10px] text-gray-400">Ancestry:</span>
-              {proc.ancestors.map((a, i) => (
-                <span key={i} className="flex items-center gap-0.5">
-                  <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-mono text-gray-600">{a}</span>
-                  {i < proc.ancestors!.length - 1 && <span className="text-gray-300 text-[10px]">&larr;</span>}
-                </span>
-              ))}
+            <div>
+              <span className="text-[10px] text-gray-400 uppercase font-medium">Process Ancestry</span>
+              <div className="mt-1 flex items-center gap-1 flex-wrap">
+                {proc.ancestors.map((a, i) => (
+                  <span key={i} className="flex items-center gap-0.5">
+                    <span className="rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-mono text-blue-700">{a}</span>
+                    {i < proc.ancestors!.length - 1 && <span className="text-gray-300 text-xs">&larr;</span>}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
