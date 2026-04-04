@@ -514,7 +514,7 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
                 </p>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => deleteMut.mutate(user.id)}
+                    onClick={() => deleteMut.mutate()}
                     disabled={deleteMut.isPending}
                     className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                   >
