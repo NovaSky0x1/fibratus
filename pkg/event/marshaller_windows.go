@@ -574,6 +574,21 @@ func (e *Event) MarshalJSON() []byte {
 
 		js.writeObjectField("sessionid").writeUint32(ps.SessionID)
 
+		// Ancestry chain
+		ancestors := ps.Ancestors()
+		if len(ancestors) > 0 {
+			js.writeMore()
+			js.writeObjectField("ancestors")
+			js.writeArrayStart()
+			for i, a := range ancestors {
+				js.writeEscapeString(a)
+				if js.shouldWriteMore(i, len(ancestors)) {
+					js.writeMore()
+				}
+			}
+			js.writeArrayEnd()
+		}
+
 		parent := ps.Parent
 		if parent != nil {
 			js.writeMore()
