@@ -30,6 +30,7 @@ import (
 	"database/sql"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ca"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	chstore "github.com/rabbitstack/fibratus/internal/fleetserver/store/clickhouse"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
