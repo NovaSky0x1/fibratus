@@ -21,6 +21,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -222,8 +223,8 @@ func (h *DetectionHandler) MitreHeatmap(w http.ResponseWriter, r *http.Request) 
 }
 
 // ProcessTree handles GET /api/v1/orgs/{org_id}/detections/{id}/process-tree
-// Returns telemetry events scoped to the detection's time window and agent,
-// filtered to process-relevant event types for building a visual process tree.
+// Returns telemetry events scoped to the detection's process chain — only
+// the triggering process, its ancestors, and its descendants.
 func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
@@ -231,7 +232,6 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract detection ID from path: .../detections/{id}/process-tree
 	parts := strings.Split(r.URL.Path, "/detections/")
 	if len(parts) < 2 {
 		writeError(w, http.StatusBadRequest, "detection ID required")
@@ -254,12 +254,14 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query telemetry within ±10 minutes of detection, filtered to
-	// process-relevant events for tree construction.
+	// Extract PIDs from detection events to scope the tree.
+	focusPIDs := extractDetectionPIDs(det.Events)
+
+	// Query telemetry within ±10 minutes of detection.
 	from := det.Timestamp.Add(-10 * time.Minute)
 	to := det.Timestamp.Add(10 * time.Minute)
 
-	events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+	allEvents, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
 		AgentID: det.AgentID,
 		From:    from,
 		To:      to,
@@ -271,16 +273,77 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter to process-relevant event types
-	processEventTypes := map[string]bool{
-		"CreateProcess": true, "LoadImage": true,
-		"CreateFile": true, "DeleteFile": true, "RenameFile": true, "WriteFile": true,
-		"Connect": true, "QueryDns": true, "ReplyDns": true,
-		"RegSetValue": true, "RegCreateKey": true, "RegDeleteKey": true, "RegDeleteValue": true,
+	// Build a process map: PID -> parent PID and children.
+	type procInfo struct {
+		parentPID int
+		children  map[int]bool
 	}
-	filtered := make([]store.TelemetryEvent, 0, len(events))
-	for _, evt := range events {
-		if processEventTypes[evt.EventName] {
+	procMap := make(map[int]*procInfo)
+	for _, evt := range allEvents {
+		if evt.PID <= 0 {
+			continue
+		}
+		pi, ok := procMap[evt.PID]
+		if !ok {
+			pi = &procInfo{children: make(map[int]bool)}
+			procMap[evt.PID] = pi
+		}
+		if evt.ParentPID > 0 && pi.parentPID == 0 {
+			pi.parentPID = evt.ParentPID
+		}
+		// Register as child of parent
+		if evt.ParentPID > 0 && evt.ParentPID != evt.PID {
+			parent, ok := procMap[evt.ParentPID]
+			if !ok {
+				parent = &procInfo{children: make(map[int]bool)}
+				procMap[evt.ParentPID] = parent
+			}
+			parent.children[evt.PID] = true
+		}
+	}
+
+	// Walk the tree from focus PIDs: collect ancestors and descendants.
+	relevant := make(map[int]bool)
+	for pid := range focusPIDs {
+		relevant[pid] = true
+	}
+
+	// Walk UP: ancestors of each focus PID
+	for pid := range focusPIDs {
+		cur := pid
+		for i := 0; i < 20; i++ { // depth limit
+			pi, ok := procMap[cur]
+			if !ok || pi.parentPID <= 0 || pi.parentPID == cur {
+				break
+			}
+			relevant[pi.parentPID] = true
+			cur = pi.parentPID
+		}
+	}
+
+	// Walk DOWN: descendants of each focus PID
+	var walkDown func(pid int, depth int)
+	walkDown = func(pid int, depth int) {
+		if depth > 10 {
+			return
+		}
+		pi, ok := procMap[pid]
+		if !ok {
+			return
+		}
+		for child := range pi.children {
+			relevant[child] = true
+			walkDown(child, depth+1)
+		}
+	}
+	for pid := range focusPIDs {
+		walkDown(pid, 0)
+	}
+
+	// Filter events to only relevant PIDs.
+	filtered := make([]store.TelemetryEvent, 0, len(allEvents)/2)
+	for _, evt := range allEvents {
+		if relevant[evt.PID] {
 			filtered = append(filtered, evt)
 		}
 	}
@@ -289,8 +352,46 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		Data: map[string]interface{}{
 			"detection": det,
 			"events":    filtered,
+			"focus_pids": focusPIDs,
 		},
 	})
+}
+
+// extractDetectionPIDs parses the detection events JSON to extract
+// the triggering process PIDs, parent PIDs, and ancestor PIDs.
+func extractDetectionPIDs(eventsRaw json.RawMessage) map[int]bool {
+	pids := make(map[int]bool)
+
+	var events []struct {
+		Proc struct {
+			PID       int      `json:"pid"`
+			PPID      int      `json:"ppid"`
+			Ancestors []string `json:"ancestors"`
+		} `json:"proc"`
+	}
+	if err := json.Unmarshal(eventsRaw, &events); err != nil {
+		return pids
+	}
+
+	for _, evt := range events {
+		if evt.Proc.PID > 0 {
+			pids[evt.Proc.PID] = true
+		}
+		if evt.Proc.PPID > 0 {
+			pids[evt.Proc.PPID] = true
+		}
+		// Ancestors are formatted as "name (pid)"
+		for _, a := range evt.Proc.Ancestors {
+			if idx := strings.LastIndex(a, "("); idx >= 0 {
+				pidStr := strings.TrimSuffix(strings.TrimSpace(a[idx+1:]), ")")
+				if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
+					pids[pid] = true
+				}
+			}
+		}
+	}
+
+	return pids
 }
 
 func parseTime(s string, defaultVal time.Time) time.Time {
