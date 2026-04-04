@@ -544,6 +544,8 @@ func (e *Event) MarshalJSON() []byte {
 		js.writeObjectField("name").writeString(ps.Name).writeMore()
 		js.writeObjectField("cmdline").writeEscapeString(ps.Cmdline).writeMore()
 		js.writeObjectField("exe").writeEscapeString(ps.Exe).writeMore()
+		js.writeObjectField("sha256").writeString(ps.SHA256).writeMore()
+		js.writeObjectField("md5").writeString(ps.MD5).writeMore()
 		js.writeObjectField("cwd").writeEscapeString(ps.Cwd).writeMore()
 		js.writeObjectField("sid").writeEscapeString(ps.SID).writeMore()
 
@@ -569,6 +571,8 @@ func (e *Event) MarshalJSON() []byte {
 			js.writeObjectField("name").writeString(parent.Name).writeMore()
 			js.writeObjectField("cmdline").writeEscapeString(parent.Cmdline).writeMore()
 			js.writeObjectField("exe").writeEscapeString(parent.Exe).writeMore()
+			js.writeObjectField("sha256").writeString(parent.SHA256).writeMore()
+			js.writeObjectField("md5").writeString(parent.MD5).writeMore()
 			js.writeObjectField("cwd").writeEscapeString(parent.Cwd).writeMore()
 			js.writeObjectField("sid").writeEscapeString(parent.SID)
 

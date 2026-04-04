@@ -101,6 +101,10 @@ type PS struct {
 	TokenElevationType string `json:"token_elevation_type"`
 	// IsTokenElevated indicates if the process token is elevated.
 	IsTokenElevated bool `json:"is_token_elevated"`
+	// SHA256 is the hex-encoded SHA256 digest of the process executable.
+	SHA256 string `json:"sha256"`
+	// MD5 is the hex-encoded MD5 digest of the process executable.
+	MD5 string `json:"md5"`
 	// IsCreatedFromSystemLogger is the metadata attribute that indicates if the
 	// process state is created from the event published by the NT kernel logger.
 	IsCreatedFromSystemLogger bool `json:"-"`

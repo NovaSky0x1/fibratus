@@ -450,6 +450,16 @@ func (s *snapshotter) newProcState(pid, ppid uint32, e *event.Event) (*pstypes.P
 		return proc, err
 	}
 
+	// set process executable hashes from PE or compute directly
+	if proc.PE != nil && proc.PE.FileSHA256 != "" {
+		proc.SHA256 = proc.PE.FileSHA256
+		proc.MD5 = proc.PE.FileMD5
+	} else if proc.Exe != "" {
+		h := s.hashCache.Get(proc.Exe)
+		proc.SHA256 = h.SHA256
+		proc.MD5 = h.MD5
+	}
+
 	// try to read the PEB (Process Environment Block)
 	// to access environment variables and the process
 	// current working directory
@@ -623,6 +633,16 @@ func (s *snapshotter) Find(pid uint32) (bool, *pstypes.PS) {
 	proc.PE, err = pe.ParseFileWithConfig(proc.Exe, s.config.PE)
 	if err != nil {
 		return false, proc
+	}
+
+	// set process executable hashes
+	if proc.PE != nil && proc.PE.FileSHA256 != "" {
+		proc.SHA256 = proc.PE.FileSHA256
+		proc.MD5 = proc.PE.FileMD5
+	} else if proc.Exe != "" {
+		h := s.hashCache.Get(proc.Exe)
+		proc.SHA256 = h.SHA256
+		proc.MD5 = h.MD5
 	}
 
 	// get process times
