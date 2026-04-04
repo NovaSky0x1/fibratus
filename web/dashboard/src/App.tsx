@@ -11,6 +11,7 @@ import Macros from './pages/Macros'
 import Events from './pages/Events'
 import AuditLog from './pages/AuditLog'
 import Settings from './pages/Settings'
+import Users from './pages/Users'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -38,6 +39,7 @@ export default function App() {
                 <Route path="/events" element={<Events />} />
                 <Route path="/audit-log" element={<AuditLog />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/users" element={<Users />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

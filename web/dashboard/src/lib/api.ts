@@ -169,6 +169,7 @@ export interface User {
   name: string
   account_id: string
   role: string
+  totp_enabled: boolean
   created_at: string
 }
 
