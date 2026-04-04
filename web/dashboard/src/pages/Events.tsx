@@ -307,12 +307,12 @@ export default function Events() {
                     {parentCmdline && (
                       <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{parentCmdline}</div>
                     )}
-                    {(String(parentRaw.sha256 || '') || String(parentRaw.md5 || '')) && (
+                    {(parentRaw.sha256 || parentRaw.md5) ? (
                       <div className="space-y-0.5">
-                        {parentRaw.sha256 && <div><span className="text-[10px] text-gray-400">SHA256</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.sha256)}</p></div>}
-                        {parentRaw.md5 && <div><span className="text-[10px] text-gray-400">MD5</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.md5)}</p></div>}
+                        {parentRaw.sha256 ? <div><span className="text-[10px] text-gray-400">SHA256</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.sha256)}</p></div> : null}
+                        {parentRaw.md5 ? <div><span className="text-[10px] text-gray-400">MD5</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.md5)}</p></div> : null}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </>)
