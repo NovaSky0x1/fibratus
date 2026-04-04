@@ -250,8 +250,10 @@ export default function Events() {
                 const raw = selectedEvent.raw_event as Record<string, unknown> | null
                 const psRaw = (raw?.ps || {}) as Record<string, unknown>
                 const parentRaw = (psRaw?.parent || {}) as Record<string, unknown>
+                const toBool = (v: unknown) => v === true || v === 'true'
                 const ps = { sha256: String(psRaw.sha256 || ''), md5: String(psRaw.md5 || ''),
-                  is_signed: psRaw.is_signed as boolean | undefined, is_trusted: psRaw.is_trusted as boolean | undefined,
+                  is_signed: psRaw.is_signed !== undefined ? toBool(psRaw.is_signed) : undefined,
+                  is_trusted: psRaw.is_trusted !== undefined ? toBool(psRaw.is_trusted) : undefined,
                   cert_subject: String(psRaw.cert_subject || ''), cert_issuer: String(psRaw.cert_issuer || '') }
                 const parent = { sha256: String(parentRaw.sha256 || ''), md5: String(parentRaw.md5 || '') }
                 return (<>
