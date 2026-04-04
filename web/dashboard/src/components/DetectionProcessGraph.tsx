@@ -11,10 +11,11 @@ import {
   type Edge,
   Position,
   Handle,
+  useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-// ── Types ─────────────────────────────────��──────────────
+// ── Types ────────────────────────────────────────────────
 
 interface TelemetryEvent {
   id: number; timestamp: string; event_name: string; event_category: string
@@ -51,18 +52,19 @@ interface Props {
   focusProcessName?: string
 }
 
-// ── Category colors ──────────────────────────────────────
+// ── Category config ──────────────────────────────────────
 
 const catColors: Record<string, string> = {
-  process: '#3b82f6',
-  net: '#10b981',
-  file: '#f59e0b',
-  registry: '#8b5cf6',
-  image: '#6366f1',
-  dns: '#14b8a6',
+  process: '#3b82f6', net: '#10b981', file: '#f59e0b',
+  registry: '#8b5cf6', image: '#6366f1', dns: '#14b8a6',
 }
 
-// ── Custom node ──────────────────────────��───────────────
+const catLabels: Record<string, string> = {
+  image: 'Modules', net: 'Network', dns: 'DNS',
+  file: 'Files', registry: 'Registry', process: 'Process',
+}
+
+// ── Custom node ──────────────────────────────────────────
 
 function ProcessNode({ data }: { data: NodeData }) {
   const borderColor = data.isFocus ? '#ef4444' : data.isOnFocusPath ? '#3b82f6' : '#d1d5db'
@@ -71,7 +73,7 @@ function ProcessNode({ data }: { data: NodeData }) {
 
   return (
     <div className={`rounded-lg border-2 px-3 py-2 shadow-sm ${bgColor} ${ringClass}`}
-      style={{ borderColor, width: 260 }}>
+      style={{ borderColor, width: 270 }}>
       <Handle type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2" />
 
       <div className="flex items-center gap-2">
@@ -96,13 +98,12 @@ function ProcessNode({ data }: { data: NodeData }) {
           {Object.entries(data.eventsByCategory).map(([cat, count]) => (
             <span key={cat} className="rounded px-1 py-0.5 text-[9px] font-medium"
               style={{ backgroundColor: (catColors[cat] || '#6b7280') + '20', color: catColors[cat] || '#6b7280' }}>
-              {cat} {count}
+              {catLabels[cat] || cat} {count}
             </span>
           ))}
         </div>
       )}
 
-      {/* Expand/collapse toggle */}
       {data.hasChildren && (
         <button
           className="mt-1.5 flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 w-full"
@@ -112,7 +113,7 @@ function ProcessNode({ data }: { data: NodeData }) {
             fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
           </svg>
-          {data.expanded ? 'Collapse' : `Expand (${data.childPids.length})`}
+          {data.expanded ? 'Collapse' : `Expand ${data.childPids.length} children`}
         </button>
       )}
 
@@ -123,33 +124,68 @@ function ProcessNode({ data }: { data: NodeData }) {
 
 const nodeTypes = { process: ProcessNode }
 
-// ── Layout constants ─────────────────────────��───────────
+// ── Layout ───────────────────────────────────────────────
 
-const NODE_W = 290     // width including margin
-const LEVEL_H = 160    // vertical spacing between levels
+const NODE_W = 300
+const LEVEL_H = 170
 
-// ── Main component ─────────────────────────────────���─────
+// ── Event summary helper ─────────────────────────────────
+
+function eventSummary(evt: TelemetryEvent): string {
+  const p = evt.params || {}
+  switch (evt.event_category) {
+    case 'image': return (p.file_name || p.image_name || '') as string
+    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || ''
+    case 'dns': return (p.name || p.domain || '') as string
+    case 'file': return (p.file_name || p.file_object || '') as string
+    case 'registry': return (p.key_name || p.key || '') as string
+    default: return ''
+  }
+}
+
+// ── FitView helper component ─────────────────────────────
+
+function FitOnChange({ trigger }: { trigger: number }) {
+  const { fitView } = useReactFlow()
+  useEffect(() => { setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 50) }, [trigger, fitView])
+  return null
+}
+
+// ── Main component ───────────────────────────────────────
 
 export default function DetectionProcessGraph({ detection, focusPid, focusProcessName }: Props) {
   const [selectedPid, setSelectedPid] = useState<number | null>(null)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [initialized, setInitialized] = useState(false)
+  const [detailTab, setDetailTab] = useState<string>('all')
 
   const { data: res, isLoading } = useQuery({
     queryKey: ['detection-process-tree', detection.id],
     queryFn: () => api.getDetectionProcessTree(detection.id),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const treeEvents = (res?.data?.events || []) as TelemetryEvent[]
 
-  // Build the full process map (stable across expand/collapse changes)
+  // Index: PID -> events (for detail pane)
+  const eventsByPid = useMemo(() => {
+    const map = new Map<number, TelemetryEvent[]>()
+    for (const evt of treeEvents) {
+      const list = map.get(evt.pid) || []
+      list.push(evt)
+      map.set(evt.pid, list)
+    }
+    return map
+  }, [treeEvents])
+
+  // Build the full process map
   const { byPid, roots, childrenMap } = useMemo(() => {
     const byPid = new Map<number, ProcessInfo>()
     const childrenMap = new Map<number, number[]>()
 
     if (treeEvents.length === 0) return { byPid, roots: [] as number[], childrenMap }
 
-    // First pass: build process nodes from events
     for (const evt of treeEvents) {
       if (evt.pid <= 0) continue
       let proc = byPid.get(evt.pid)
@@ -169,7 +205,7 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
       if (!proc.exe && evt.process_exe) proc.exe = evt.process_exe
     }
 
-    // Build parent-child map
+    // Build parent-child — only if parent exists in data (no orphans)
     const hasParent = new Set<number>()
     for (const proc of byPid.values()) {
       if (proc.parentPid > 0 && proc.parentPid !== proc.pid && byPid.has(proc.parentPid)) {
@@ -180,7 +216,6 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
       }
     }
 
-    // Set childPids on each node
     for (const proc of byPid.values()) {
       proc.childPids = childrenMap.get(proc.pid) || []
     }
@@ -191,14 +226,13 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
       focusProc = byPid.get(focusPid)
       if (!focusProc) {
         for (const p of byPid.values()) {
-          if (p.name === focusProcessName && p.pid === focusPid) { focusProc = p; break }
+          if (p.pid === focusPid) { focusProc = p; break }
         }
       }
     }
     if (focusProc) {
       focusProc.isFocus = true
       focusProc.isOnFocusPath = true
-      // Walk up ancestors
       let cur: ProcessInfo | undefined = focusProc
       for (let i = 0; i < 20 && cur; i++) {
         const parent = byPid.get(cur.parentPid)
@@ -206,7 +240,6 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
         parent.isOnFocusPath = true
         cur = parent
       }
-      // Walk down descendants
       const markDown = (pid: number, depth: number) => {
         if (depth > 10) return
         for (const childPid of childrenMap.get(pid) || []) {
@@ -226,11 +259,8 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
     if (initialized || byPid.size === 0) return
     const toExpand = new Set<number>()
     for (const [pid, proc] of byPid) {
-      if (proc.isOnFocusPath && proc.childPids.length > 0) {
-        toExpand.add(pid)
-      }
+      if (proc.isOnFocusPath && proc.childPids.length > 0) toExpand.add(pid)
     }
-    // Also expand roots
     for (const r of roots) toExpand.add(r)
     setExpanded(toExpand)
     setInitialized(true)
@@ -248,38 +278,31 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
   const { nodes, edges, visibleCount } = useMemo(() => {
     if (byPid.size === 0) return { nodes: [], edges: [], visibleCount: 0 }
 
-    // Determine visible PIDs: a PID is visible if all ancestors up to root are expanded
     const visible = new Set<number>()
-
     const addVisible = (pid: number) => {
       visible.add(pid)
       if (expanded.has(pid)) {
-        for (const childPid of childrenMap.get(pid) || []) {
-          addVisible(childPid)
-        }
+        for (const childPid of childrenMap.get(pid) || []) addVisible(childPid)
       }
     }
     for (const root of roots) addVisible(root)
 
-    // Layout visible nodes
+    // Layout
     const positions = new Map<number, { x: number; y: number }>()
     let xOffset = 0
-
     const layoutTree = (pid: number, depth: number, xStart: number): number => {
       if (!visible.has(pid)) return xStart
-
       const kids = (childrenMap.get(pid) || []).filter(k => visible.has(k))
       if (kids.length === 0 || !expanded.has(pid)) {
         positions.set(pid, { x: xStart, y: depth * LEVEL_H })
         return xStart + NODE_W
       }
       let x = xStart
-      for (const kid of kids) { x = layoutTree(kid, depth + 1, x) }
+      for (const kid of kids) x = layoutTree(kid, depth + 1, x)
       const center = (xStart + x - NODE_W) / 2
       positions.set(pid, { x: center, y: depth * LEVEL_H })
       return x
     }
-
     for (const root of roots) {
       if (visible.has(root)) {
         xOffset = layoutTree(root, 0, xOffset)
@@ -287,7 +310,6 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
       }
     }
 
-    // Build ReactFlow nodes
     const nodes: Node[] = []
     for (const pid of visible) {
       const info = byPid.get(pid)
@@ -302,11 +324,10 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
           expanded: expanded.has(pid),
           hasChildren: info.childPids.length > 0,
           onToggle: toggleExpand,
-        },
+        } as NodeData,
       })
     }
 
-    // Build edges (only between visible nodes)
     const edges: Edge[] = []
     for (const pid of visible) {
       if (!expanded.has(pid)) continue
@@ -321,10 +342,7 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
           target: String(childPid),
           type: 'smoothstep',
           animated: onFocus,
-          style: {
-            stroke: onFocus ? '#3b82f6' : '#94a3b8',
-            strokeWidth: onFocus ? 2.5 : 1.5,
-          },
+          style: { stroke: onFocus ? '#3b82f6' : '#94a3b8', strokeWidth: onFocus ? 2.5 : 1.5 },
         })
       }
     }
@@ -333,34 +351,33 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
   }, [byPid, roots, childrenMap, expanded, selectedPid, toggleExpand])
 
   const selectedProcess = selectedPid ? byPid.get(selectedPid) : null
+  const selectedEvents = selectedPid ? (eventsByPid.get(selectedPid) || []) : []
+
+  // Filter events for detail pane
+  const filteredEvents = useMemo(() => {
+    if (detailTab === 'all') return selectedEvents
+    return selectedEvents.filter(e => e.event_category === detailTab)
+  }, [selectedEvents, detailTab])
 
   const onNodeClick = useCallback((_: unknown, node: Node) => {
     setSelectedPid(Number(node.id))
+    setDetailTab('all')
   }, [])
 
   const expandAll = useCallback(() => {
     const all = new Set<number>()
-    for (const [pid, proc] of byPid) {
-      if (proc.childPids.length > 0) all.add(pid)
-    }
+    for (const [pid, proc] of byPid) { if (proc.childPids.length > 0) all.add(pid) }
     setExpanded(all)
   }, [byPid])
 
-  const collapseAll = useCallback(() => {
-    // Keep only roots expanded
-    setExpanded(new Set(roots))
-  }, [roots])
+  const collapseAll = useCallback(() => setExpanded(new Set(roots)), [roots])
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64 text-gray-400">Loading process tree...</div>
   }
 
   if (byPid.size === 0) {
-    return (
-      <div className="flex items-center justify-center h-64 text-sm text-gray-400">
-        No process events found within the detection time window.
-      </div>
-    )
+    return <div className="flex items-center justify-center h-64 text-sm text-gray-400">No process events found within the detection time window.</div>
   }
 
   return (
@@ -370,7 +387,6 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
         <SeverityBadge severity={detection.severity} />
         <span className="font-medium text-sm text-gray-900 truncate">{detection.title}</span>
         <span className="text-xs text-gray-400">{detection.agent_hostname}</span>
-        <span className="text-xs text-gray-400">{new Date(detection.timestamp).toLocaleString()}</span>
         {detection.labels?.['technique.id'] && (
           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600">
             {detection.labels['technique.id']}
@@ -387,16 +403,14 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
         {/* ReactFlow graph */}
         <div className="flex-1 bg-gray-50">
           <ReactFlow
-            key={`${expanded.size}-${visibleCount}`}
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
             onNodeClick={onNodeClick}
             fitView
-            fitViewOptions={{ padding: 0.4 }}
+            fitViewOptions={{ padding: 0.3 }}
             minZoom={0.05}
             maxZoom={2}
-            defaultEdgeOptions={{ animated: false }}
           >
             <Background gap={20} size={1} />
             <Controls showInteractive={false} />
@@ -408,78 +422,124 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
                 if (d?.isOnFocusPath) return '#3b82f6'
                 return '#e5e7eb'
               }}
-              pannable
-              zoomable
+              pannable zoomable
             />
+            <FitOnChange trigger={visibleCount} />
           </ReactFlow>
         </div>
 
         {/* Detail pane */}
-        <div className="w-72 border-l overflow-auto bg-white flex-shrink-0">
+        <div className="w-80 border-l overflow-auto bg-white flex-shrink-0">
           {selectedProcess ? (
-            <div className="p-4 space-y-3">
-              <div>
+            <div className="flex flex-col h-full">
+              {/* Process header */}
+              <div className="p-4 border-b space-y-2 flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <h4 className="font-medium text-gray-900">{selectedProcess.name}</h4>
                   {selectedProcess.isFocus && <span className="rounded bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 font-medium">Trigger</span>}
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">PID {selectedProcess.pid}</p>
-              </div>
-              {selectedProcess.exe && (
-                <div>
-                  <span className="text-xs text-gray-500 block">Executable</span>
-                  <span className="font-mono text-xs text-gray-700 break-all">{selectedProcess.exe}</span>
-                </div>
-              )}
-              {selectedProcess.cmdline && (
-                <div>
-                  <span className="text-xs text-gray-500 block">Command Line</span>
-                  <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap max-h-32 overflow-auto">
+                <p className="text-xs text-gray-500">PID {selectedProcess.pid}</p>
+                {selectedProcess.exe && <p className="font-mono text-[11px] text-gray-600 break-all">{selectedProcess.exe}</p>}
+                {selectedProcess.cmdline && (
+                  <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap max-h-24 overflow-auto">
                     {selectedProcess.cmdline}
                   </div>
-                </div>
-              )}
-              {selectedProcess.parentName && (
-                <div>
-                  <span className="text-xs text-gray-500 block">Parent</span>
-                  <span className="text-xs text-gray-700">{selectedProcess.parentName} (PID {selectedProcess.parentPid})</span>
-                </div>
-              )}
-              <div>
-                <span className="text-xs text-gray-500 block">Events ({selectedProcess.eventCount})</span>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {Object.entries(selectedProcess.eventsByCategory).map(([cat, count]) => (
-                    <span key={cat} className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                      style={{ backgroundColor: (catColors[cat] || '#6b7280') + '20', color: catColors[cat] || '#6b7280' }}>
-                      {cat}: {count}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              {selectedProcess.childPids.length > 0 && (
-                <div>
-                  <span className="text-xs text-gray-500 block">Children ({selectedProcess.childPids.length})</span>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                )}
+                {selectedProcess.parentName && (
+                  <p className="text-xs text-gray-500">
+                    Parent: <button className="text-fibratus-600 hover:underline" onClick={() => { setSelectedPid(selectedProcess.parentPid); setDetailTab('all') }}>
+                      {selectedProcess.parentName} ({selectedProcess.parentPid})
+                    </button>
+                  </p>
+                )}
+                {selectedProcess.childPids.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-[10px] text-gray-400">Children:</span>
                     {selectedProcess.childPids.map(cpid => {
                       const child = byPid.get(cpid)
                       return child ? (
-                        <button key={cpid} onClick={() => { setSelectedPid(cpid); if (!expanded.has(selectedProcess.pid)) toggleExpand(selectedProcess.pid) }}
-                          className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-700 hover:bg-gray-200">
-                          {child.name} ({cpid})
+                        <button key={cpid} onClick={() => { setSelectedPid(cpid); setDetailTab('all'); if (!expanded.has(selectedProcess.pid)) toggleExpand(selectedProcess.pid) }}
+                          className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-700 hover:bg-gray-200">
+                          {child.name}
                         </button>
                       ) : null
                     })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Event category tabs */}
+              <div className="px-3 py-2 border-b bg-white flex items-center gap-1 flex-shrink-0 flex-wrap">
+                <button onClick={() => setDetailTab('all')}
+                  className={'rounded-full px-2 py-0.5 text-[10px] font-medium border ' +
+                    (detailTab === 'all' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
+                  All ({selectedEvents.length})
+                </button>
+                {Object.entries(selectedProcess.eventsByCategory).map(([cat, count]) => (
+                  <button key={cat} onClick={() => setDetailTab(detailTab === cat ? 'all' : cat)}
+                    className={'rounded-full px-2 py-0.5 text-[10px] font-medium border ' +
+                      (detailTab === cat ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
+                    {catLabels[cat] || cat} ({count})
+                  </button>
+                ))}
+              </div>
+
+              {/* Events list */}
+              <div className="flex-1 overflow-auto">
+                {filteredEvents.length === 0 ? (
+                  <div className="text-xs text-gray-400 text-center py-8">No events</div>
+                ) : filteredEvents.map((evt, idx) => (
+                  <EventRow key={`${evt.id}-${idx}`} evt={evt} />
+                ))}
+              </div>
             </div>
           ) : (
             <div className="p-4 text-sm text-gray-400 text-center mt-20">
-              Click a process node to view details
+              Click a process node to view its events
             </div>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Event row for detail pane ────────────────────────────
+
+function EventRow({ evt }: { evt: TelemetryEvent }) {
+  const [open, setOpen] = useState(false)
+  const summary = eventSummary(evt)
+  const color = catColors[evt.event_category] || '#6b7280'
+
+  return (
+    <div className="border-b border-gray-100">
+      <div className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-50/50 text-[12px]"
+        onClick={() => setOpen(!open)}>
+        <span className="text-gray-400 tabular-nums font-mono text-[10px] w-16 flex-shrink-0">
+          {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </span>
+        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0"
+          style={{ backgroundColor: color + '20', color }}>
+          {evt.event_name}
+        </span>
+        <span className="text-gray-600 truncate text-[11px] font-mono">{summary}</span>
+        <svg className={'w-3 h-3 text-gray-300 flex-shrink-0 transition-transform ml-auto ' + (open ? 'rotate-90' : '')}
+          fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+        </svg>
+      </div>
+      {open && evt.params && Object.keys(evt.params).length > 0 && (
+        <div className="px-3 pb-2 pt-0.5 bg-gray-50/50 text-[11px]">
+          <div className="grid grid-cols-1 gap-0.5">
+            {Object.entries(evt.params).map(([k, v]) => (
+              <div key={k} className="flex gap-1.5 min-w-0">
+                <span className="text-gray-400 flex-shrink-0">{k}:</span>
+                <span className="font-mono text-gray-700 break-all truncate">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -302,29 +302,39 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Walk the tree from focus PIDs: collect ancestors and descendants.
-	relevant := make(map[int]bool)
+	// Build the ancestor spine: walk UP from each focus PID to root.
+	spine := make(map[int]bool)
 	for pid := range focusPIDs {
-		relevant[pid] = true
-	}
-
-	// Walk UP: ancestors of each focus PID
-	for pid := range focusPIDs {
+		spine[pid] = true
 		cur := pid
-		for i := 0; i < 20; i++ { // depth limit
+		for i := 0; i < 20; i++ {
 			pi, ok := procMap[cur]
 			if !ok || pi.parentPID <= 0 || pi.parentPID == cur {
 				break
 			}
-			relevant[pi.parentPID] = true
+			spine[pi.parentPID] = true
 			cur = pi.parentPID
 		}
 	}
 
-	// Walk DOWN: descendants of each focus PID
+	// Relevant set: spine + direct children of every spine node (siblings)
+	// + full descendant tree of focus PIDs.
+	relevant := make(map[int]bool)
+	for pid := range spine {
+		relevant[pid] = true
+		// Include all direct children of spine nodes so the user
+		// can see siblings and expand into them.
+		if pi, ok := procMap[pid]; ok {
+			for child := range pi.children {
+				relevant[child] = true
+			}
+		}
+	}
+
+	// Walk DOWN: full descendants of each focus PID.
 	var walkDown func(pid int, depth int)
 	walkDown = func(pid int, depth int) {
-		if depth > 10 {
+		if depth > 15 {
 			return
 		}
 		pi, ok := procMap[pid]
@@ -338,6 +348,25 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	}
 	for pid := range focusPIDs {
 		walkDown(pid, 0)
+	}
+
+	// Guarantee parent chain integrity: if a PID is relevant,
+	// every ancestor up to a root must also be relevant.
+	changed := true
+	for changed {
+		changed = false
+		for pid := range relevant {
+			pi, ok := procMap[pid]
+			if !ok {
+				continue
+			}
+			if pi.parentPID > 0 && pi.parentPID != pid {
+				if _, parentInMap := procMap[pi.parentPID]; parentInMap && !relevant[pi.parentPID] {
+					relevant[pi.parentPID] = true
+					changed = true
+				}
+			}
+		}
 	}
 
 	// Filter events to only relevant PIDs.
