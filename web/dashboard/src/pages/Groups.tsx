@@ -393,7 +393,7 @@ function GroupDetail({
 
 function GroupModal({
   group,
-  permissions,
+  permissions: _permissions,
   permsByCategory,
   orgs,
   onClose,
