@@ -254,16 +254,8 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract the triggering PID(s) and the full ancestry set.
+	// Extract the triggering PID(s) and the known ancestry from detection events.
 	triggerPIDs, ancestryPIDs := extractDetectionPIDs(det.Events)
-
-	// The relevant set is ONLY:
-	// 1. The exact ancestry chain from the detection (focusPIDs)
-	// 2. Direct children of the triggering PID(s) (not ancestors)
-	relevant := make(map[int]bool)
-	for pid := range ancestryPIDs {
-		relevant[pid] = true
-	}
 
 	// Query telemetry within ±10 minutes of detection.
 	from := det.Timestamp.Add(-10 * time.Minute)
@@ -281,23 +273,58 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Walk DOWN only from the triggering PID(s) — NOT ancestors.
-	// This prevents pulling in all children of services.exe, etc.
+	// Build process map: PID -> parentPID + children.
 	type procInfo struct {
-		children map[int]bool
+		parentPID int
+		children  map[int]bool
 	}
 	procMap := make(map[int]*procInfo)
 	for _, evt := range allEvents {
-		if evt.ParentPID > 0 && evt.PID > 0 && evt.ParentPID != evt.PID {
-			pi, ok := procMap[evt.ParentPID]
+		if evt.PID <= 0 {
+			continue
+		}
+		pi, ok := procMap[evt.PID]
+		if !ok {
+			pi = &procInfo{children: make(map[int]bool)}
+			procMap[evt.PID] = pi
+		}
+		if evt.ParentPID > 0 && pi.parentPID == 0 {
+			pi.parentPID = evt.ParentPID
+		}
+		if evt.ParentPID > 0 && evt.ParentPID != evt.PID {
+			parent, ok := procMap[evt.ParentPID]
 			if !ok {
-				pi = &procInfo{children: make(map[int]bool)}
-				procMap[evt.ParentPID] = pi
+				parent = &procInfo{children: make(map[int]bool)}
+				procMap[evt.ParentPID] = parent
 			}
-			pi.children[evt.PID] = true
+			parent.children[evt.PID] = true
 		}
 	}
 
+	// Relevant PIDs:
+	// 1. Ancestry from detection events (known PIDs)
+	// 2. Walk UP from trigger PIDs through telemetry to fill gaps
+	// 3. Walk DOWN only from trigger PIDs (not ancestors)
+	relevant := make(map[int]bool)
+	for pid := range ancestryPIDs {
+		relevant[pid] = true
+	}
+
+	// Walk UP from each trigger PID through telemetry parent links
+	// to build the complete spine (fills gaps if detection ancestors are incomplete).
+	for pid := range triggerPIDs {
+		cur := pid
+		for i := 0; i < 20; i++ {
+			pi, ok := procMap[cur]
+			if !ok || pi.parentPID <= 0 || pi.parentPID == cur {
+				break
+			}
+			relevant[pi.parentPID] = true
+			cur = pi.parentPID
+		}
+	}
+
+	// Walk DOWN only from trigger PIDs — not ancestors.
 	var walkDown func(pid int, depth int)
 	walkDown = func(pid int, depth int) {
 		if depth > 10 {
@@ -312,12 +339,11 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 			walkDown(child, depth+1)
 		}
 	}
-	// Only walk down from triggering PIDs, not ancestry
 	for pid := range triggerPIDs {
 		walkDown(pid, 0)
 	}
 
-	// Filter events to only relevant PIDs.
+	// Return ALL events for relevant PIDs (no event-type filtering).
 	filtered := make([]store.TelemetryEvent, 0, len(allEvents)/4)
 	for _, evt := range allEvents {
 		if relevant[evt.PID] {

@@ -14,6 +14,9 @@ interface DetectionEvent {
     cwd?: string; sid?: string; username?: string; domain?: string
     session_id?: number; integrity_level?: string; ancestors?: string[]
     sha256?: string; md5?: string
+    is_signed?: boolean; is_trusted?: boolean
+    cert_subject?: string; cert_issuer?: string
+    is_wow64?: boolean; is_protected?: boolean
   }
 }
 
@@ -285,6 +288,30 @@ function EventCard({ evt }: { evt: DetectionEvent }) {
                 <div><span className="text-[10px] text-gray-400">MD5</span> <span className="text-[10px] font-mono text-gray-600 break-all block">{proc.md5}</span></div>
               )}
             </div>
+          )}
+          {(proc.is_signed !== undefined || proc.cert_subject) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {proc.is_signed !== undefined && (
+                <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (proc.is_signed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
+                  {proc.is_signed ? 'Signed' : 'Unsigned'}
+                </span>
+              )}
+              {proc.is_trusted !== undefined && proc.is_signed && (
+                <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (proc.is_trusted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+                  {proc.is_trusted ? 'Trusted' : 'Untrusted'}
+                </span>
+              )}
+              {proc.cert_subject && <span className="text-[10px] text-gray-500">{proc.cert_subject}</span>}
+            </div>
+          )}
+          {(proc.is_wow64 || proc.is_protected) && (
+            <div className="flex gap-1">
+              {proc.is_wow64 && <span className="rounded bg-yellow-50 text-yellow-700 px-1 py-0.5 text-[10px] font-medium">WOW64</span>}
+              {proc.is_protected && <span className="rounded bg-blue-50 text-blue-700 px-1 py-0.5 text-[10px] font-medium">Protected</span>}
+            </div>
+          )}
+          {proc.exe && (
+            <div><span className="text-[10px] text-gray-400">Executable</span> <span className="text-[10px] font-mono text-gray-600 break-all block">{proc.exe}</span></div>
           )}
           {proc.ancestors && proc.ancestors.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap">

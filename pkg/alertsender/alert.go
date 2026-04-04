@@ -199,6 +199,12 @@ func (a Alert) MarshalJSON() ([]byte, error) {
 				IsWOW64        bool     `json:"is_wow64"`
 				IsPackaged     bool     `json:"is_packaged"`
 				IsProtected    bool     `json:"is_protected"`
+				SHA256         string   `json:"sha256,omitempty"`
+				MD5            string   `json:"md5,omitempty"`
+				IsSigned       bool     `json:"is_signed,omitempty"`
+				IsTrusted      bool     `json:"is_trusted,omitempty"`
+				CertSubject    string   `json:"cert_subject,omitempty"`
+				CertIssuer     string   `json:"cert_issuer,omitempty"`
 				Ancestors      []string `json:"ancestors"`
 			} `json:"proc,omitempty"`
 		} `json:"events"`
@@ -264,6 +270,12 @@ func (a Alert) MarshalJSON() ([]byte, error) {
 				IsWOW64        bool     `json:"is_wow64"`
 				IsPackaged     bool     `json:"is_packaged"`
 				IsProtected    bool     `json:"is_protected"`
+				SHA256         string   `json:"sha256,omitempty"`
+				MD5            string   `json:"md5,omitempty"`
+				IsSigned       bool     `json:"is_signed,omitempty"`
+				IsTrusted      bool     `json:"is_trusted,omitempty"`
+				CertSubject    string   `json:"cert_subject,omitempty"`
+				CertIssuer     string   `json:"cert_issuer,omitempty"`
 				Ancestors      []string `json:"ancestors"`
 			} `json:"proc,omitempty"`
 		}{
@@ -310,6 +322,12 @@ func (a Alert) MarshalJSON() ([]byte, error) {
 				IsWOW64        bool     `json:"is_wow64"`
 				IsPackaged     bool     `json:"is_packaged"`
 				IsProtected    bool     `json:"is_protected"`
+				SHA256         string   `json:"sha256,omitempty"`
+				MD5            string   `json:"md5,omitempty"`
+				IsSigned       bool     `json:"is_signed,omitempty"`
+				IsTrusted      bool     `json:"is_trusted,omitempty"`
+				CertSubject    string   `json:"cert_subject,omitempty"`
+				CertIssuer     string   `json:"cert_issuer,omitempty"`
 				Ancestors      []string `json:"ancestors"`
 			}{
 				PID:            ps.PID,
@@ -327,7 +345,17 @@ func (a Alert) MarshalJSON() ([]byte, error) {
 				IsWOW64:        ps.IsWOW64,
 				IsPackaged:     ps.IsPackaged,
 				IsProtected:    ps.IsProtected,
+				SHA256:         ps.SHA256,
+				MD5:            ps.MD5,
 				Ancestors:      ps.Ancestors(),
+			}
+			if ps.PE != nil {
+				evt.Proc.IsSigned = ps.PE.IsSigned
+				evt.Proc.IsTrusted = ps.PE.IsTrusted
+				if ps.PE.Cert != nil {
+					evt.Proc.CertSubject = ps.PE.Cert.Subject
+					evt.Proc.CertIssuer = ps.PE.Cert.Issuer
+				}
 			}
 			if ps.Parent != nil {
 				evt.Proc.Pname = ps.Parent.Name
