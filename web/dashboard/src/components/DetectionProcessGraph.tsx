@@ -315,7 +315,7 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
             <MiniMap
               nodeStrokeWidth={3}
               nodeColor={(n) => {
-                const d = n.data as ProcessInfo
+                const d = n.data as unknown as ProcessInfo
                 if (d?.isFocus) return '#ef4444'
                 if (d?.isOnFocusPath) return '#3b82f6'
                 return '#e5e7eb'
