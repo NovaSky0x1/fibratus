@@ -148,11 +148,11 @@ func (s *Server) Run(ctx context.Context) error {
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
 	macroHandler := handler.NewMacroHandler(macroStore, auditStore, userStore)
 	auditHandler := handler.NewAuditHandler(auditStore)
-	userHandler := handler.NewUserHandler(userStore)
+	groupStore := postgres.NewUserGroupStore(db)
+	userHandler := handler.NewUserHandler(userStore, groupStore)
 	installHandler := handler.NewInstallHandler(enrollStore,
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
-	groupStore := postgres.NewUserGroupStore(db)
 	groupHandler := handler.NewGroupHandler(groupStore)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)

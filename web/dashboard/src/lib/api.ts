@@ -248,7 +248,7 @@ export const api = {
 
   // Users
   getUsers: () => fetchApi<User[]>(orgPath('/users')),
-  createUser: (data: { email: string; name: string; password: string; role: string }) =>
+  createUser: (data: { email: string; name: string; password: string; role: string; org_restrictions?: string[]; group_ids?: string[] }) =>
     fetchApi<User>(orgPath('/users'), { method: 'POST', body: JSON.stringify(data) }),
   updateUserRole: (id: string, role: string) =>
     fetchApi<{ status: string; role: string }>(orgPath(`/users/${id}/role`), { method: 'PUT', body: JSON.stringify({ role }) }),

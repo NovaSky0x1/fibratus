@@ -33,12 +33,13 @@ import (
 
 // UserHandler handles user management API requests.
 type UserHandler struct {
-	users store.UserStore
+	users  store.UserStore
+	groups store.UserGroupStore
 }
 
 // NewUserHandler creates a new user handler.
-func NewUserHandler(users store.UserStore) *UserHandler {
-	return &UserHandler{users: users}
+func NewUserHandler(users store.UserStore, groups store.UserGroupStore) *UserHandler {
+	return &UserHandler{users: users, groups: groups}
 }
 
 // Me handles GET /api/v1/auth/me — returns the current user.
@@ -88,10 +89,12 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Email    string `json:"email"`
-		Name     string `json:"name"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Email           string   `json:"email"`
+		Name            string   `json:"name"`
+		Password        string   `json:"password"`
+		Role            string   `json:"role"`
+		OrgRestrictions []string `json:"org_restrictions"` // specific org IDs, empty = all orgs in account
+		GroupIDs        []string `json:"group_ids"`        // assign to groups on creation
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -109,7 +112,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		req.Role = fleetauth.RoleViewer
 	}
 	if !fleetauth.ValidRole(req.Role) {
-		writeError(w, http.StatusBadRequest, "invalid role: must be admin, analyst, or viewer")
+		writeError(w, http.StatusBadRequest, "invalid role: must be root, admin, analyst, or viewer")
 		return
 	}
 
@@ -125,17 +128,36 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize org restrictions
+	orgRestrictions := ""
+	if len(req.OrgRestrictions) > 0 {
+		orBytes, _ := json.Marshal(req.OrgRestrictions)
+		orgRestrictions = string(orBytes)
+	}
+
 	user := &fleet.User{
 		ID: GenerateID(), Email: req.Email, Name: req.Name,
 		Password: hashed, AccountID: accountID, Role: req.Role,
-		CreatedAt: time.Now().UTC(),
+		OrgRestrictions: orgRestrictions,
+		CreatedAt:       time.Now().UTC(),
 	}
 	if err := h.users.Create(r.Context(), user); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
-	if err := h.users.AddOrgAccess(r.Context(), user.ID, orgID, req.Role); err != nil {
-		log.Errorf("fleet: add org access error: %v", err)
+
+	// Add org access — if org restrictions specified, add to each; otherwise add to current org
+	if len(req.OrgRestrictions) > 0 {
+		for _, oid := range req.OrgRestrictions {
+			h.users.AddOrgAccess(r.Context(), user.ID, oid, req.Role)
+		}
+	} else {
+		h.users.AddOrgAccess(r.Context(), user.ID, orgID, req.Role)
+	}
+
+	// Assign to groups
+	for _, gid := range req.GroupIDs {
+		h.groups.AddMember(r.Context(), user.ID, gid)
 	}
 
 	log.Infof("fleet: user created: %s role=%s org=%s", user.Email, req.Role, orgID)

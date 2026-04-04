@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type User, type UserGroup } from '../lib/api'
+import { api, type User, type UserGroup, type Organization } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
 
 const roleBadge: Record<string, string> = {
@@ -20,7 +20,7 @@ const passwordRules = [
 export default function Users() {
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ email: '', name: '', password: '', role: 'viewer' })
+  const [form, setForm] = useState({ email: '', name: '', password: '', role: 'viewer', org_restrictions: [] as string[], group_ids: [] as string[] })
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [editingUser, setEditingUser] = useState<User | null>(null)
@@ -42,6 +42,12 @@ export default function Users() {
     queryFn: () => api.getGroups(),
   })
   const groups = (groupsData?.data || []) as (UserGroup & { members?: { id: string }[] })[]
+
+  const { data: orgsData } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => api.getOrganizations(),
+  })
+  const orgs = (orgsData?.data || []) as Organization[]
 
   // Build a map of userId -> group names
   const userGroupMap: Record<string, string[]> = {}
@@ -82,7 +88,7 @@ export default function Users() {
     }
     queryClient.invalidateQueries({ queryKey: ['users'] })
     setShowCreate(false)
-    setForm({ email: '', name: '', password: '', role: 'viewer' })
+    setForm({ email: '', name: '', password: '', role: 'viewer', org_restrictions: [], group_ids: [] })
   }
 
   return (
@@ -319,8 +325,67 @@ export default function Users() {
                   <option value="viewer">Viewer</option>
                   <option value="analyst">Analyst</option>
                   <option value="admin">Admin</option>
+                  {currentUser?.role === 'root' && <option value="root">Root</option>}
                 </select>
               </div>
+              {/* Org restrictions */}
+              {orgs.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Organization Access</label>
+                  <div className="rounded-lg border border-gray-200 p-2 max-h-32 overflow-auto space-y-1">
+                    <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={form.org_restrictions.length === 0}
+                        onChange={() => setForm(f => ({ ...f, org_restrictions: [] }))}
+                        className="rounded border-gray-300" />
+                      <span className="font-medium">All organizations</span>
+                    </label>
+                    {orgs.map(org => (
+                      <label key={org.id} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer ml-4">
+                        <input type="checkbox"
+                          checked={form.org_restrictions.length === 0 || form.org_restrictions.includes(org.id)}
+                          onChange={e => {
+                            if (form.org_restrictions.length === 0) {
+                              // Switching from "all" to specific — select only this one
+                              setForm(f => ({ ...f, org_restrictions: [org.id] }))
+                            } else if (e.target.checked) {
+                              setForm(f => ({ ...f, org_restrictions: [...f.org_restrictions, org.id] }))
+                            } else {
+                              const updated = form.org_restrictions.filter(id => id !== org.id)
+                              setForm(f => ({ ...f, org_restrictions: updated.length === 0 ? [] : updated }))
+                            }
+                          }}
+                          className="rounded border-gray-300" />
+                        {org.name}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[10px] text-gray-400">Leave "All" checked for unrestricted access, or select specific orgs.</p>
+                </div>
+              )}
+              {/* Group assignment */}
+              {groups.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Groups</label>
+                  <div className="rounded-lg border border-gray-200 p-2 max-h-32 overflow-auto space-y-1">
+                    {groups.map(g => (
+                      <label key={g.id} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                        <input type="checkbox"
+                          checked={form.group_ids.includes(g.id)}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setForm(f => ({ ...f, group_ids: [...f.group_ids, g.id] }))
+                            } else {
+                              setForm(f => ({ ...f, group_ids: f.group_ids.filter(id => id !== g.id) }))
+                            }
+                          }}
+                          className="rounded border-gray-300" />
+                        <span>{g.name}</span>
+                        {g.description && <span className="text-gray-400">— {g.description}</span>}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               {error && <p className="text-xs text-red-600">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">
                 <button
