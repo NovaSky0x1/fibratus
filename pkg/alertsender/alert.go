@@ -241,6 +241,12 @@ func (a Alert) MarshalJSON() ([]byte, error) {
 			IsWOW64        bool     `json:"is_wow64"`
 			IsPackaged     bool     `json:"is_packaged"`
 			IsProtected    bool     `json:"is_protected"`
+			SHA256         string   `json:"sha256,omitempty"`
+			MD5            string   `json:"md5,omitempty"`
+			IsSigned       bool     `json:"is_signed,omitempty"`
+			IsTrusted      bool     `json:"is_trusted,omitempty"`
+			CertSubject    string   `json:"cert_subject,omitempty"`
+			CertIssuer     string   `json:"cert_issuer,omitempty"`
 			Ancestors      []string `json:"ancestors"`
 		} `json:"proc,omitempty"`
 	}, 0, len(a.Events))

@@ -51,6 +51,9 @@ type UserStore interface {
 	LockAccount(ctx context.Context, userID string, until time.Time) error
 	ResetLoginAttempts(ctx context.Context, userID string) error
 	SetTOTP(ctx context.Context, userID, secret string, enabled bool, recoveryCodes string) error
+	ListByOrg(ctx context.Context, orgID string) ([]*fleet.User, error)
+	Delete(ctx context.Context, id string) error
+	UpdateRole(ctx context.Context, userID, orgID, role string) error
 }
 
 // EnrollmentTokenStore manages enrollment token persistence.

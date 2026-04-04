@@ -148,6 +148,7 @@ func (s *Server) Run(ctx context.Context) error {
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
 	macroHandler := handler.NewMacroHandler(macroStore, auditStore, userStore)
 	auditHandler := handler.NewAuditHandler(auditStore)
+	userHandler := handler.NewUserHandler(userStore)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 
@@ -307,6 +308,16 @@ func (s *Server) Run(ctx context.Context) error {
 		// Audit Log
 		case subpath == "/audit-log" && r.Method == http.MethodGet:
 			auditHandler.List(w, r)
+
+		// Users
+		case subpath == "/users" && r.Method == http.MethodGet:
+			requirePermission(fleetauth.PermManageUsers, userHandler.List)(w, r)
+		case subpath == "/users" && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageUsers, userHandler.Create)(w, r)
+		case strings.HasPrefix(subpath, "/users/") && strings.HasSuffix(subpath, "/role") && r.Method == http.MethodPut:
+			requirePermission(fleetauth.PermManageUsers, userHandler.UpdateRole)(w, r)
+		case strings.HasPrefix(subpath, "/users/") && r.Method == http.MethodDelete:
+			requirePermission(fleetauth.PermManageUsers, userHandler.Delete)(w, r)
 
 		default:
 			http.NotFound(w, r)

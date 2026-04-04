@@ -149,3 +149,38 @@ func (s *UserStore) SetTOTP(ctx context.Context, userID, secret string, enabled 
 		userID, secret, enabled, recoveryCodes)
 	return err
 }
+
+func (s *UserStore) ListByOrg(ctx context.Context, orgID string) ([]*fleet.User, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT u.id, u.email, u.name, u.account_id, uo.role, u.created_at, u.totp_enabled
+		 FROM users u
+		 JOIN user_orgs uo ON u.id = uo.user_id
+		 WHERE uo.org_id = $1
+		 ORDER BY u.created_at`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]*fleet.User, 0)
+	for rows.Next() {
+		u := &fleet.User{}
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AccountID, &u.Role, &u.CreatedAt, &u.TOTPEnabled); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *UserStore) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
+	return err
+}
+
+func (s *UserStore) UpdateRole(ctx context.Context, userID, orgID, role string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE user_orgs SET role = $3 WHERE user_id = $1 AND org_id = $2`,
+		userID, orgID, role)
+	return err
+}

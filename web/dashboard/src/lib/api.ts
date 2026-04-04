@@ -217,6 +217,15 @@ export const api = {
   getAgent: (id: string) => fetchApi<Agent>(orgPath(`/agents/${id}`)),
   deleteAgent: (id: string) => fetchApi<void>(orgPath(`/agents/${id}`), { method: 'DELETE' }),
 
+  // Users
+  getUsers: () => fetchApi<User[]>(orgPath('/users')),
+  createUser: (data: { email: string; name: string; password: string; role: string }) =>
+    fetchApi<User>(orgPath('/users'), { method: 'POST', body: JSON.stringify(data) }),
+  updateUserRole: (id: string, role: string) =>
+    fetchApi<{ status: string; role: string }>(orgPath(`/users/${id}/role`), { method: 'PUT', body: JSON.stringify({ role }) }),
+  deleteUser: (id: string) =>
+    fetchApi<{ status: string }>(orgPath(`/users/${id}`), { method: 'DELETE' }),
+
   // Detections
   getDetections: (params?: Record<string, string>) => {
     const q = new URLSearchParams(params || {}).toString()
