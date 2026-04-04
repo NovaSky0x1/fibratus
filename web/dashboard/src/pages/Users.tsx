@@ -95,8 +95,8 @@ export default function Users() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Users</h1>
-          <p className="mt-1 text-sm text-gray-500">{users.length} user(s) in this organization</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Users</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{users.length} user(s) in this organization</p>
         </div>
         {isAdmin && (
           <button
@@ -109,33 +109,33 @@ export default function Users() {
       </div>
 
       {/* User table */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-6 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/50">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Email</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Role</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Groups</th>
-                <th className="px-6 py-3 font-medium text-gray-500">2FA</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Created</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Email</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Role</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Groups</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Created</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && users.map(user => {
                 const isSelf = currentUser?.id === user.id
                 return (
-                  <tr key={user.id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-3 font-medium text-gray-900">
+                  <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
+                    <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">
                       {user.name}
-                      {isSelf && <span className="ml-2 text-xs text-gray-400">(you)</span>}
+                      {isSelf && <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">(you)</span>}
                     </td>
-                    <td className="px-6 py-3 text-gray-600">{user.email}</td>
+                    <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{user.email}</td>
                     <td className="px-6 py-3">
                       {isAdmin && !isSelf ? (
                         <select
@@ -163,7 +163,7 @@ export default function Users() {
                           </span>
                         ))}
                         {!(userGroupMap[user.id] || []).length && (
-                          <span className="text-[10px] text-gray-400">--</span>
+                          <span className="text-[10px] text-gray-400 dark:text-slate-500">--</span>
                         )}
                       </div>
                     </td>
@@ -173,7 +173,7 @@ export default function Users() {
                         {user.totp_enabled ? 'Enabled' : 'Off'}
                       </span>
                     </td>
-                    <td className="px-6 py-3 text-gray-500 whitespace-nowrap">
+                    <td className="px-6 py-3 text-gray-500 dark:text-slate-400 whitespace-nowrap">
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-3">
@@ -197,7 +197,7 @@ export default function Users() {
                               </button>
                               <button
                                 onClick={() => setDeleteId(null)}
-                                className="rounded bg-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-300"
+                                className="rounded bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-500"
                               >
                                 Cancel
                               </button>
@@ -211,7 +211,7 @@ export default function Users() {
                             </button>
                           )
                         ) : (
-                          <span className="text-xs text-gray-300">-</span>
+                          <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
                         )}
                       </div>
                     </td>
@@ -219,7 +219,7 @@ export default function Users() {
                 )
               })}
               {!isLoading && users.length === 0 && (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">No users yet.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No users yet.</td></tr>
               )}
             </tbody>
           </table>
@@ -227,8 +227,8 @@ export default function Users() {
       </div>
 
       {/* Roles permission matrix */}
-      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">Role Permissions</h3>
+      <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+        <h3 className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-4">Role Permissions</h3>
         <div className="grid grid-cols-3 gap-6 text-xs">
           <RolePermissionCard
             role="Admin"
@@ -275,35 +275,35 @@ export default function Users() {
       {/* Create user modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-gray-900">Add User</h2>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">Add User</h2>
             <form onSubmit={handleCreate} className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Name</label>
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Email</label>
                 <input
                   type="email"
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Password</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Password</label>
                 <input
                   type="password"
                   value={form.password}
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
                   required
                   minLength={12}
                 />
@@ -316,11 +316,11 @@ export default function Users() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Role</label>
                 <select
                   value={form.role}
                   onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
                 >
                   <option value="viewer">Viewer</option>
                   <option value="analyst">Analyst</option>
@@ -331,16 +331,16 @@ export default function Users() {
               {/* Org restrictions */}
               {orgs.length > 0 && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Organization Access</label>
-                  <div className="rounded-lg border border-gray-200 p-2 max-h-32 overflow-auto space-y-1">
-                    <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Organization Access</label>
+                  <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-2 max-h-32 overflow-auto space-y-1">
+                    <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300 cursor-pointer">
                       <input type="checkbox" checked={form.org_restrictions.length === 0}
                         onChange={() => setForm(f => ({ ...f, org_restrictions: [] }))}
                         className="rounded border-gray-300" />
                       <span className="font-medium">All organizations</span>
                     </label>
                     {orgs.map(org => (
-                      <label key={org.id} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer ml-4">
+                      <label key={org.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer ml-4">
                         <input type="checkbox"
                           checked={form.org_restrictions.length === 0 || form.org_restrictions.includes(org.id)}
                           onChange={e => {
@@ -359,16 +359,16 @@ export default function Users() {
                       </label>
                     ))}
                   </div>
-                  <p className="mt-1 text-[10px] text-gray-400">Leave "All" checked for unrestricted access, or select specific orgs.</p>
+                  <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Leave "All" checked for unrestricted access, or select specific orgs.</p>
                 </div>
               )}
               {/* Group assignment */}
               {groups.length > 0 && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Groups</label>
-                  <div className="rounded-lg border border-gray-200 p-2 max-h-32 overflow-auto space-y-1">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Groups</label>
+                  <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-2 max-h-32 overflow-auto space-y-1">
                     {groups.map(g => (
-                      <label key={g.id} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                      <label key={g.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer">
                         <input type="checkbox"
                           checked={form.group_ids.includes(g.id)}
                           onChange={e => {
@@ -380,7 +380,7 @@ export default function Users() {
                           }}
                           className="rounded border-gray-300" />
                         <span>{g.name}</span>
-                        {g.description && <span className="text-gray-400">— {g.description}</span>}
+                        {g.description && <span className="text-gray-400 dark:text-slate-500">— {g.description}</span>}
                       </label>
                     ))}
                   </div>
@@ -391,7 +391,7 @@ export default function Users() {
                 <button
                   type="button"
                   onClick={() => { setShowCreate(false); setError('') }}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                  className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
                 >
                   Cancel
                 </button>
@@ -445,7 +445,7 @@ function RolePermissionCard({ role, badgeClass, permissions }: {
           const colors = permCategoryColors[category] || { bg: 'bg-gray-100', text: 'text-gray-700' }
           return (
             <div key={category} className="flex items-start gap-1.5">
-              <span className="text-[10px] text-gray-500 w-24 shrink-0 pt-0.5">{category}:</span>
+              <span className="text-[10px] text-gray-500 dark:text-slate-400 w-24 shrink-0 pt-0.5">{category}:</span>
               <div className="flex flex-wrap gap-1">
                 {perms.map(p => (
                   <span key={p} className={`inline-flex rounded-full px-1.5 py-0 text-[10px] font-medium ${colors.bg} ${colors.text}`}>
@@ -535,23 +535,23 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
       <div className="space-y-8">
         {/* Profile Section */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Profile</h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Profile</h3>
           <div className="mt-3 space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Name</label>
               <input
                 value={profileName}
                 onChange={e => setProfileName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Email</label>
               <input
                 type="email"
                 value={profileEmail}
                 onChange={e => setProfileEmail(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
               />
             </div>
             {profileError && <p className="text-xs text-red-600">{profileError}</p>}
@@ -566,20 +566,20 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
           </div>
         </div>
 
-        <hr className="border-gray-200" />
+        <hr className="border-gray-200 dark:border-slate-700" />
 
         {/* Password Section */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Password</h3>
-          <p className="mt-1 text-xs text-gray-500">Reset this user's password. They will need to use the new password on next login.</p>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Password</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Reset this user's password. They will need to use the new password on next login.</p>
           <div className="mt-3 space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">New Password</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">New Password</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
                 placeholder="Enter new password"
                 minLength={12}
               />
@@ -603,13 +603,13 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
           </div>
         </div>
 
-        <hr className="border-gray-200" />
+        <hr className="border-gray-200 dark:border-slate-700" />
 
         {/* 2FA Section */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Two-Factor Authentication</h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Two-Factor Authentication</h3>
           <div className="mt-3 flex items-center gap-3">
-            <span className="text-sm text-gray-600">Status:</span>
+            <span className="text-sm text-gray-600 dark:text-slate-400">Status:</span>
             <span className={'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
               (user.totp_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500')}>
               {user.totp_enabled ? 'Enabled' : 'Disabled'}
@@ -640,7 +640,7 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
                     </button>
                     <button
                       onClick={() => setTotpConfirm(false)}
-                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                      className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
                     >
                       Cancel
                     </button>
@@ -651,21 +651,21 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
             </div>
           )}
           {!user.totp_enabled && (
-            <p className="mt-2 text-xs text-gray-500">This user has not enabled two-factor authentication.</p>
+            <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">This user has not enabled two-factor authentication.</p>
           )}
         </div>
 
-        <hr className="border-gray-200" />
+        <hr className="border-gray-200 dark:border-slate-700" />
 
         {/* Danger Zone */}
         <div>
           <h3 className="text-sm font-semibold text-red-600">Danger Zone</h3>
-          <p className="mt-1 text-xs text-gray-500">Permanently delete this user account. This action cannot be undone.</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Permanently delete this user account. This action cannot be undone.</p>
           <div className="mt-3">
             {!deleteConfirm ? (
               <button
                 onClick={() => setDeleteConfirm(true)}
-                className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                className="rounded-lg border border-red-300 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
               >
                 Delete User
               </button>
@@ -684,7 +684,7 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
                   </button>
                   <button
                     onClick={() => setDeleteConfirm(false)}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                    className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
                   >
                     Cancel
                   </button>

@@ -99,8 +99,8 @@ export default function Rules() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rules</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Rules</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             {total} rule(s) managed by fleet server
           </p>
         </div>
@@ -114,9 +114,9 @@ export default function Rules() {
 
       {/* Upload panel */}
       {showUpload && (
-        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-sm font-medium text-gray-900">Upload YAML Rule</h3>
-          <p className="mt-1 text-xs text-gray-500">
+        <div className="mt-6 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Upload YAML Rule</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
             Paste a Fibratus detection rule in YAML format. Same format as
             rules/*.yml files.
           </p>
@@ -129,7 +129,7 @@ export default function Rules() {
             value={yamlContent}
             onChange={(e) => setYamlContent(e.target.value)}
             rows={15}
-            className="mt-3 w-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            className="mt-3 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-3 font-mono text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             placeholder={'name: My Detection Rule\nid: 550e8400-e29b-41d4-a716-446655440000\nversion: 1.0.0\ndescription: Detects suspicious activity\ncondition: >\n  spawn_process and ps.name imatches \'*.exe\'\noutput: "Suspicious process: %ps.name"\nseverity: high\nlabels:\n  tactic.id: TA0002\n  tactic.name: Execution'}
           />
           <div className="mt-3 flex gap-3">
@@ -140,7 +140,7 @@ export default function Rules() {
             >
               {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
             </button>
-            <label className="flex cursor-pointer items-center rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
+            <label className="flex cursor-pointer items-center rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
               Import from file
               <input
                 type="file"
@@ -165,40 +165,40 @@ export default function Rules() {
           placeholder="Search rules by name, technique, condition..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+          className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
         />
-        <span className="flex items-center text-sm text-gray-400">{rules.length} shown</span>
+        <span className="flex items-center text-sm text-gray-400 dark:text-slate-500">{rules.length} shown</span>
       </div>
 
       {/* Rules table */}
-      <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/50">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Severity</th>
-                <th className="px-6 py-3 font-medium text-gray-500">MITRE</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Version</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Status</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Severity</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">MITRE</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Version</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Status</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">
                     Loading...
                   </td>
                 </tr>
               )}
               {!isLoading &&
                 rules.map((rule) => (
-                  <tr key={rule.id} className="hover:bg-gray-50/50">
+                  <tr key={rule.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/30">
                     <td className="px-6 py-3">
-                      <div className="font-medium text-gray-900">{rule.name}</div>
+                      <div className="font-medium text-gray-900 dark:text-slate-100">{rule.name}</div>
                       {rule.description && (
-                        <div className="mt-0.5 text-xs text-gray-500">
+                        <div className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
                           {rule.description}
                         </div>
                       )}
@@ -206,14 +206,14 @@ export default function Rules() {
                     <td className="px-6 py-3">
                       <SeverityBadge severity={rule.severity} />
                     </td>
-                    <td className="px-6 py-3 text-gray-600">
+                    <td className="px-6 py-3 text-gray-600 dark:text-slate-400">
                       {rule.labels?.['technique.id'] && (
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono">
+                        <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-mono">
                           {rule.labels['technique.id']}
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-3 font-mono text-xs text-gray-500">
+                    <td className="px-6 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">
                       {rule.version}
                     </td>
                     <td className="px-6 py-3">
@@ -221,8 +221,8 @@ export default function Rules() {
                         className={
                           'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
                           (rule.enabled
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-gray-100 text-gray-500')
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
                         }
                       >
                         {rule.enabled ? 'Active' : 'Disabled'}
@@ -243,7 +243,7 @@ export default function Rules() {
                               enabled: !rule.enabled,
                             })
                           }
-                          className="text-xs font-medium text-gray-600 hover:text-gray-800"
+                          className="text-xs font-medium text-gray-600 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200"
                         >
                           {rule.enabled ? 'Disable' : 'Enable'}
                         </button>
@@ -259,7 +259,7 @@ export default function Rules() {
                 ))}
               {!isLoading && rules.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">
                     {search ? 'No rules match your search.' : 'No rules configured. Upload detection rules above.'}
                   </td>
                 </tr>
@@ -275,9 +275,9 @@ export default function Rules() {
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-4 mb-4">
               <SeverityBadge severity={editRule.severity} />
-              <span className="font-mono text-xs text-gray-400">{editRule.id}</span>
+              <span className="font-mono text-xs text-gray-400 dark:text-slate-500">{editRule.id}</span>
               {editRule.labels?.['technique.id'] && (
-                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600">
+                <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-mono text-gray-600 dark:text-slate-400">
                   {editRule.labels['technique.id']} — {editRule.labels?.['technique.name'] || ''}
                 </span>
               )}
@@ -293,7 +293,7 @@ export default function Rules() {
               <textarea
                 value={editYaml}
                 onChange={(e) => setEditYaml(e.target.value)}
-                className="w-full h-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm leading-relaxed focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500 resize-none"
+                className="w-full h-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-3 font-mono text-sm text-gray-900 dark:text-slate-100 leading-relaxed focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500 resize-none"
                 style={{ minHeight: 'calc(100vh - 300px)', tabSize: 2 }}
                 spellCheck={false}
               />
@@ -309,11 +309,11 @@ export default function Rules() {
               </button>
               <button
                 onClick={() => setEditRule(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
               >
                 Cancel
               </button>
-              <label className="ml-auto flex cursor-pointer items-center rounded-lg border border-gray-300 px-3 py-2 text-xs hover:bg-gray-50">
+              <label className="ml-auto flex cursor-pointer items-center rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-2 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
                 Import file
                 <input
                   type="file"

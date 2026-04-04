@@ -14,7 +14,7 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
   return (
     <button
       onClick={handleCopy}
-      className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100"
+      className="shrink-0 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-600"
     >
       {copied ? 'Copied!' : label}
     </button>
@@ -104,30 +104,30 @@ export default function Settings() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 dark:text-slate-100">Settings</h1>
 
       {/* ──────────────────────────────────────────── */}
       {/* Agent Deployment Section */}
       {/* ──────────────────────────────────────────── */}
       <div className="mt-8">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
             Agent Deployment
           </h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             Deploy the Fibratus agent to Windows endpoints with a single
             PowerShell command. The installer downloads the agent, enrolls it
             with this server, and starts the service automatically.
           </p>
         </div>
 
-        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
           <div className="space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
                 Prerequisites
               </h3>
-              <ul className="mt-2 space-y-1 text-sm text-gray-600">
+              <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-slate-400">
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-fibratus-500">&#9679;</span>
                   <span>
@@ -146,18 +146,18 @@ export default function Settings() {
                   <span className="mt-0.5 text-fibratus-500">&#9679;</span>
                   <span>
                     <strong>Network access</strong> -- the endpoint must be able
-                    to reach <code className="rounded bg-gray-100 px-1 py-0.5 text-xs font-mono">{serverUrl}</code> over HTTPS
+                    to reach <code className="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 text-xs font-mono">{serverUrl}</code> over HTTPS
                   </span>
                 </li>
               </ul>
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
                 Install Command
               </h3>
               <p className="mt-1 text-xs text-gray-500">
-                Replace <code className="rounded bg-gray-100 px-1 py-0.5 font-mono">{'<ENROLLMENT_TOKEN_ID>'}</code> with
+                Replace <code className="rounded bg-gray-100 dark:bg-slate-700 px-1 py-0.5 font-mono">{'<ENROLLMENT_TOKEN_ID>'}</code> with
                 a valid enrollment token from the section below. Run this in an{' '}
                 <strong>elevated PowerShell</strong> window.
               </p>
@@ -192,10 +192,10 @@ export default function Settings() {
       <div className="mt-8">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
               Enrollment Tokens
             </h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
               Create tokens to enroll new agents. Each token is scoped to this
               organization.
             </p>
@@ -221,7 +221,7 @@ export default function Settings() {
               Copy this token -- it will not be shown again in full.
             </p>
             <div className="mt-3 flex items-center gap-2">
-              <code className="flex-1 select-all rounded-lg border border-emerald-200 bg-white px-4 py-2.5 font-mono text-sm text-gray-900">
+              <code className="flex-1 select-all rounded-lg border border-emerald-200 bg-white px-4 py-2.5 font-mono text-sm text-gray-900 dark:text-slate-100">
                 {createdToken}
               </code>
               <CopyButton text={createdToken} label="Copy Token" />
@@ -229,7 +229,7 @@ export default function Settings() {
 
             <div className="mt-4 space-y-3">
               <div className="rounded-lg border border-emerald-200 bg-white p-4">
-                <p className="mb-2 text-xs font-semibold text-gray-700">
+                <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-slate-300">
                   One-liner install (elevated PowerShell):
                 </p>
                 <div className="flex items-center gap-2">
@@ -246,7 +246,7 @@ export default function Settings() {
               </div>
 
               <div className="rounded-lg border border-emerald-200 bg-white p-4">
-                <p className="mb-2 text-xs font-semibold text-gray-700">
+                <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-slate-300">
                   Manual enrollment (if agent is already installed):
                 </p>
                 <div className="flex items-center gap-2">
@@ -267,10 +267,10 @@ export default function Settings() {
 
         {/* Create form */}
         {showCreateToken && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
                   Name
                 </label>
                 <input
@@ -278,11 +278,11 @@ export default function Settings() {
                   value={tokenName}
                   onChange={(e) => setTokenName(e.target.value)}
                   placeholder="e.g., workstation-rollout"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
                   Max Uses
                 </label>
                 <input
@@ -290,7 +290,7 @@ export default function Settings() {
                   value={maxUses}
                   onChange={(e) => setMaxUses(Number(e.target.value))}
                   min={1}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -307,28 +307,28 @@ export default function Settings() {
         )}
 
         {/* Token list */}
-        <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-100 bg-gray-50/50">
+              <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
                 <tr>
-                  <th className="px-6 py-3 font-medium text-gray-500">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">
                     Token ID
                   </th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Uses</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Uses</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">
                     Expires
                   </th>
-                  <th className="px-6 py-3 font-medium text-gray-500">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">
                     Status
                   </th>
-                  <th className="px-6 py-3 font-medium text-gray-500">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                 {tokens.map((t) => {
                   const expired = new Date(t.expires_at) < new Date()
                   const exhausted = t.uses_count >= t.max_uses
@@ -347,11 +347,11 @@ export default function Settings() {
                   return (
                     <tr key={t.id} className="group">
                       <td colSpan={6} className="p-0">
-                        <div className="flex items-center hover:bg-gray-50/50 px-6 py-3">
-                          <div className="w-[200px] font-mono text-xs text-gray-600 shrink-0">
+                        <div className="flex items-center hover:bg-gray-50/50 dark:hover:bg-slate-700/50 px-6 py-3">
+                          <div className="w-[200px] font-mono text-xs text-gray-600 dark:text-slate-400 shrink-0">
                             {t.id.slice(0, 24)}...
                           </div>
-                          <div className="w-[140px] text-gray-900 shrink-0">
+                          <div className="w-[140px] text-gray-900 dark:text-slate-100 shrink-0">
                             {t.name}
                           </div>
                           <div className="w-[80px] text-gray-600 shrink-0">
@@ -391,9 +391,9 @@ export default function Settings() {
                         </div>
                         {isExpanded && (
                           <div className="px-6 pb-4">
-                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                            <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
                               <div>
-                                <p className="text-xs font-semibold text-gray-700 mb-1.5">
+                                <p className="text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
                                   Run in an elevated PowerShell on the target
                                   endpoint:
                                 </p>
@@ -423,7 +423,7 @@ export default function Settings() {
                   <tr>
                     <td
                       colSpan={6}
-                      className="px-6 py-12 text-center text-gray-400"
+                      className="px-6 py-12 text-center text-gray-400 dark:text-slate-500"
                     >
                       No enrollment tokens yet. Create one to start enrolling
                       agents.
@@ -442,10 +442,10 @@ export default function Settings() {
       <div className="mt-12">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
               Organizations
             </h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
               Manage organizations within your account.
             </p>
           </div>
@@ -459,7 +459,7 @@ export default function Settings() {
 
         {/* Create org form */}
         {showCreateOrg && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
             {orgError && (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
                 {orgError}
@@ -467,7 +467,7 @@ export default function Settings() {
             )}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
                   Name
                 </label>
                 <input
@@ -475,11 +475,11 @@ export default function Settings() {
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                   placeholder="e.g., Engineering"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
                   Slug
                 </label>
                 <input
@@ -487,7 +487,7 @@ export default function Settings() {
                   value={orgSlug}
                   onChange={(e) => setOrgSlug(e.target.value)}
                   placeholder="e.g., engineering"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -510,33 +510,33 @@ export default function Settings() {
         )}
 
         {/* Organization list */}
-        <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-100 bg-gray-50/50">
+              <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
                 <tr>
-                  <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Slug</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Slug</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">
                     Agents
                   </th>
-                  <th className="px-6 py-3 font-medium text-gray-500">ID</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">ID</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                 {orgs.map((org) => (
-                  <tr key={org.id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-3 font-medium text-gray-900">
+                  <tr key={org.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
+                    <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">
                       {org.name}
                     </td>
                     <td className="px-6 py-3 text-gray-600">{org.slug}</td>
                     <td className="px-6 py-3 text-gray-600">
                       {org.agent_count}
                     </td>
-                    <td className="px-6 py-3 font-mono text-xs text-gray-400">
+                    <td className="px-6 py-3 font-mono text-xs text-gray-400 dark:text-slate-500 dark:text-slate-500">
                       {org.id}
                     </td>
                     <td className="px-6 py-3">
@@ -553,7 +553,7 @@ export default function Settings() {
                   <tr>
                     <td
                       colSpan={5}
-                      className="px-6 py-12 text-center text-gray-400"
+                      className="px-6 py-12 text-center text-gray-400 dark:text-slate-500"
                     >
                       No organizations found.
                     </td>
@@ -734,20 +734,20 @@ function SecuritySection() {
   return (
     <div className="mt-12">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">Security</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">Security</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
           Manage your account security and two-factor authentication.
         </p>
       </div>
 
-      <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm divide-y divide-gray-100">
+      <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50 divide-y divide-gray-100 dark:divide-slate-700">
         {/* User Profile */}
         {user && (
           <div className="px-6 py-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-900">{user.name || user.email}</p>
-                <p className="text-sm text-gray-500">{user.email}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{user.name || user.email}</p>
+                <p className="text-sm text-gray-500 dark:text-slate-400">{user.email}</p>
               </div>
               <span className={'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ' + roleBadgeColor(user.role)}>
                 {roleLabel(user.role)}
@@ -761,8 +761,8 @@ function SecuritySection() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div>
-                <p className="text-sm font-medium text-gray-900">Two-Factor Authentication</p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Two-Factor Authentication</p>
+                <p className="text-sm text-gray-500 dark:text-slate-400">
                   {totpEnabled
                     ? 'Your account is protected with 2FA.'
                     : 'Add an extra layer of security to your account.'}
@@ -805,9 +805,9 @@ function SecuritySection() {
 
           {/* Setup Step: Verify -- show QR code, secret & code input */}
           {setupStep === 'verify' && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
+            <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 space-y-4">
               <div>
-                <p className="text-sm font-medium text-gray-900">1. Scan with your authenticator app</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-slate-100">1. Scan with your authenticator app</p>
                 <p className="mt-1 text-xs text-gray-500">
                   Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
                 </p>
@@ -816,7 +816,7 @@ function SecuritySection() {
                 {qrDataUrl ? (
                   <img src={qrDataUrl} alt="Scan with authenticator app" className="rounded-lg border border-gray-200 bg-white p-2" width={200} height={200} />
                 ) : (
-                  <div className="flex h-[200px] w-[200px] items-center justify-center rounded-lg border border-gray-200 bg-white text-xs text-gray-400">
+                  <div className="flex h-[200px] w-[200px] items-center justify-center rounded-lg border border-gray-200 bg-white text-xs text-gray-400 dark:text-slate-500">
                     Generating QR code...
                   </div>
                 )}
@@ -824,7 +824,7 @@ function SecuritySection() {
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Or enter the secret key manually</label>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 select-all rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 break-all">
+                  <code className="flex-1 select-all rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 dark:text-slate-100 break-all">
                     {totpSecret}
                   </code>
                   <button
@@ -836,7 +836,7 @@ function SecuritySection() {
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900">2. Enter the verification code</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-slate-100">2. Enter the verification code</p>
                 <p className="mt-1 text-xs text-gray-500">
                   Enter the 6-digit code shown in your authenticator app to verify setup.
                 </p>
@@ -860,7 +860,7 @@ function SecuritySection() {
                   </button>
                   <button
                     onClick={resetSetup}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
                   >
                     Cancel
                   </button>
@@ -888,7 +888,7 @@ function SecuritySection() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {recoveryCodes.map((code, i) => (
-                  <code key={i} className="rounded border border-emerald-200 bg-white px-3 py-1.5 font-mono text-sm text-gray-900 text-center">
+                  <code key={i} className="rounded border border-emerald-200 bg-white px-3 py-1.5 font-mono text-sm text-gray-900 dark:text-slate-100 text-center">
                     {code}
                   </code>
                 ))}
@@ -928,7 +928,7 @@ function SecuritySection() {
                 </button>
                 <button
                   onClick={() => { setShowDisable(false); setDisablePassword(''); setDisableError('') }}
-                  className="text-sm text-gray-500 hover:text-gray-700"
+                  className="text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
                 >
                   Cancel
                 </button>
@@ -985,69 +985,69 @@ function GitHubSyncSection() {
     <div className="mt-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Detection as Code</h2>
-          <p className="mt-1 text-sm text-gray-500">Sync detection rules from a GitHub repository. Rules are validated before import.</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">Detection as Code</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Sync detection rules from a GitHub repository. Rules are validated before import.</p>
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
+      <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Repository API URL</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Repository API URL</label>
             <input
               value={form.repo_url}
               onChange={e => setForm({ ...form, repo_url: e.target.value })}
               placeholder="https://api.github.com/repos/owner/repo"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
-            <p className="mt-1 text-xs text-gray-400">GitHub API URL for the repository containing detection rules</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">GitHub API URL for the repository containing detection rules</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Branch</label>
             <input
               value={form.branch}
               onChange={e => setForm({ ...form, branch: e.target.value })}
               placeholder="main"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Rules Path</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Rules Path</label>
             <input
               value={form.path}
               onChange={e => setForm({ ...form, path: e.target.value })}
               placeholder="rules/"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">GitHub Token (PAT)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">GitHub Token (PAT)</label>
             <input
               type="password"
               value={form.token}
               onChange={e => setForm({ ...form, token: e.target.value })}
               placeholder="ghp_..."
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
-            <p className="mt-1 text-xs text-gray-400">Optional for public repos. Required for private repos.</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Optional for public repos. Required for private repos.</p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} className="rounded" />
-            <span className="text-sm text-gray-700">Enable automatic sync</span>
+            <span className="text-sm text-gray-700 dark:text-slate-300">Enable automatic sync</span>
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">every</span>
+            <span className="text-sm text-gray-500 dark:text-slate-400">every</span>
             <input
               type="number"
               value={form.interval}
               onChange={e => setForm({ ...form, interval: Number(e.target.value) })}
               min={5}
-              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm text-center"
+              className="w-16 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-2 py-1 text-sm text-center"
             />
-            <span className="text-sm text-gray-500">minutes</span>
+            <span className="text-sm text-gray-500 dark:text-slate-400">minutes</span>
           </div>
         </div>
 
@@ -1069,8 +1069,8 @@ function GitHubSyncSection() {
         </div>
 
         {syncResult && (
-          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <h4 className="text-sm font-medium text-gray-900">Sync Result</h4>
+          <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4">
+            <h4 className="text-sm font-medium text-gray-900 dark:text-slate-100">Sync Result</h4>
             <div className="mt-2 flex gap-6 text-sm">
               <span className="text-emerald-700">{syncResult.created} created</span>
               <span className="text-blue-700">{syncResult.updated} updated</span>

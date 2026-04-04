@@ -73,8 +73,8 @@ export default function Events() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Live Events</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Live Events</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             {total.toLocaleString()} events
             {liveMode && <span className="ml-2 inline-flex items-center gap-1 text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />Live</span>}
           </p>
@@ -85,13 +85,13 @@ export default function Events() {
             className={'rounded-lg px-4 py-2 text-sm font-medium ' +
               (liveMode
                 ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300')}
+                : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-600')}
           >
             {liveMode ? 'Pause' : 'Resume Live'}
           </button>
           <button
             onClick={() => refetch()}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
           >
             Refresh
           </button>
@@ -105,12 +105,12 @@ export default function Events() {
           placeholder="Search processes, files, commands..."
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-          className="min-w-[280px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+          className="min-w-[280px] rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
         />
         <select
           value={eventNameFilter}
           onChange={(e) => { setEventNameFilter(e.target.value); setPage(1) }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100"
         >
           <option value="">All event types</option>
           <optgroup label="Process">
@@ -145,64 +145,64 @@ export default function Events() {
           placeholder="Process name..."
           value={processFilter}
           onChange={(e) => { setProcessFilter(e.target.value); setPage(1) }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500"
         />
         <input
           type="text"
           placeholder="Agent ID..."
           value={agentFilter}
           onChange={(e) => { setAgentFilter(e.target.value); setPage(1) }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500"
         />
       </div>
 
       {/* Event stream */}
-      <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
-            <thead className="border-b border-gray-100 bg-gray-50/50 sticky top-0">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 sticky top-0">
               <tr>
-                <th className="px-3 py-2 font-medium text-gray-500 w-[160px]">Timestamp</th>
-                <th className="px-3 py-2 font-medium text-gray-500 w-[100px]">Type</th>
-                <th className="px-3 py-2 font-medium text-gray-500 w-[80px]">Category</th>
-                <th className="px-3 py-2 font-medium text-gray-500 w-[60px]">PID</th>
-                <th className="px-3 py-2 font-medium text-gray-500 w-[140px]">Process</th>
-                <th className="px-3 py-2 font-medium text-gray-500">Details</th>
-                <th className="px-3 py-2 font-medium text-gray-500 w-[100px]">Host</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-[160px]">Timestamp</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-[100px]">Type</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-[80px]">Category</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-[60px]">PID</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-[140px]">Process</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400">Details</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-[100px]">Host</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-slate-700/50">
               {isLoading && (
-                <tr><td colSpan={7} className="px-3 py-12 text-center text-gray-400 text-sm font-sans">Loading events...</td></tr>
+                <tr><td colSpan={7} className="px-3 py-12 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">Loading events...</td></tr>
               )}
               {!isLoading && events.map((evt) => (
                 <tr
                   key={evt.id}
-                  className="cursor-pointer hover:bg-gray-50/80 transition-colors"
+                  className="cursor-pointer hover:bg-gray-50/80 dark:hover:bg-slate-700/30 transition-colors"
                   onClick={() => setSelectedEvent(evt)}
                 >
-                  <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">
+                  <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 whitespace-nowrap">
                     {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-900 font-medium">{evt.event_name}</td>
+                  <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100 font-medium">{evt.event_name}</td>
                   <td className="px-3 py-1.5">
                     <span className={'inline-flex rounded px-1.5 py-0.5 text-xs font-medium ' + (EVENT_COLORS[evt.event_category] || 'bg-gray-100 text-gray-600')}>
                       {evt.event_category}
                     </span>
                   </td>
-                  <td className="px-3 py-1.5 text-gray-600">{evt.pid}</td>
-                  <td className="px-3 py-1.5 text-gray-900 break-all" title={evt.process_exe}>
+                  <td className="px-3 py-1.5 text-gray-600 dark:text-slate-400">{evt.pid}</td>
+                  <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100 break-all" title={evt.process_exe}>
                     {evt.process_name}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-500 break-all whitespace-pre-wrap" title={JSON.stringify(evt.params)}>
+                  <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 break-all whitespace-pre-wrap" title={JSON.stringify(evt.params)}>
                     {summarizeParams(evt)}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-500">{evt.agent_hostname}</td>
+                  <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400">{evt.agent_hostname}</td>
                 </tr>
               ))}
               {!isLoading && events.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-12 text-center text-gray-400 text-sm font-sans">
+                  <td colSpan={7} className="px-3 py-12 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">
                     {searchQuery || eventNameFilter || processFilter
                       ? 'No events match your filters.'
                       : 'No telemetry data yet. Agents will start streaming events when connected.'}
@@ -215,12 +215,12 @@ export default function Events() {
 
         {/* Pagination */}
         {total > 100 && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2">
-            <span className="text-xs text-gray-500">{total.toLocaleString()} total events</span>
+          <div className="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 px-4 py-2">
+            <span className="text-xs text-gray-500 dark:text-slate-400">{total.toLocaleString()} total events</span>
             <div className="flex gap-2">
-              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-50">Prev</button>
-              <span className="px-2 py-1 text-xs text-gray-500">Page {page}</span>
-              <button onClick={() => setPage(page + 1)} disabled={events.length < 100} className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-50">Next</button>
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-700 dark:text-slate-300 disabled:opacity-50">Prev</button>
+              <span className="px-2 py-1 text-xs text-gray-500 dark:text-slate-400">Page {page}</span>
+              <button onClick={() => setPage(page + 1)} disabled={events.length < 100} className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-700 dark:text-slate-300 disabled:opacity-50">Next</button>
             </div>
           </div>
         )}
@@ -236,9 +236,9 @@ export default function Events() {
                 <span className={'inline-flex rounded px-2 py-0.5 text-xs font-medium ' + (EVENT_COLORS[selectedEvent.event_category] || 'bg-gray-100 text-gray-600')}>
                   {selectedEvent.event_category}
                 </span>
-                <span className="text-lg font-bold text-gray-900">{selectedEvent.event_name}</span>
+                <span className="text-lg font-bold text-gray-900 dark:text-slate-100">{selectedEvent.event_name}</span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                 {new Date(selectedEvent.timestamp).toLocaleString()} | Seq: {selectedEvent.seq}
               </p>
             </div>
@@ -261,13 +261,13 @@ export default function Events() {
                 <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-2">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Process</span>
-                    <span className="font-medium text-sm text-gray-900">{selectedEvent.process_name}</span>
-                    <span className="text-xs text-gray-400 font-mono">PID {selectedEvent.pid}</span>
-                    <span className="text-xs text-gray-400 font-mono">TID {selectedEvent.tid}</span>
-                    <span className="ml-auto text-xs text-gray-400">{selectedEvent.agent_hostname}</span>
+                    <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{selectedEvent.process_name}</span>
+                    <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">PID {selectedEvent.pid}</span>
+                    <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">TID {selectedEvent.tid}</span>
+                    <span className="ml-auto text-xs text-gray-400 dark:text-slate-500">{selectedEvent.agent_hostname}</span>
                   </div>
                   {selectedEvent.process_exe && (
-                    <div><span className="text-[10px] text-gray-400">Executable</span><p className="text-xs text-gray-800 font-mono break-all">{selectedEvent.process_exe}</p></div>
+                    <div><span className="text-[10px] text-gray-400 dark:text-slate-500">Executable</span><p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all">{selectedEvent.process_exe}</p></div>
                   )}
                   {selectedEvent.process_cmdline && (
                     <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{selectedEvent.process_cmdline}</div>
@@ -283,12 +283,12 @@ export default function Events() {
                         {ps.is_trusted ? 'Trusted' : 'Untrusted'}
                       </span>
                     )}
-                    {ps.cert_subject && <span className="text-[10px] text-gray-500">{ps.cert_subject}</span>}
+                    {ps.cert_subject && <span className="text-[10px] text-gray-500 dark:text-slate-400">{ps.cert_subject}</span>}
                   </div>
                   {(ps.sha256 || ps.md5) && (
                     <div className="space-y-0.5">
-                      {ps.sha256 && <div><span className="text-[10px] text-gray-400">SHA256</span><p className="text-[10px] text-gray-700 font-mono break-all">{ps.sha256}</p></div>}
-                      {ps.md5 && <div><span className="text-[10px] text-gray-400">MD5</span><p className="text-[10px] text-gray-700 font-mono break-all">{ps.md5}</p></div>}
+                      {ps.sha256 && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{ps.sha256}</p></div>}
+                      {ps.md5 && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{ps.md5}</p></div>}
                     </div>
                   )}
                 </div>
@@ -298,19 +298,19 @@ export default function Events() {
                   <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 space-y-2">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Parent</span>
-                      <span className="font-medium text-sm text-gray-900">{parentName}</span>
-                      <span className="text-xs text-gray-400 font-mono">PID {selectedEvent.parent_pid}</span>
+                      <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{parentName}</span>
+                      <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">PID {selectedEvent.parent_pid}</span>
                     </div>
                     {parentExe && (
-                      <div><span className="text-[10px] text-gray-400">Executable</span><p className="text-xs text-gray-800 font-mono break-all">{parentExe}</p></div>
+                      <div><span className="text-[10px] text-gray-400 dark:text-slate-500">Executable</span><p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all">{parentExe}</p></div>
                     )}
                     {parentCmdline && (
                       <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{parentCmdline}</div>
                     )}
                     {(parentRaw.sha256 || parentRaw.md5) ? (
                       <div className="space-y-0.5">
-                        {parentRaw.sha256 ? <div><span className="text-[10px] text-gray-400">SHA256</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.sha256)}</p></div> : null}
-                        {parentRaw.md5 ? <div><span className="text-[10px] text-gray-400">MD5</span><p className="text-[10px] text-gray-700 font-mono break-all">{String(parentRaw.md5)}</p></div> : null}
+                        {parentRaw.sha256 ? <div><span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{String(parentRaw.sha256)}</p></div> : null}
+                        {parentRaw.md5 ? <div><span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{String(parentRaw.md5)}</p></div> : null}
                       </div>
                     ) : null}
                   </div>
@@ -321,12 +321,12 @@ export default function Events() {
             {/* Parameters */}
             {selectedEvent.params && Object.keys(selectedEvent.params).length > 0 && (
               <div>
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Parameters</h4>
+                <h4 className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Parameters</h4>
                 <div className="space-y-1">
                   {Object.entries(selectedEvent.params).map(([key, value]) => (
-                    <div key={key} className="flex gap-2 rounded bg-gray-50 px-2 py-1.5">
-                      <span className="text-xs text-gray-500 whitespace-nowrap min-w-[120px]">{key}</span>
-                      <span className="text-xs text-gray-900 font-mono break-all">{String(value)}</span>
+                    <div key={key} className="flex gap-2 rounded bg-gray-50 dark:bg-slate-900 px-2 py-1.5">
+                      <span className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap min-w-[120px]">{key}</span>
+                      <span className="text-xs text-gray-900 dark:text-slate-100 font-mono break-all">{String(value)}</span>
                     </div>
                   ))}
                 </div>
@@ -344,12 +344,12 @@ export default function Events() {
               return (<>
                 {ancestors && ancestors.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Process Ancestry</h4>
+                    <h4 className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Process Ancestry</h4>
                     <div className="flex items-center gap-1 flex-wrap">
                       {ancestors.map((a, i) => (
                         <span key={i} className="flex items-center gap-0.5">
                           <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-mono text-blue-700">{a}</span>
-                          {i < ancestors.length - 1 && <span className="text-gray-300 text-xs">&larr;</span>}
+                          {i < ancestors.length - 1 && <span className="text-gray-300 dark:text-slate-600 text-xs">&larr;</span>}
                         </span>
                       ))}
                     </div>
@@ -358,7 +358,7 @@ export default function Events() {
 
                 {callstack && callstack.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Call Stack ({callstack.length} frames)</h4>
+                    <h4 className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Call Stack ({callstack.length} frames)</h4>
                     <div className="rounded-lg bg-gray-900 p-3 max-h-48 overflow-auto">
                       {callstack.map((frame, i) => (
                         <div key={i} className="text-[11px] font-mono text-gray-300 py-0.5">
@@ -372,15 +372,15 @@ export default function Events() {
 
                 {modules.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Loaded Modules ({modules.length})</h4>
+                    <h4 className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Loaded Modules ({modules.length})</h4>
                     <div className="space-y-0.5 max-h-48 overflow-auto">
                       {modules.slice(0, 50).map((m, i) => (
-                        <div key={i} className="flex items-center gap-2 rounded bg-gray-50 px-2 py-1 text-[11px]">
-                          <span className="text-gray-700 font-mono break-all flex-1">{m.name}</span>
-                          {m.sha256 && <span className="text-gray-400 font-mono text-[9px]">{m.sha256.slice(0, 12)}...</span>}
+                        <div key={i} className="flex items-center gap-2 rounded bg-gray-50 dark:bg-slate-900 px-2 py-1 text-[11px]">
+                          <span className="text-gray-700 dark:text-slate-300 font-mono break-all flex-1">{m.name}</span>
+                          {m.sha256 && <span className="text-gray-400 dark:text-slate-500 font-mono text-[9px]">{m.sha256.slice(0, 12)}...</span>}
                         </div>
                       ))}
-                      {modules.length > 50 && <div className="text-[10px] text-gray-400 px-2">+{modules.length - 50} more modules</div>}
+                      {modules.length > 50 && <div className="text-[10px] text-gray-400 dark:text-slate-500 px-2">+{modules.length - 50} more modules</div>}
                     </div>
                   </div>
                 )}
@@ -389,7 +389,7 @@ export default function Events() {
 
             {/* Raw event JSON */}
             <div>
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Raw Event</h4>
+              <h4 className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Raw Event</h4>
               <pre className="max-h-80 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100 font-mono">
                 {JSON.stringify(selectedEvent.raw_event, null, 2)}
               </pre>

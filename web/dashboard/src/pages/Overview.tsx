@@ -56,8 +56,8 @@ export default function Overview() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900">Fleet Overview</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Fleet Overview</h1>
+      <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
         Real-time visibility into your endpoint fleet
       </p>
 
@@ -84,8 +84,8 @@ export default function Overview() {
       {/* Charts row */}
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Detection timeline */}
-        <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-sm font-medium text-gray-500">
+        <div className="col-span-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
+          <h3 className="text-sm font-medium text-gray-500 dark:text-slate-400">
             Detection Timeline (24h)
           </h3>
           {timelineData.length > 0 ? (
@@ -114,15 +114,15 @@ export default function Overview() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="mt-4 text-sm text-gray-400">
+            <p className="mt-4 text-sm text-gray-400 dark:text-slate-500">
               No detection data in the last 24 hours.
             </p>
           )}
         </div>
 
         {/* Severity breakdown */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-sm font-medium text-gray-500">
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
+          <h3 className="text-sm font-medium text-gray-500 dark:text-slate-400">
             Severity Breakdown
           </h3>
           {severityData.length > 0 ? (
@@ -163,7 +163,7 @@ export default function Overview() {
                           SEVERITY_COLORS[entry.name] || '#6b7280',
                       }}
                     />
-                    <span className="capitalize text-gray-600">
+                    <span className="capitalize text-gray-600 dark:text-slate-400">
                       {entry.name}: {entry.value}
                     </span>
                   </div>
@@ -171,7 +171,7 @@ export default function Overview() {
               </div>
             </>
           ) : (
-            <p className="mt-4 text-sm text-gray-400">
+            <p className="mt-4 text-sm text-gray-400 dark:text-slate-500">
               No severity data available.
             </p>
           )}
@@ -179,37 +179,37 @@ export default function Overview() {
       </div>
 
       {/* Recent detections table */}
-      <div className="mt-8 rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h3 className="text-sm font-medium text-gray-900">
+      <div className="mt-8 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
+        <div className="border-b border-gray-200 dark:border-slate-700 px-6 py-4">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">
             Recent Detections
           </h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/50">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500">Rule</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Agent</th>
-                <th className="px-6 py-3 font-medium text-gray-500">
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Rule</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Agent</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">
                   Severity
                 </th>
-                <th className="px-6 py-3 font-medium text-gray-500">Time</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Time</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {recentDets.slice(0, 10).map((det) => (
-                <tr key={det.id} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-3 font-medium text-gray-900">
+                <tr key={det.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/30">
+                  <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">
                     {det.title || det.rule_name}
                   </td>
-                  <td className="px-6 py-3 text-gray-600">
+                  <td className="px-6 py-3 text-gray-600 dark:text-slate-400">
                     {det.agent_hostname || det.agent_id}
                   </td>
                   <td className="px-6 py-3">
                     <SeverityBadge severity={det.severity} />
                   </td>
-                  <td className="px-6 py-3 text-gray-500">
+                  <td className="px-6 py-3 text-gray-500 dark:text-slate-400">
                     {new Date(det.timestamp).toLocaleString()}
                   </td>
                 </tr>
@@ -218,7 +218,7 @@ export default function Overview() {
                 <tr>
                   <td
                     colSpan={4}
-                    className="px-6 py-12 text-center text-gray-400"
+                    className="px-6 py-12 text-center text-gray-400 dark:text-slate-500"
                   >
                     No detections yet. Connect agents to start monitoring.
                   </td>

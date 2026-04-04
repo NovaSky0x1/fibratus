@@ -105,7 +105,7 @@ export default function Admin() {
   if (currentUser && currentUser.role !== 'root') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-gray-500">You do not have permission to access this page.</p>
+        <p className="text-gray-500 dark:text-slate-400">You do not have permission to access this page.</p>
       </div>
     )
   }
@@ -120,13 +120,13 @@ export default function Admin() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage all accounts, organizations, and users</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Admin Panel</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Manage all accounts, organizations, and users</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="mt-6 flex gap-1 border-b border-gray-200">
+      <div className="mt-6 flex gap-1 border-b border-gray-200 dark:border-slate-700">
         {tabs.map(t => (
           <button
             key={t.key}
@@ -135,7 +135,7 @@ export default function Admin() {
               'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ' +
               (tab === t.key
                 ? 'border-fibratus-600 text-fibratus-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300')
+                : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 hover:border-gray-300 dark:hover:border-slate-600')
             }
           >
             {t.label}
@@ -147,7 +147,7 @@ export default function Admin() {
       {tab === 'accounts' && (
         <div className="mt-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-gray-500">{accounts.length} account(s)</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">{accounts.length} account(s)</p>
             <button
               onClick={() => setShowCreate(true)}
               className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"
@@ -155,26 +155,26 @@ export default function Admin() {
               Create Account
             </button>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-100 bg-gray-50/50">
+                <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
                   <tr>
-                    <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Plan</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">2FA Required</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Orgs</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Users</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Created</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Plan</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA Required</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Orgs</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Users</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Created</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                   {accountsLoading && (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
                   )}
                   {!accountsLoading && accounts.map(acct => (
-                    <tr key={acct.id} className="hover:bg-gray-50/50">
+                    <tr key={acct.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                       <td className="px-6 py-3">
                         <button
                           onClick={() => handleAccountClick(acct.id)}
@@ -208,9 +208,9 @@ export default function Admin() {
                           />
                         </button>
                       </td>
-                      <td className="px-6 py-3 text-gray-600">{acct.org_count}</td>
-                      <td className="px-6 py-3 text-gray-600">{acct.user_count}</td>
-                      <td className="px-6 py-3 text-gray-500 whitespace-nowrap">
+                      <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{acct.org_count}</td>
+                      <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{acct.user_count}</td>
+                      <td className="px-6 py-3 text-gray-500 dark:text-slate-400 whitespace-nowrap">
                         {new Date(acct.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-3">
@@ -224,7 +224,7 @@ export default function Admin() {
                             </button>
                             <button
                               onClick={() => setDeleteId(null)}
-                              className="rounded bg-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-300"
+                              className="rounded bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-500"
                             >
                               Cancel
                             </button>
@@ -241,7 +241,7 @@ export default function Admin() {
                     </tr>
                   ))}
                   {!accountsLoading && accounts.length === 0 && (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">No accounts found.</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No accounts found.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -255,7 +255,7 @@ export default function Admin() {
         <div className="mt-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <p className="text-sm text-gray-500">{filteredOrgs.length} organization(s)</p>
+              <p className="text-sm text-gray-500 dark:text-slate-400">{filteredOrgs.length} organization(s)</p>
               {filterAccountId && (
                 <button
                   onClick={() => setFilterAccountId(null)}
@@ -266,31 +266,31 @@ export default function Admin() {
               )}
             </div>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-100 bg-gray-50/50">
+                <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
                   <tr>
-                    <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Account</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Agents</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Slug</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Account</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Agents</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Slug</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                   {orgsLoading && (
-                    <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                    <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
                   )}
                   {!orgsLoading && filteredOrgs.map(org => (
-                    <tr key={org.id} className="hover:bg-gray-50/50">
-                      <td className="px-6 py-3 font-medium text-gray-900">{org.name}</td>
-                      <td className="px-6 py-3 text-gray-600">{org.account_name || '-'}</td>
-                      <td className="px-6 py-3 text-gray-600">{org.agent_count}</td>
-                      <td className="px-6 py-3 text-gray-500 font-mono text-xs">{org.slug}</td>
+                    <tr key={org.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
+                      <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">{org.name}</td>
+                      <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{org.account_name || '-'}</td>
+                      <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{org.agent_count}</td>
+                      <td className="px-6 py-3 text-gray-500 dark:text-slate-400 font-mono text-xs">{org.slug}</td>
                     </tr>
                   ))}
                   {!orgsLoading && filteredOrgs.length === 0 && (
-                    <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400">No organizations found.</td></tr>
+                    <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No organizations found.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -303,29 +303,29 @@ export default function Admin() {
       {tab === 'users' && (
         <div className="mt-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-gray-500">{allUsers.length} user(s) across all accounts</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">{allUsers.length} user(s) across all accounts</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-100 bg-gray-50/50">
+                <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
                   <tr>
-                    <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Email</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Role</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Account</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">2FA</th>
-                    <th className="px-6 py-3 font-medium text-gray-500">Created</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Email</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Role</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Account</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA</th>
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Created</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                   {usersLoading && (
-                    <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                    <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
                   )}
                   {!usersLoading && allUsers.map(user => (
-                    <tr key={user.id} className="hover:bg-gray-50/50">
-                      <td className="px-6 py-3 font-medium text-gray-900">{user.name}</td>
-                      <td className="px-6 py-3 text-gray-600">{user.email}</td>
+                    <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
+                      <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">{user.name}</td>
+                      <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{user.email}</td>
                       <td className="px-6 py-3">
                         <span className={
                           'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
@@ -337,20 +337,20 @@ export default function Admin() {
                           {user.role}
                         </span>
                       </td>
-                      <td className="px-6 py-3 text-gray-600">{user.account_name || '-'}</td>
+                      <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{user.account_name || '-'}</td>
                       <td className="px-6 py-3">
                         <span className={'rounded-full px-2 py-0.5 text-[10px] font-medium ' +
                           (user.totp_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500')}>
                           {user.totp_enabled ? 'Enabled' : 'Off'}
                         </span>
                       </td>
-                      <td className="px-6 py-3 text-gray-500 whitespace-nowrap">
+                      <td className="px-6 py-3 text-gray-500 dark:text-slate-400 whitespace-nowrap">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
                     </tr>
                   ))}
                   {!usersLoading && allUsers.length === 0 && (
-                    <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">No users found.</td></tr>
+                    <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No users found.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -362,24 +362,24 @@ export default function Admin() {
       {/* Create Account Modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-gray-900">Create Account</h2>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">Create Account</h2>
             <form onSubmit={handleCreate} className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Account Name</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Account Name</label>
                 <input
                   value={createForm.name}
                   onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Plan</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Plan</label>
                 <select
                   value={createForm.plan}
                   onChange={e => setCreateForm(f => ({ ...f, plan: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
                 >
                   <option value="trial">Trial</option>
                   <option value="standard">Standard</option>
@@ -392,7 +392,7 @@ export default function Admin() {
                 <button
                   type="button"
                   onClick={() => { setShowCreate(false); setError('') }}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                  className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
                 >
                   Cancel
                 </button>

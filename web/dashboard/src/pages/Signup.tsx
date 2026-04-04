@@ -42,16 +42,16 @@ export default function Signup() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-fibratus-900 to-fibratus-600 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            <span className="text-fibratus-600">Fibratus</span> Fleet
+          <h1 className="text-3xl font-bold text-white">
+            <span className="text-fibratus-300">Fibratus</span> Fleet
           </h1>
-          <p className="mt-2 text-sm text-gray-500">Create your fleet management account</p>
+          <p className="mt-2 text-sm text-fibratus-200">Create your fleet management account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+        <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 shadow-sm dark:shadow-slate-900/50">
           {error && (
             <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
               {error}
@@ -60,63 +60,63 @@ export default function Signup() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Account Name</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Account Name</label>
               <input
                 type="text"
                 value={form.account_name}
                 onChange={update('account_name')}
                 required
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
                 placeholder="Acme Corp"
               />
-              <p className="mt-1 text-xs text-gray-400">Your company or team name</p>
+              <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Your company or team name</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">First Organization</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">First Organization</label>
               <input
                 type="text"
                 value={form.org_name}
                 onChange={update('org_name')}
                 required
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
                 placeholder="Production"
               />
-              <p className="mt-1 text-xs text-gray-400">e.g., Production, Staging, US-East</p>
+              <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">e.g., Production, Staging, US-East</p>
             </div>
-            <hr className="my-2" />
+            <hr className="my-2 dark:border-slate-700" />
             <div>
-              <label className="block text-sm font-medium text-gray-700">Your Name</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Your Name</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={update('name')}
                 required
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
                 placeholder="Jane Smith"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Email</label>
               <input
                 type="email"
                 value={form.email}
                 onChange={update('email')}
                 required
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
                 placeholder="jane@acme.com"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Password</label>
               <input
                 type="password"
                 value={form.password}
                 onChange={update('password')}
                 required
                 minLength={8}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                className="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
               />
-              <p className="mt-1 text-xs text-gray-400">Minimum 8 characters</p>
+              <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Minimum 8 characters</p>
             </div>
           </div>
 
@@ -128,9 +128,9 @@ export default function Signup() {
             {loading ? 'Creating account...' : 'Create Account'}
           </button>
 
-          <p className="mt-4 text-center text-sm text-gray-500">
+          <p className="mt-4 text-center text-sm text-gray-500 dark:text-slate-400">
             Already have an account?{' '}
-            <Link to="/login" className="font-medium text-fibratus-600 hover:text-fibratus-500">
+            <Link to="/login" className="font-medium text-fibratus-600 dark:text-fibratus-400 hover:text-fibratus-500">
               Sign in
             </Link>
           </p>

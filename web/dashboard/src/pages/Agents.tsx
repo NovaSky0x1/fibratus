@@ -50,7 +50,7 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
       <div className="flex items-center gap-3">
         <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter events..."
           className="flex-1 rounded border px-3 py-1.5 text-sm focus:ring-2 focus:ring-fibratus-500 focus:outline-none" />
-        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+        <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 cursor-pointer select-none">
           <input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} className="rounded" />
           Live
         </label>
@@ -61,42 +61,42 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
           <option value={1000}>1000</option>
           <option value={5000}>5000</option>
         </select>
-        <span className="text-xs text-gray-400">{events.length} events</span>
+        <span className="text-xs text-gray-400 dark:text-slate-500">{events.length} events</span>
       </div>
 
       <div className="border rounded overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
         <table className="w-full text-left text-xs">
-          <thead className="bg-gray-50 sticky top-0 z-10">
+          <thead className="bg-gray-50 dark:bg-slate-900 sticky top-0 z-10">
             <tr>
-              <th className="px-3 py-2 font-medium text-gray-500 w-28">Time</th>
-              <th className="px-3 py-2 font-medium text-gray-500 w-28">Event</th>
-              <th className="px-3 py-2 font-medium text-gray-500 w-14">PID</th>
-              <th className="px-3 py-2 font-medium text-gray-500 w-40">Process</th>
-              <th className="px-3 py-2 font-medium text-gray-500">Command Line / Details</th>
+              <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-28">Time</th>
+              <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-28">Event</th>
+              <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-14">PID</th>
+              <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-40">Process</th>
+              <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400">Command Line / Details</th>
             </tr>
           </thead>
           <tbody>
             {events.map((evt, idx) => {
               const isOpen = expandedIdx === idx
               return (
-                <tr key={`${evt.id}-${idx}`} className={'border-t border-gray-100 cursor-pointer ' + (isOpen ? 'bg-gray-50' : 'hover:bg-gray-50/50')}
+                <tr key={`${evt.id}-${idx}`} className={'border-t border-gray-100 dark:border-slate-700 cursor-pointer ' + (isOpen ? 'bg-gray-50 dark:bg-slate-700' : 'hover:bg-gray-50/50 dark:hover:bg-slate-700/30')}
                   onClick={() => setExpandedIdx(isOpen ? null : idx)}>
-                  <td className="px-3 py-1.5 text-gray-500 tabular-nums whitespace-nowrap font-mono align-top">
+                  <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 tabular-nums whitespace-nowrap font-mono align-top">
                     {new Date(evt.timestamp).toLocaleTimeString()}
                   </td>
                   <td className="px-3 py-1.5 align-top">
                     <span className={'inline-block px-1.5 py-0.5 rounded text-xs font-medium ' +
                       (categoryColors[evt.event_category] || 'bg-gray-100 text-gray-700')}>{evt.event_name}</span>
                   </td>
-                  <td className="px-3 py-1.5 text-gray-500 tabular-nums font-mono align-top">{evt.pid}</td>
-                  <td className="px-3 py-1.5 font-mono text-gray-700 align-top">{evt.process_name}</td>
-                  <td className="px-3 py-1.5 text-gray-500 font-mono align-top">
+                  <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 tabular-nums font-mono align-top">{evt.pid}</td>
+                  <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-slate-300 align-top">{evt.process_name}</td>
+                  <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 font-mono align-top">
                     {!isOpen ? (
                       <span className="break-all block">{evt.process_cmdline || evt.process_exe || '-'}</span>
                     ) : (
                       <div className="space-y-2" onClick={e => e.stopPropagation()}>
-                        <div className="text-gray-700 break-all whitespace-pre-wrap">{evt.process_cmdline || evt.process_exe || '-'}</div>
-                        {evt.parent_name && <div className="text-gray-400">Parent: {evt.parent_name} (PID {evt.parent_pid})</div>}
+                        <div className="text-gray-700 dark:text-slate-300 break-all whitespace-pre-wrap">{evt.process_cmdline || evt.process_exe || '-'}</div>
+                        {evt.parent_name && <div className="text-gray-400 dark:text-slate-500">Parent: {evt.parent_name} (PID {evt.parent_pid})</div>}
                         <pre className="text-xs bg-gray-900 text-gray-100 rounded p-2 max-h-48 overflow-auto whitespace-pre-wrap break-all">
 {JSON.stringify(evt.params, null, 2)}
                         </pre>
@@ -107,7 +107,7 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
               )
             })}
             {events.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No events</td></tr>
+              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400 dark:text-slate-500">No events</td></tr>
             )}
           </tbody>
         </table>
@@ -176,8 +176,8 @@ export default function Agents() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Agents</h1>
-          <p className="mt-1 text-sm text-gray-500">{total} agent(s) registered</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Agents</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{total} agent(s) registered</p>
         </div>
       </div>
 
@@ -188,12 +188,12 @@ export default function Agents() {
           placeholder="Search by hostname..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+          className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
         />
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+          className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
         >
           <option value="">All statuses</option>
           <option value="online">Online</option>
@@ -203,48 +203,48 @@ export default function Agents() {
       </div>
 
       {/* Agent table */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-6 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/50">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500">Hostname</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Status</th>
-                <th className="px-6 py-3 font-medium text-gray-500">OS</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Engine</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Last Heartbeat</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Registered</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Hostname</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Status</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">OS</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Engine</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Last Heartbeat</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Registered</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && agents.map((agent) => (
-                <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => { setSelectedAgent(agent); setActiveTab('details') }}>
+                <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" onClick={() => { setSelectedAgent(agent); setActiveTab('details') }}>
                   <td className="px-6 py-3">
-                    <span className="font-medium text-gray-900">{agent.hostname}</span>
-                    <span className="ml-2 text-xs text-gray-400">{agent.id.slice(0, 8)}</span>
+                    <span className="font-medium text-gray-900 dark:text-slate-100">{agent.hostname}</span>
+                    <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">{agent.id.slice(0, 8)}</span>
                   </td>
                   <td className="px-6 py-3"><StatusBadge status={agent.status} /></td>
-                  <td className="px-6 py-3 text-gray-600">{agent.os_version}</td>
-                  <td className="px-6 py-3 text-gray-600">{agent.engine_version}</td>
-                  <td className="px-6 py-3 text-gray-500">{agent.last_heartbeat ? timeAgo(new Date(agent.last_heartbeat)) : 'Never'}</td>
-                  <td className="px-6 py-3 text-gray-500">{new Date(agent.registered_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{agent.os_version}</td>
+                  <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{agent.engine_version}</td>
+                  <td className="px-6 py-3 text-gray-500 dark:text-slate-400">{agent.last_heartbeat ? timeAgo(new Date(agent.last_heartbeat)) : 'Never'}</td>
+                  <td className="px-6 py-3 text-gray-500 dark:text-slate-400">{new Date(agent.registered_at).toLocaleDateString()}</td>
                 </tr>
               ))}
               {!isLoading && agents.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">No agents enrolled. Create an enrollment token in Settings.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No agents enrolled. Create an enrollment token in Settings.</td></tr>
               )}
             </tbody>
           </table>
         </div>
         {total > perPage && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3">
-            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+          <div className="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 px-6 py-3">
+            <span className="text-sm text-gray-500 dark:text-slate-400">Page {page} of {totalPages}</span>
             <div className="flex gap-2">
-              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50">Previous</button>
-              <button onClick={() => setPage(page + 1)} disabled={page >= totalPages} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50">Next</button>
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-sm text-gray-700 dark:text-slate-300 disabled:opacity-50">Previous</button>
+              <button onClick={() => setPage(page + 1)} disabled={page >= totalPages} className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-sm text-gray-700 dark:text-slate-300 disabled:opacity-50">Next</button>
             </div>
           </div>
         )}
@@ -255,13 +255,13 @@ export default function Agents() {
         {selectedAgent && (
           <div>
             {/* Tabs */}
-            <div className="flex gap-1 border-b border-gray-200 mb-6">
+            <div className="flex gap-1 border-b border-gray-200 dark:border-slate-700 mb-6">
               {(['details', 'response', 'terminal', 'files', 'events', 'processes', 'history'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={'px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize ' +
-                    (activeTab === tab ? 'border-fibratus-600 text-fibratus-600' : 'border-transparent text-gray-500 hover:text-gray-700')}
+                    (activeTab === tab ? 'border-fibratus-600 text-fibratus-600' : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300')}
                 >
                   {tab === 'response' ? 'Active Response' : tab === 'history' ? 'Command History' : tab === 'terminal' ? 'Terminal' : tab === 'files' ? 'File Browser' : tab === 'events' ? 'Events' : tab === 'processes' ? 'Process Tree' : tab}
                 </button>
@@ -273,7 +273,7 @@ export default function Agents() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <StatusBadge status={selectedAgent.status} />
-                  <span className="text-sm text-gray-500 font-mono">{selectedAgent.id}</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400 font-mono">{selectedAgent.id}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
@@ -284,13 +284,13 @@ export default function Agents() {
                     ['Registered', new Date(selectedAgent.registered_at).toLocaleString()],
                     ['Organization', selectedAgent.org_id?.slice(0, 12) + '...'],
                   ].map(([label, value]) => (
-                    <div key={label} className="rounded-lg bg-gray-50 px-3 py-2">
-                      <span className="text-xs text-gray-500">{label}</span>
-                      <p className="text-sm font-medium text-gray-900">{value}</p>
+                    <div key={label} className="rounded-lg bg-gray-50 dark:bg-slate-900 px-3 py-2">
+                      <span className="text-xs text-gray-500 dark:text-slate-400">{label}</span>
+                      <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{value}</p>
                     </div>
                   ))}
                 </div>
-                <div className="pt-4 border-t border-gray-200">
+                <div className="pt-4 border-t border-gray-200 dark:border-slate-700">
                   <button
                     onClick={() => setDeleteTarget(selectedAgent)}
                     className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
@@ -306,7 +306,7 @@ export default function Agents() {
               <div className="space-y-4">
                 {/* Quick actions */}
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h4>
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-3">Quick Actions</h4>
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => sendCommand('isolate')} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm font-medium text-red-700 hover:bg-red-100">
                       Isolate Host
@@ -317,19 +317,19 @@ export default function Agents() {
                     <button onClick={() => sendCommand('collect_info')} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-100">
                       Collect System Info
                     </button>
-                    <button onClick={() => setDeleteTarget(selectedAgent)} className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                    <button onClick={() => setDeleteTarget(selectedAgent)} className="rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600">
                       Uninstall Agent
                     </button>
                   </div>
                 </div>
 
                 {/* Command input */}
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Send Command</h4>
+                <div className="border-t border-gray-200 dark:border-slate-700 pt-4">
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-3">Send Command</h4>
                   <select
                     value={cmdType}
                     onChange={(e) => setCmdType(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2"
+                    className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 mb-2"
                   >
                     <option value="">Select command type...</option>
                     <option value="kill_process">Kill Process</option>
@@ -340,19 +340,19 @@ export default function Agents() {
 
                   {cmdType === 'kill_process' && (
                     <input type="number" placeholder="Process ID (PID)" value={cmdInput} onChange={(e) => setCmdInput(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2" />
+                      className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 mb-2" />
                   )}
                   {cmdType === 'list_directory' && (
                     <input type="text" placeholder="Directory path (e.g., C:\Users)" value={cmdInput} onChange={(e) => setCmdInput(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2" />
+                      className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 mb-2" />
                   )}
                   {cmdType === 'get_file' && (
                     <input type="text" placeholder="File path (e.g., C:\Windows\System32\drivers\etc\hosts)" value={cmdInput} onChange={(e) => setCmdInput(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2" />
+                      className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 mb-2" />
                   )}
                   {cmdType === 'run_command' && (
                     <input type="text" placeholder="Command (e.g., whoami /all)" value={cmdInput} onChange={(e) => setCmdInput(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono mb-2" />
+                      className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 font-mono mb-2" />
                   )}
 
                   {cmdType && (
@@ -379,16 +379,16 @@ export default function Agents() {
             {activeTab === 'terminal' && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Shell:</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">Shell:</span>
                   <button
                     onClick={() => setShellType('powershell')}
-                    className={'px-3 py-1 text-xs rounded-full font-medium ' + (shellType === 'powershell' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600')}
+                    className={'px-3 py-1 text-xs rounded-full font-medium ' + (shellType === 'powershell' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400')}
                   >
                     PowerShell
                   </button>
                   <button
                     onClick={() => setShellType('cmd')}
-                    className={'px-3 py-1 text-xs rounded-full font-medium ' + (shellType === 'cmd' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600')}
+                    className={'px-3 py-1 text-xs rounded-full font-medium ' + (shellType === 'cmd' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400')}
                   >
                     CMD
                   </button>
@@ -420,21 +420,21 @@ export default function Agents() {
             {activeTab === 'history' && (
               <div className="space-y-3">
                 {commands.length === 0 && (
-                  <p className="text-sm text-gray-400 text-center py-8">No commands sent to this agent yet.</p>
+                  <p className="text-sm text-gray-400 dark:text-slate-500 text-center py-8">No commands sent to this agent yet.</p>
                 )}
                 {commands.map((cmd) => (
-                  <div key={cmd.id} className="rounded-lg border border-gray-200 p-3">
+                  <div key={cmd.id} className="rounded-lg border border-gray-200 dark:border-slate-700 p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900 capitalize">{cmd.type.replace('_', ' ')}</span>
+                        <span className="text-sm font-medium text-gray-900 dark:text-slate-100 capitalize">{cmd.type.replace('_', ' ')}</span>
                         <span className={'inline-flex rounded-full px-2 py-0.5 text-xs font-medium ' + statusColor(cmd.status)}>
                           {cmd.status}
                         </span>
                         {(cmd as unknown as { created_by_email?: string }).created_by_email && (
-                          <span className="text-xs text-gray-400">by {(cmd as unknown as { created_by_email: string }).created_by_email}</span>
+                          <span className="text-xs text-gray-400 dark:text-slate-500">by {(cmd as unknown as { created_by_email: string }).created_by_email}</span>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">{new Date(cmd.created_at).toLocaleString()}</span>
+                      <span className="text-xs text-gray-500 dark:text-slate-400">{new Date(cmd.created_at).toLocaleString()}</span>
                     </div>
                     {cmd.error_message && (
                       <p className="mt-1 text-xs text-red-600">{cmd.error_message}</p>

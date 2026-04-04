@@ -1,9 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply min-h-screen;
+    @apply min-h-screen bg-gray-50 text-slate-900 antialiased;
+    @apply dark:bg-slate-900 dark:text-slate-100;
+  }
+
+  /* Prevent white flash on dark mode load */
+  html.dark {
+    background-color: #0f172a;
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  /* Gradient sidebar */
+  .sidebar-gradient {
+    background: linear-gradient(180deg, #0f1f3d 0%, #1a365d 40%, #1180e0 100%);
+  }
+  .sidebar-gradient-dark {
+    background: linear-gradient(180deg, #020617 0%, #0f172a 40%, #1e3a5f 100%);
+  }
+
+  /* Card styling */
+  .card {
+    @apply rounded-xl border border-gray-200 bg-white shadow-sm;
+    @apply dark:border-slate-700 dark:bg-slate-800;
+  }
+
+  /* Table styling */
+  .table-header {
+    @apply border-b border-gray-100 bg-gray-50/50;
+    @apply dark:border-slate-700 dark:bg-slate-800/50;
+  }
+  .table-row {
+    @apply hover:bg-gray-50/50;
+    @apply dark:hover:bg-slate-700/30;
+  }
+
+  /* Input styling */
+  .input {
+    @apply rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm;
+    @apply focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none;
+    @apply dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100;
+    @apply dark:focus:border-fibratus-400 dark:focus:ring-fibratus-400;
+  }
+
+  /* Button primary */
+  .btn-primary {
+    @apply rounded-lg bg-gradient-to-r from-fibratus-600 to-fibratus-400 px-4 py-2 text-sm font-medium text-white;
+    @apply hover:from-fibratus-700 hover:to-fibratus-500;
+    @apply shadow-lg shadow-fibratus-600/20;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
 }

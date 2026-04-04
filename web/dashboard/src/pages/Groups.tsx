@@ -87,8 +87,8 @@ export default function Groups() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">User Groups</h1>
-          <p className="mt-1 text-sm text-gray-500">{groups.length} group(s) with granular permissions</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">User Groups</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{groups.length} group(s) with granular permissions</p>
         </div>
         <button
           onClick={openCreate}
@@ -99,21 +99,21 @@ export default function Groups() {
       </div>
 
       {/* Groups table */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-6 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/50">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Description</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Permissions</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Org Access</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Description</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Permissions</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Org Access</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && groups.map(group => {
                 const isExpanded = expandedId === group.id
@@ -126,16 +126,16 @@ export default function Groups() {
                     <td colSpan={5} className="p-0">
                       {/* Main row */}
                       <div
-                        className="flex items-center hover:bg-gray-50/50 cursor-pointer"
+                        className="flex items-center hover:bg-gray-50/50 dark:hover:bg-slate-700/50 cursor-pointer"
                         onClick={() => toggleExpand(group.id)}
                       >
-                        <div className="px-6 py-3 font-medium text-gray-900 w-48 flex items-center gap-2">
-                          <svg className={`h-4 w-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100 w-48 flex items-center gap-2">
+                          <svg className={`h-4 w-4 text-gray-400 dark:text-slate-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
                           {group.name}
                         </div>
-                        <div className="px-6 py-3 text-gray-600 flex-1 truncate">{group.description}</div>
+                        <div className="px-6 py-3 text-gray-600 dark:text-slate-400 flex-1 truncate">{group.description}</div>
                         <div className="px-6 py-3 w-32">
                           <span className="inline-flex rounded-full bg-fibratus-50 text-fibratus-700 px-2 py-0.5 text-xs font-medium">
                             {(group.permissions || []).length} perms
@@ -164,7 +164,7 @@ export default function Groups() {
                                 </button>
                                 <button
                                   onClick={() => setDeleteId(null)}
-                                  className="rounded bg-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-300"
+                                  className="rounded bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-500"
                                 >
                                   Cancel
                                 </button>
@@ -196,7 +196,7 @@ export default function Groups() {
                 )
               })}
               {!isLoading && groups.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400">No groups yet. Create one to assign granular permissions.</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No groups yet. Create one to assign granular permissions.</td></tr>
               )}
             </tbody>
           </table>
@@ -278,12 +278,12 @@ function GroupDetail({
     : orgRestrictions.map(id => orgs.find(o => o.id === id)?.name || id)
 
   return (
-    <div className="border-t border-gray-100 bg-gray-50/30 px-8 py-5 space-y-5">
+    <div className="border-t border-gray-100 dark:border-slate-700 bg-gray-50/30 dark:bg-slate-800/30 px-8 py-5 space-y-5">
       {/* Permissions by category */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Permissions</h4>
+        <h4 className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Permissions</h4>
         {Object.keys(permsByCategory).length === 0 ? (
-          <p className="text-xs text-gray-400">No permissions defined.</p>
+          <p className="text-xs text-gray-400 dark:text-slate-500">No permissions defined.</p>
         ) : (
           <div className="grid grid-cols-2 gap-x-8 gap-y-3 lg:grid-cols-3">
             {Object.entries(permsByCategory).map(([category, perms]) => {
@@ -291,7 +291,7 @@ function GroupDetail({
               if (activePerms.length === 0) return null
               return (
                 <div key={category}>
-                  <p className="text-xs font-medium text-gray-700 mb-1.5">{category}</p>
+                  <p className="text-xs font-medium text-gray-700 dark:text-slate-300 mb-1.5">{category}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {activePerms.map(p => (
                       <span
@@ -306,7 +306,7 @@ function GroupDetail({
               )
             })}
             {permissions.length > 0 && (group.permissions || []).length === 0 && (
-              <p className="text-xs text-gray-400 col-span-full">No permissions assigned to this group.</p>
+              <p className="text-xs text-gray-400 dark:text-slate-500 col-span-full">No permissions assigned to this group.</p>
             )}
           </div>
         )}
@@ -314,7 +314,7 @@ function GroupDetail({
 
       {/* Org restrictions */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Organization Access</h4>
+        <h4 className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Organization Access</h4>
         <div className="flex flex-wrap gap-1.5">
           {restrictedOrgNames.map((name, i) => (
             <span key={i} className="inline-flex rounded-full bg-teal-50 text-teal-700 px-2.5 py-0.5 text-[10px] font-medium">
@@ -327,7 +327,7 @@ function GroupDetail({
       {/* Members */}
       <div>
         <div className="flex items-center gap-3 mb-2">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Members</h4>
+          <h4 className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Members</h4>
           <button
             onClick={() => setAddingMember(!addingMember)}
             className="text-[10px] font-medium text-fibratus-600 hover:underline"
@@ -341,7 +341,7 @@ function GroupDetail({
             <select
               value={selectedUserId}
               onChange={e => setSelectedUserId(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+              className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-1.5 text-xs focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
             >
               <option value="">Select a user...</option>
               {nonMembers.map(u => (
@@ -359,14 +359,14 @@ function GroupDetail({
         )}
 
         {members.length === 0 ? (
-          <p className="text-xs text-gray-400">No members in this group.</p>
+          <p className="text-xs text-gray-400 dark:text-slate-500">No members in this group.</p>
         ) : (
           <div className="space-y-1.5">
             {members.map((m: User) => (
-              <div key={m.id} className="flex items-center justify-between rounded-lg bg-white border border-gray-200 px-3 py-2">
+              <div key={m.id} className="flex items-center justify-between rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-3 py-2">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-900">{m.name || m.email}</span>
-                  <span className="text-xs text-gray-500">{m.email}</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{m.name || m.email}</span>
+                  <span className="text-xs text-gray-500 dark:text-slate-400">{m.email}</span>
                   <span className="inline-flex rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 text-[10px] font-medium capitalize">
                     {m.role}
                   </span>
@@ -485,10 +485,10 @@ function GroupModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 overflow-y-auto py-8" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
-        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">{isEdit ? 'Edit Group' : 'Create Group'}</h2>
-          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b border-gray-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">{isEdit ? 'Edit Group' : 'Create Group'}</h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-600 dark:hover:text-slate-300">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -498,11 +498,11 @@ function GroupModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
           {/* Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Name</label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
               placeholder="e.g. SOC Analysts"
               required
             />
@@ -510,18 +510,18 @@ function GroupModal({
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Description</label>
             <input
               value={description}
               onChange={e => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
               placeholder="What this group is for"
             />
           </div>
 
           {/* Permissions checklist */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-3">Permissions</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-3">Permissions</label>
             {Object.keys(permsByCategory).length === 0 ? (
               <p className="text-xs text-gray-400">No permissions available. The server has not returned permission definitions yet.</p>
             ) : (
@@ -530,7 +530,7 @@ function GroupModal({
                   const allChecked = perms.every(p => selectedPerms.has(p.id))
                   const someChecked = perms.some(p => selectedPerms.has(p.id))
                   return (
-                    <div key={category} className="rounded-lg border border-gray-200 p-3">
+                    <div key={category} className="rounded-lg border border-gray-200 dark:border-slate-700 p-3">
                       <label className="flex items-center gap-2 cursor-pointer mb-2">
                         <input
                           type="checkbox"
@@ -539,7 +539,7 @@ function GroupModal({
                           onChange={() => toggleCategory(category)}
                           className="rounded border-gray-300 text-fibratus-600 focus:ring-fibratus-500"
                         />
-                        <span className="text-xs font-semibold text-gray-700">{category}</span>
+                        <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">{category}</span>
                       </label>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 ml-6">
                         {perms.map(p => (
@@ -550,7 +550,7 @@ function GroupModal({
                               onChange={() => togglePerm(p.id)}
                               className="rounded border-gray-300 text-fibratus-600 focus:ring-fibratus-500"
                             />
-                            <span className="text-xs text-gray-600">{p.name}</span>
+                            <span className="text-xs text-gray-600 dark:text-slate-400">{p.name}</span>
                           </label>
                         ))}
                       </div>
@@ -563,7 +563,7 @@ function GroupModal({
 
           {/* Org Restrictions */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-2">Organization Access</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">Organization Access</label>
             <label className="flex items-center gap-2 cursor-pointer mb-3">
               <input
                 type="checkbox"
@@ -574,12 +574,12 @@ function GroupModal({
                 }}
                 className="rounded border-gray-300 text-fibratus-600 focus:ring-fibratus-500"
               />
-              <span className="text-xs font-medium text-gray-700">All organizations</span>
+              <span className="text-xs font-medium text-gray-700 dark:text-slate-300">All organizations</span>
             </label>
             {!allOrgs && (
-              <div className="rounded-lg border border-gray-200 p-3 space-y-1.5 max-h-40 overflow-y-auto">
+              <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 space-y-1.5 max-h-40 overflow-y-auto">
                 {orgs.length === 0 ? (
-                  <p className="text-xs text-gray-400">No organizations available.</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500">No organizations available.</p>
                 ) : (
                   orgs.map(org => (
                     <label key={org.id} className="flex items-center gap-2 cursor-pointer">
@@ -589,7 +589,7 @@ function GroupModal({
                         onChange={() => toggleOrg(org.id)}
                         className="rounded border-gray-300 text-fibratus-600 focus:ring-fibratus-500"
                       />
-                      <span className="text-xs text-gray-600">{org.name}</span>
+                      <span className="text-xs text-gray-600 dark:text-slate-400">{org.name}</span>
                     </label>
                   ))
                 )}
@@ -599,11 +599,11 @@ function GroupModal({
 
           {error && <p className="text-xs text-red-600">{error}</p>}
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-slate-700">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+              className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
             >
               Cancel
             </button>

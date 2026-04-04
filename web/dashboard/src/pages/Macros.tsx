@@ -95,8 +95,8 @@ export default function Macros() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Macros</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Macros</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             {macros.length} macro(s) — reusable filter expressions and value lists for detection rules
           </p>
         </div>
@@ -109,26 +109,26 @@ export default function Macros() {
       </div>
 
       {/* Macros table */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-6 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/50">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500 w-16">Type</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Value</th>
-                <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400 w-16">Type</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Value</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && macros.map((m) => (
-                <tr key={m.id} className="hover:bg-gray-50/50">
+                <tr key={m.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                   <td className="px-6 py-3">
-                    <span className="font-mono font-medium text-gray-900">{m.name}</span>
-                    {m.description && <div className="text-xs text-gray-400 mt-0.5">{m.description}</div>}
+                    <span className="font-mono font-medium text-gray-900 dark:text-slate-100">{m.name}</span>
+                    {m.description && <div className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{m.description}</div>}
                   </td>
                   <td className="px-6 py-3">
                     <span className={'rounded px-1.5 py-0.5 text-xs font-medium ' +
@@ -138,7 +138,7 @@ export default function Macros() {
                     </span>
                   </td>
                   <td className="px-6 py-3">
-                    <code className="text-xs text-gray-600 font-mono">{macroDisplay(m)}</code>
+                    <code className="text-xs text-gray-600 dark:text-slate-400 font-mono">{macroDisplay(m)}</code>
                   </td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
@@ -149,7 +149,7 @@ export default function Macros() {
                 </tr>
               ))}
               {!isLoading && macros.length === 0 && (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">
                   No macros defined.
                 </td></tr>
               )}
@@ -169,28 +169,28 @@ export default function Macros() {
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Name</label>
             <input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g., spawn_process"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
           </div>
 
           {/* Type toggle */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Type</label>
             <div className="flex gap-2">
               <button
                 onClick={() => setMacroType('expr')}
-                className={'px-3 py-1.5 text-xs rounded-lg font-medium border ' + (macroType === 'expr' ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-white text-gray-500 border-gray-200')}
+                className={'px-3 py-1.5 text-xs rounded-lg font-medium border ' + (macroType === 'expr' ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-white dark:bg-slate-700 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-600')}
               >
                 Expression
               </button>
               <button
                 onClick={() => setMacroType('list')}
-                className={'px-3 py-1.5 text-xs rounded-lg font-medium border ' + (macroType === 'list' ? 'bg-purple-50 text-purple-700 border-purple-300' : 'bg-white text-gray-500 border-gray-200')}
+                className={'px-3 py-1.5 text-xs rounded-lg font-medium border ' + (macroType === 'list' ? 'bg-purple-50 text-purple-700 border-purple-300' : 'bg-white dark:bg-slate-700 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-600')}
               >
                 Value List
               </button>
@@ -199,38 +199,38 @@ export default function Macros() {
 
           {macroType === 'expr' ? (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Expression</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Expression</label>
               <textarea
                 value={form.expr}
                 onChange={(e) => setForm({ ...form, expr: e.target.value })}
                 rows={4}
                 placeholder="e.g., kevt.name = 'CreateProcess'"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
               />
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Values (comma-separated)</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Values (comma-separated)</label>
               <textarea
                 value={form.list}
                 onChange={(e) => setForm({ ...form, list: e.target.value })}
                 rows={6}
                 placeholder={"chrome.exe, firefox.exe, msedge.exe, iexplore.exe,\nopera.exe, brave.exe, vivaldi.exe"}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
               />
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
                 {form.list ? form.list.split(',').map(s => s.trim()).filter(Boolean).length : 0} values
               </p>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Description (optional)</label>
             <input
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               placeholder="What this macro matches"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
           </div>
 
@@ -251,7 +251,7 @@ export default function Macros() {
             </button>
             <button
               onClick={() => { setShowCreate(false); setEditMacro(null) }}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
             >
               Cancel
             </button>
