@@ -125,6 +125,26 @@ func (s *UserStore) HasOrgAccess(ctx context.Context, userID, orgID string) (boo
 	return exists, nil
 }
 
+func (s *UserStore) ListAll(ctx context.Context) ([]*fleet.User, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, email, name, account_id, role, created_at, totp_enabled
+		 FROM users ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]*fleet.User, 0)
+	for rows.Next() {
+		u := &fleet.User{}
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AccountID, &u.Role, &u.CreatedAt, &u.TOTPEnabled); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
 func (s *UserStore) IncrementLoginAttempts(ctx context.Context, userID string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE users SET login_attempts = login_attempts + 1 WHERE id = $1`, userID)

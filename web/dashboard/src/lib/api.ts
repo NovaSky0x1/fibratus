@@ -151,6 +151,15 @@ export interface AuditEntry {
   timestamp: string
 }
 
+export interface Account {
+  id: string
+  name: string
+  plan: string
+  org_count: number
+  user_count: number
+  created_at: string
+}
+
 export interface EnrollmentToken {
   id: string
   name: string
@@ -310,6 +319,18 @@ export const api = {
     fetchApi<unknown>(orgPath('/github-sync'), { method: 'PUT', body: JSON.stringify(data) }),
   triggerGitHubSync: () =>
     fetchApi<{ created: number; updated: number; skipped: number; errors: string[]; duration: string }>(orgPath('/github-sync/trigger'), { method: 'POST' }),
+
+  // Admin (root only)
+  adminGetAccounts: () => fetchApi<unknown[]>('/admin/accounts'),
+  adminCreateAccount: (data: { name: string; plan: string }) =>
+    fetchApi<unknown>('/admin/accounts', { method: 'POST', body: JSON.stringify(data) }),
+  adminDeleteAccount: (id: string) =>
+    fetchApi<void>(`/admin/accounts/${id}`, { method: 'DELETE' }),
+  adminGetAccountOrgs: (accountId: string) =>
+    fetchApi<unknown[]>(`/admin/accounts/${accountId}/orgs`),
+  adminGetAllUsers: () => fetchApi<unknown[]>('/admin/users'),
+  adminSwitchAccount: (accountId: string) =>
+    fetchApi<{ account_id: string; account_name: string }>('/admin/switch-account', { method: 'POST', body: JSON.stringify({ account_id: accountId }) }),
 
   // Enrollment Tokens
   getEnrollmentTokens: () => fetchApi<EnrollmentToken[]>(orgPath('/enrollment-tokens')),

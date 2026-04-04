@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Organization, type User } from '../lib/api'
+import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Account, type Organization, type User } from '../lib/api'
 
 const navigation = [
   { name: 'Overview', href: '/' },
@@ -21,6 +21,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [currentOrg, setCurrentOrg] = useState(getCurrentOrgId())
   const [user, setUser] = useState<User | null>(null)
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
+
+  const isRoot = user?.role === 'root'
 
   useEffect(() => {
     api.getOrganizations().then(res => {
@@ -29,14 +33,50 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     })
     api.getCurrentUser().then(res => {
       const data = res.data as User | undefined
-      if (data) setUser(data)
+      if (data) {
+        setUser(data)
+        if (data.role === 'root') {
+          api.adminGetAccounts().then(acctRes => {
+            const accts = acctRes.data as Account[] | undefined
+            if (accts) {
+              setAccounts(accts)
+              if (data.account_id) setSelectedAccountId(data.account_id)
+            }
+          })
+        }
+      }
     })
   }, [])
 
   const handleOrgChange = (orgId: string) => {
+    if (orgId === '') {
+      setCurrentOrgId('')
+      setCurrentOrg('')
+      window.location.reload()
+      return
+    }
     setCurrentOrgId(orgId)
     setCurrentOrg(orgId)
-    window.location.reload() // Refresh data for new org
+    window.location.reload()
+  }
+
+  const handleAccountChange = (accountId: string) => {
+    setSelectedAccountId(accountId)
+    api.adminSwitchAccount(accountId).then(() => {
+      api.adminGetAccountOrgs(accountId).then(res => {
+        const accountOrgs = res.data as Organization[] | undefined
+        if (accountOrgs && accountOrgs.length > 0) {
+          setOrgs(accountOrgs)
+          setCurrentOrgId(accountOrgs[0].id)
+          setCurrentOrg(accountOrgs[0].id)
+        } else {
+          setOrgs([])
+          setCurrentOrgId('')
+          setCurrentOrg('')
+        }
+        window.location.reload()
+      })
+    })
   }
 
   const handleLogout = () => {
@@ -56,17 +96,35 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </h1>
         </div>
 
+        {/* Account switcher (root only) */}
+        {isRoot && accounts.length > 0 && (
+          <div className="px-3 pt-3 pb-1">
+            <label className="block text-[10px] font-medium uppercase tracking-wider text-gray-500 mb-1 px-1">Account</label>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => handleAccountChange(e.target.value)}
+              className="w-full rounded-lg bg-gray-800 border border-purple-300/30 px-3 py-2 text-sm text-white focus:border-purple-400 focus:outline-none"
+            >
+              {accounts.map(acct => (
+                <option key={acct.id} value={acct.id}>{acct.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Org switcher */}
         <div className="px-3 py-3 border-b border-gray-800">
+          <label className="block text-[10px] font-medium uppercase tracking-wider text-gray-500 mb-1 px-1">Organization</label>
           <select
             value={currentOrg}
             onChange={(e) => handleOrgChange(e.target.value)}
             className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white focus:border-fibratus-500 focus:outline-none"
           >
+            <option value="">All Organizations</option>
             {orgs.map(org => (
               <option key={org.id} value={org.id}>{org.name}</option>
             ))}
-            {orgs.length === 0 && (
+            {orgs.length === 0 && currentOrgName !== 'Select org' && (
               <option value="">{currentOrgName}</option>
             )}
           </select>
@@ -87,6 +145,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {item.name}
             </Link>
           ))}
+          {isRoot && (
+            <Link
+              to="/admin"
+              className={clsx(
+                'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mb-1',
+                location.pathname === '/admin'
+                  ? 'bg-purple-900/50 text-purple-200'
+                  : 'text-purple-400 hover:bg-purple-900/30 hover:text-purple-200'
+              )}
+            >
+              Admin
+            </Link>
+          )}
         </nav>
 
         {/* User info + Logout */}

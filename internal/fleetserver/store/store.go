@@ -30,6 +30,8 @@ import (
 type AccountStore interface {
 	Create(ctx context.Context, account *fleet.Account) error
 	Get(ctx context.Context, id string) (*fleet.Account, error)
+	ListAll(ctx context.Context) ([]*fleet.Account, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // OrgStore manages organization persistence.
@@ -48,6 +50,7 @@ type UserStore interface {
 	AddOrgAccess(ctx context.Context, userID, orgID, role string) error
 	GetOrgAccess(ctx context.Context, userID string) ([]fleet.UserOrg, error)
 	HasOrgAccess(ctx context.Context, userID, orgID string) (bool, error)
+	ListAll(ctx context.Context) ([]*fleet.User, error)
 	IncrementLoginAttempts(ctx context.Context, userID string) error
 	LockAccount(ctx context.Context, userID string, until time.Time) error
 	ResetLoginAttempts(ctx context.Context, userID string) error

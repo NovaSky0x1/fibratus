@@ -32,6 +32,8 @@ type Account struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Plan      string    `json:"plan"`
+	OrgCount  int       `json:"org_count,omitempty"`
+	UserCount int       `json:"user_count,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

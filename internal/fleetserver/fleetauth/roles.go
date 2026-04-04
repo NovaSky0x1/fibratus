@@ -2,8 +2,9 @@ package fleetauth
 
 // Roles define the permission levels for fleet server users.
 const (
-	RoleAdmin   = "admin"   // Full access: manage users, rules, agents, settings, active response
-	RoleAnalyst = "analyst" // Investigation access: view/manage detections, events, rules. No active response or settings.
+	RoleRoot    = "root"    // Super admin: cross-account access, manage all accounts/orgs/users
+	RoleAdmin   = "admin"   // Account admin: manage users, rules, agents, settings, active response within their account
+	RoleAnalyst = "analyst" // Investigation: view/manage detections, events, rules. No active response or settings.
 	RoleViewer  = "viewer"  // Read-only: view detections, events, agents. No modifications.
 )
 
@@ -19,16 +20,36 @@ const (
 	PermViewRules           Permission = "rules:view"
 	PermManageRules         Permission = "rules:manage"
 	PermViewCommands        Permission = "commands:view"
-	PermExecuteCommands     Permission = "commands:execute"     // Active response
+	PermExecuteCommands     Permission = "commands:execute"
 	PermViewSettings        Permission = "settings:view"
-	PermManageSettings      Permission = "settings:manage"      // Enrollment tokens, GitHub sync, macros
+	PermManageSettings      Permission = "settings:manage"
 	PermManageUsers         Permission = "users:manage"
 	PermViewAuditLog        Permission = "audit:view"
 	PermManageOrganizations Permission = "organizations:manage"
+	PermAdminPanel          Permission = "admin:panel"   // Access the system admin panel
+	PermManageAccounts      Permission = "accounts:manage" // Create/delete accounts (root only)
 )
 
 // rolePermissions maps each role to its allowed permissions.
 var rolePermissions = map[string]map[Permission]bool{
+	RoleRoot: {
+		PermViewAgents:          true,
+		PermManageAgents:        true,
+		PermDeleteAgents:        true,
+		PermViewDetections:      true,
+		PermViewEvents:          true,
+		PermViewRules:           true,
+		PermManageRules:         true,
+		PermViewCommands:        true,
+		PermExecuteCommands:     true,
+		PermViewSettings:        true,
+		PermManageSettings:      true,
+		PermManageUsers:         true,
+		PermViewAuditLog:        true,
+		PermManageOrganizations: true,
+		PermAdminPanel:          true,
+		PermManageAccounts:      true,
+	},
 	RoleAdmin: {
 		PermViewAgents:          true,
 		PermManageAgents:        true,
@@ -76,4 +97,9 @@ func HasPermission(role string, perm Permission) bool {
 func ValidRole(role string) bool {
 	_, ok := rolePermissions[role]
 	return ok
+}
+
+// IsRoot checks if a role is the root/super admin role.
+func IsRoot(role string) bool {
+	return role == RoleRoot
 }

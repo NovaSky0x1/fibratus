@@ -151,6 +151,7 @@ func (s *Server) Run(ctx context.Context) error {
 	userHandler := handler.NewUserHandler(userStore)
 	installHandler := handler.NewInstallHandler(enrollStore,
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
+	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 
@@ -350,6 +351,29 @@ func (s *Server) Run(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	// Admin routes (JWT auth, root only — permission checked inside handlers)
+	dashMux.HandleFunc("/api/v1/admin/accounts", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.ListAccounts(w, r)
+		case http.MethodPost:
+			adminHandler.CreateAccount(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/admin/accounts/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/orgs") {
+			adminHandler.ListAccountOrgs(w, r)
+		} else if r.Method == http.MethodDelete {
+			adminHandler.DeleteAccount(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/admin/users", methodGuard(http.MethodGet, adminHandler.ListAllUsers))
+	dashMux.HandleFunc("/api/v1/admin/switch-account", methodGuard(http.MethodPost, adminHandler.SwitchAccount))
 
 	// TOTP 2FA routes (JWT auth, user-scoped)
 	dashMux.HandleFunc("/api/v1/auth/totp/setup", methodGuard(http.MethodPost, totpHandler.Setup))

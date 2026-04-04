@@ -60,6 +60,36 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 	return a, nil
 }
 
+func (s *AccountStore) ListAll(ctx context.Context) ([]*fleet.Account, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT a.id, a.name, a.plan, a.created_at, a.updated_at,
+			COALESCE((SELECT COUNT(*) FROM organizations o WHERE o.account_id = a.id), 0) as org_count,
+			COALESCE((SELECT COUNT(*) FROM users u WHERE u.account_id = a.id), 0) as user_count
+		 FROM accounts a ORDER BY a.created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	accounts := make([]*fleet.Account, 0)
+	for rows.Next() {
+		a := &fleet.Account{}
+		var orgCount, userCount int
+		if err := rows.Scan(&a.ID, &a.Name, &a.Plan, &a.CreatedAt, &a.UpdatedAt, &orgCount, &userCount); err != nil {
+			return nil, err
+		}
+		a.OrgCount = orgCount
+		a.UserCount = userCount
+		accounts = append(accounts, a)
+	}
+	return accounts, rows.Err()
+}
+
+func (s *AccountStore) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM accounts WHERE id = $1`, id)
+	return err
+}
+
 // OrgStore implements store.OrgStore backed by PostgreSQL.
 type OrgStore struct {
 	db *sql.DB
