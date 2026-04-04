@@ -34,6 +34,7 @@ type Config struct {
 	Elasticsearch ElasticsearchConfig `yaml:"elasticsearch"`
 	Auth          AuthConfig          `yaml:"auth"`
 	Agent         AgentConfig         `yaml:"agent"`
+	Deployment    DeploymentConfig    `yaml:"deployment"`
 	Logging       LoggingConfig       `yaml:"logging"`
 	Dashboard     DashboardConfig     `yaml:"dashboard"`
 }
@@ -53,9 +54,17 @@ type ClickHouseConfig struct {
 
 // ServerConfig configures the HTTP server.
 type ServerConfig struct {
-	Listen  string `yaml:"listen"`
-	TLSCert string `yaml:"tls-cert"`
-	TLSKey  string `yaml:"tls-key"`
+	Listen      string `yaml:"listen"`
+	TLSCert     string `yaml:"tls-cert"`
+	TLSKey      string `yaml:"tls-key"`
+	ExternalURL string `yaml:"external-url"` // Public URL for agent enrollment (e.g., https://edr.novasky.io)
+}
+
+// DeploymentConfig configures agent deployment.
+type DeploymentConfig struct {
+	AgentBinaryPath string `yaml:"agent-binary-path"` // Path to the agent EXE on disk
+	AgentConfigDir  string `yaml:"agent-config-dir"`  // Path to fibratus config files
+	InstallDir      string `yaml:"install-dir"`       // Target install dir on endpoints (default: C:\Program Files\Fibratus)
 }
 
 // DatabaseConfig configures the PostgreSQL connection.
@@ -167,6 +176,11 @@ func LoadConfig(path string) (*Config, error) {
 		},
 		Logging: LoggingConfig{
 			Level: "info",
+		},
+		Deployment: DeploymentConfig{
+			AgentBinaryPath: "",
+			AgentConfigDir:  "",
+			InstallDir:      `C:\Program Files\Fibratus`,
 		},
 		Dashboard: DashboardConfig{
 			Enabled: true,

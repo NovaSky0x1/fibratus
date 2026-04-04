@@ -149,6 +149,8 @@ func (s *Server) Run(ctx context.Context) error {
 	macroHandler := handler.NewMacroHandler(macroStore, auditStore, userStore)
 	auditHandler := handler.NewAuditHandler(auditStore)
 	userHandler := handler.NewUserHandler(userStore)
+	installHandler := handler.NewInstallHandler(enrollStore,
+		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 
@@ -175,6 +177,11 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Enrollment route (token-based auth, no API key or JWT needed)
 	mux.HandleFunc("/api/v1/enroll", methodGuard(http.MethodPost, enrollHandler.Enroll))
+
+	// Agent deployment (public — token is the auth)
+	mux.HandleFunc("/install/", installHandler.Script)
+	mux.HandleFunc("/api/v1/agent/binary", installHandler.Binary)
+	mux.HandleFunc("/api/v1/agent/config", installHandler.Config)
 
 	// Agent registration (public — new agents don't have credentials yet)
 	mux.HandleFunc("/api/v1/agents/register", methodGuard(http.MethodPost, agentHandler.Register))
@@ -355,6 +362,9 @@ func (s *Server) Run(ctx context.Context) error {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+	rootMux.HandleFunc("/install/", mux.ServeHTTP)
+	rootMux.HandleFunc("/api/v1/agent/binary", mux.ServeHTTP)
+	rootMux.HandleFunc("/api/v1/agent/config", mux.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/totp/", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/me", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/", mux.ServeHTTP)
@@ -365,6 +375,12 @@ func (s *Server) Run(ctx context.Context) error {
 
 		// Public routes (no auth required) — TOTP and /me routes require JWT
 		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/") && path != "/api/v1/auth/me") || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
+			mux.ServeHTTP(w, r)
+			return
+		}
+
+		// Public agent endpoints (no auth — served by install handler)
+		if path == "/api/v1/agent/binary" || path == "/api/v1/agent/config" {
 			mux.ServeHTTP(w, r)
 			return
 		}
