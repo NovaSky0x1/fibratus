@@ -122,6 +122,20 @@ func extractCertField(field, prefix string) string {
 	return ""
 }
 
+// requirePermission returns a middleware that checks if the authenticated user
+// has the required permission based on their role.
+func requirePermission(perm fleetauth.Permission, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		role := ctxutil.RoleFromContext(r.Context())
+		if !fleetauth.HasPermission(role, perm) {
+			writeJSONError(w, http.StatusForbidden,
+				"insufficient permissions: requires "+string(perm))
+			return
+		}
+		next(w, r)
+	}
+}
+
 // cors adds CORS headers for dashboard development.
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

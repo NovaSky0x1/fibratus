@@ -58,6 +58,12 @@ type User struct {
 	AccountID string    `json:"account_id"`
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
+
+	LoginAttempts int       `json:"-"`
+	LockedUntil   time.Time `json:"-"`
+	TOTPSecret    string    `json:"-"`
+	TOTPEnabled   bool      `json:"totp_enabled"`
+	RecoveryCodes string    `json:"-"`
 }
 
 // UserOrg maps a user's access and role within a specific organization.

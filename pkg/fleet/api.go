@@ -68,12 +68,14 @@ type SignupResponse struct {
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	TOTPCode string `json:"totp_code"`
 }
 
 // LoginResponse is returned after successful authentication.
 type LoginResponse struct {
-	Token string `json:"token"` // JWT
-	User  User   `json:"user"`
+	Token        string `json:"token"`
+	User         User   `json:"user"`
+	TOTPRequired bool   `json:"totp_required,omitempty"`
 }
 
 // ═══════════════════════════════════════════════════════════════

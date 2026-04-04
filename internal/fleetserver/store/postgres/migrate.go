@@ -308,6 +308,13 @@ ALTER TABLE commands ADD COLUMN IF NOT EXISTS created_by_email TEXT DEFAULT '';
 
 -- Add list_values to macros for list-type macros (web_browser_binaries, etc.)
 ALTER TABLE macros ADD COLUMN IF NOT EXISTS list_values TEXT[] DEFAULT '{}';
+
+-- Authentication security: lockout, TOTP 2FA, recovery codes
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_attempts INT DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_codes TEXT DEFAULT '';
 `
 
 // Migrate runs the database schema migrations.

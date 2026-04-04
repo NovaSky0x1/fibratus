@@ -136,6 +136,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
+	totpHandler := handler.NewTOTPHandler(userStore)
 	agentHandler := handler.NewAgentHandler(agentStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore, telemetryStore)
@@ -153,6 +154,10 @@ func (s *Server) Run(ctx context.Context) error {
 	// Route setup
 	// ═══════════════════════════════════════════════════════════
 
+	// Rate limiters
+	loginLimiter := newRateLimiter(10, time.Minute)
+	signupLimiter := newRateLimiter(3, 5*time.Minute)
+
 	mux := http.NewServeMux()
 
 	// ── Public routes (no auth) ──────────────────────────────
@@ -162,9 +167,9 @@ func (s *Server) Run(ctx context.Context) error {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Auth routes (signup/login — no auth required)
-	mux.HandleFunc("/api/v1/auth/signup", methodGuard(http.MethodPost, authHandler.Signup))
-	mux.HandleFunc("/api/v1/auth/login", methodGuard(http.MethodPost, authHandler.Login))
+	// Auth routes (signup/login — no auth required, rate limited)
+	mux.HandleFunc("/api/v1/auth/signup", methodGuard(http.MethodPost, rateLimit(signupLimiter, authHandler.Signup)))
+	mux.HandleFunc("/api/v1/auth/login", methodGuard(http.MethodPost, rateLimit(loginLimiter, authHandler.Login)))
 
 	// Enrollment route (token-based auth, no API key or JWT needed)
 	mux.HandleFunc("/api/v1/enroll", methodGuard(http.MethodPost, enrollHandler.Enroll))
@@ -236,31 +241,31 @@ func (s *Server) Run(ctx context.Context) error {
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodGet:
 			commandHandler.ListCommands(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodPost:
-			commandHandler.CreateCommand(w, r)
+			requirePermission(fleetauth.PermExecuteCommands, commandHandler.CreateCommand)(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodGet:
 			agentHandler.Get(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodDelete:
-			agentHandler.Delete(w, r)
+			requirePermission(fleetauth.PermDeleteAgents, agentHandler.Delete)(w, r)
 
 		// Rules
 		case subpath == "/rules" && r.Method == http.MethodGet:
 			ruleHandler.List(w, r)
 		case subpath == "/rules" && r.Method == http.MethodPost:
-			ruleHandler.Create(w, r)
+			requirePermission(fleetauth.PermManageRules, ruleHandler.Create)(w, r)
 		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodGet:
 			ruleHandler.Get(w, r)
 		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodPut:
-			ruleHandler.Update(w, r)
+			requirePermission(fleetauth.PermManageRules, ruleHandler.Update)(w, r)
 		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodDelete:
-			ruleHandler.Delete(w, r)
+			requirePermission(fleetauth.PermManageRules, ruleHandler.Delete)(w, r)
 
 		// Enrollment Tokens
 		case subpath == "/enrollment-tokens" && r.Method == http.MethodGet:
-			enrollTokenHandler.List(w, r)
+			requirePermission(fleetauth.PermManageSettings, enrollTokenHandler.List)(w, r)
 		case subpath == "/enrollment-tokens" && r.Method == http.MethodPost:
-			enrollTokenHandler.Create(w, r)
+			requirePermission(fleetauth.PermManageSettings, enrollTokenHandler.Create)(w, r)
 		case strings.HasPrefix(subpath, "/enrollment-tokens/") && r.Method == http.MethodDelete:
-			enrollTokenHandler.Delete(w, r)
+			requirePermission(fleetauth.PermManageSettings, enrollTokenHandler.Delete)(w, r)
 
 		// Detections
 		case subpath == "/detections" && r.Method == http.MethodGet:
@@ -319,6 +324,12 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	})
 
+	// TOTP 2FA routes (JWT auth, user-scoped)
+	dashMux.HandleFunc("/api/v1/auth/totp/setup", methodGuard(http.MethodPost, totpHandler.Setup))
+	dashMux.HandleFunc("/api/v1/auth/totp/verify", methodGuard(http.MethodPost, totpHandler.Verify))
+	dashMux.HandleFunc("/api/v1/auth/totp/disable", methodGuard(http.MethodPost, totpHandler.Disable))
+	dashMux.HandleFunc("/api/v1/auth/totp/status", methodGuard(http.MethodGet, totpHandler.Status))
+
 	// Wrap dashboard routes with JWT auth
 	dashAuthenticated := jwtAuth(s.config.Auth.JWTSecret, dashMux)
 
@@ -331,14 +342,15 @@ func (s *Server) Run(ctx context.Context) error {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+	rootMux.HandleFunc("/api/v1/auth/totp/", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/", mux.ServeHTTP)
 
 	// Route dispatcher — determines auth path based on URL prefix
 	rootMux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Public routes (no auth required)
-		if strings.HasPrefix(path, "/api/v1/auth/") || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
+		// Public routes (no auth required) — TOTP routes require JWT
+		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/")) || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
 			mux.ServeHTTP(w, r)
 			return
 		}
@@ -374,14 +386,14 @@ func (s *Server) Run(ctx context.Context) error {
 	// Start agent status reaper
 	go s.agentReaper(ctx, agentStore)
 
-	// Start telemetry retention purge (every hour, keep 7 days)
+	// Start telemetry retention purge (every minute during dev, keep 10 minutes)
 	go func() {
-		ticker := time.NewTicker(time.Hour)
+		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				deleted, err := telemetryStore.Purge(context.Background(), 7)
+				deleted, err := telemetryStore.Purge(context.Background(), 0) // 0 = dev mode (10 min retention)
 				if err != nil {
 					log.Warnf("fleet: telemetry purge error: %v", err)
 				} else if deleted > 0 {

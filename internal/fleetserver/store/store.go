@@ -47,6 +47,10 @@ type UserStore interface {
 	AddOrgAccess(ctx context.Context, userID, orgID, role string) error
 	GetOrgAccess(ctx context.Context, userID string) ([]fleet.UserOrg, error)
 	HasOrgAccess(ctx context.Context, userID, orgID string) (bool, error)
+	IncrementLoginAttempts(ctx context.Context, userID string) error
+	LockAccount(ctx context.Context, userID string, until time.Time) error
+	ResetLoginAttempts(ctx context.Context, userID string) error
+	SetTOTP(ctx context.Context, userID, secret string, enabled bool, recoveryCodes string) error
 }
 
 // EnrollmentTokenStore manages enrollment token persistence.

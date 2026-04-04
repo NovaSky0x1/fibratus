@@ -21,6 +21,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 )
@@ -46,11 +47,14 @@ func (s *UserStore) Create(ctx context.Context, user *fleet.User) error {
 
 func (s *UserStore) GetByEmail(ctx context.Context, email string) (*fleet.User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password, account_id, role, created_at
+		`SELECT id, email, name, password, account_id, role, created_at,
+		        login_attempts, COALESCE(locked_until, '1970-01-01'::timestamptz),
+		        totp_secret, totp_enabled, recovery_codes
 		 FROM users WHERE email = $1`, email)
 
 	u := &fleet.User{}
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt,
+		&u.LoginAttempts, &u.LockedUntil, &u.TOTPSecret, &u.TOTPEnabled, &u.RecoveryCodes)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -62,11 +66,14 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*fleet.User, 
 
 func (s *UserStore) Get(ctx context.Context, id string) (*fleet.User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password, account_id, role, created_at
+		`SELECT id, email, name, password, account_id, role, created_at,
+		        login_attempts, COALESCE(locked_until, '1970-01-01'::timestamptz),
+		        totp_secret, totp_enabled, recovery_codes
 		 FROM users WHERE id = $1`, id)
 
 	u := &fleet.User{}
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt,
+		&u.LoginAttempts, &u.LockedUntil, &u.TOTPSecret, &u.TOTPEnabled, &u.RecoveryCodes)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -116,4 +123,29 @@ func (s *UserStore) HasOrgAccess(ctx context.Context, userID, orgID string) (boo
 		return false, err
 	}
 	return exists, nil
+}
+
+func (s *UserStore) IncrementLoginAttempts(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET login_attempts = login_attempts + 1 WHERE id = $1`, userID)
+	return err
+}
+
+func (s *UserStore) LockAccount(ctx context.Context, userID string, until time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET locked_until = $2 WHERE id = $1`, userID, until)
+	return err
+}
+
+func (s *UserStore) ResetLoginAttempts(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET login_attempts = 0, locked_until = NULL WHERE id = $1`, userID)
+	return err
+}
+
+func (s *UserStore) SetTOTP(ctx context.Context, userID, secret string, enabled bool, recoveryCodes string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET totp_secret = $2, totp_enabled = $3, recovery_codes = $4 WHERE id = $1`,
+		userID, secret, enabled, recoveryCodes)
+	return err
 }

@@ -255,10 +255,12 @@ func (s *TelemetryStore) GetLatestForAgent(ctx context.Context, orgID, agentID s
 }
 
 func (s *TelemetryStore) Purge(ctx context.Context, retentionDays int) (int64, error) {
-	result, err := s.db.ExecContext(ctx,
-		`DELETE FROM telemetry_events WHERE timestamp < NOW() - $1 * interval '1 day'`,
-		retentionDays,
-	)
+	// retentionDays is interpreted as minutes when < 1 (dev mode)
+	query := `DELETE FROM telemetry_events WHERE timestamp < NOW() - $1 * interval '1 day'`
+	if retentionDays == 0 {
+		query = `DELETE FROM telemetry_events WHERE timestamp < NOW() - interval '10 minutes'`
+	}
+	result, err := s.db.ExecContext(ctx, query, retentionDays)
 	if err != nil {
 		return 0, err
 	}

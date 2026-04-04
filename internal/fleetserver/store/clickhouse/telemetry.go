@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (org_id, agent_id, timestamp, pid)
-TTL toDateTime(timestamp) + INTERVAL 30 DAY DELETE
+TTL toDateTime(timestamp) + INTERVAL 10 MINUTE DELETE
 SETTINGS index_granularity = 8192,
          min_bytes_for_wide_part = 10485760,
          merge_with_ttl_timeout = 86400

@@ -116,6 +116,41 @@ func CheckPassword(hash, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 }
 
+// ValidatePasswordPolicy checks that a password meets security requirements:
+// minimum 12 characters, at least one uppercase, one lowercase, one digit,
+// and one special character.
+func ValidatePasswordPolicy(password string) error {
+	if len(password) < 12 {
+		return errors.New("password must be at least 12 characters")
+	}
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, c := range password {
+		switch {
+		case c >= 'A' && c <= 'Z':
+			hasUpper = true
+		case c >= 'a' && c <= 'z':
+			hasLower = true
+		case c >= '0' && c <= '9':
+			hasDigit = true
+		default:
+			hasSpecial = true
+		}
+	}
+	if !hasUpper {
+		return errors.New("password must contain at least one uppercase letter")
+	}
+	if !hasLower {
+		return errors.New("password must contain at least one lowercase letter")
+	}
+	if !hasDigit {
+		return errors.New("password must contain at least one digit")
+	}
+	if !hasSpecial {
+		return errors.New("password must contain at least one special character")
+	}
+	return nil
+}
+
 // base64URLEncode encodes data using unpadded base64url encoding.
 func base64URLEncode(data []byte) string {
 	return base64.RawURLEncoding.EncodeToString(data)

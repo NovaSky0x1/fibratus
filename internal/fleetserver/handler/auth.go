@@ -19,7 +19,10 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
@@ -70,8 +73,8 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid email address")
 		return
 	}
-	if len(req.Password) < 8 {
-		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+	if err := fleetauth.ValidatePasswordPolicy(req.Password); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -199,10 +202,57 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check account lockout
+	if !user.LockedUntil.IsZero() && time.Now().UTC().Before(user.LockedUntil) {
+		remaining := time.Until(user.LockedUntil).Round(time.Second)
+		writeError(w, http.StatusTooManyRequests,
+			fmt.Sprintf("account locked, try again in %s", remaining))
+		return
+	}
+
+	// Verify password
 	if err := fleetauth.CheckPassword(user.Password, req.Password); err != nil {
+		// Increment failed attempts
+		h.users.IncrementLoginAttempts(r.Context(), user.ID)
+		attempts := user.LoginAttempts + 1
+
+		// Lock after 5 failed attempts (exponential backoff: 5min, 10min, 20min...)
+		if attempts >= 5 {
+			lockDuration := time.Duration(5*math.Pow(2, float64(attempts/5-1))) * time.Minute
+			if lockDuration > time.Hour {
+				lockDuration = time.Hour
+			}
+			lockUntil := time.Now().UTC().Add(lockDuration)
+			h.users.LockAccount(r.Context(), user.ID, lockUntil)
+			log.Warnf("fleet: account locked for %s: %s (%d attempts)", lockDuration, user.Email, attempts)
+		}
+
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
+
+	// Password correct — check TOTP if enabled
+	if user.TOTPEnabled {
+		if req.TOTPCode == "" {
+			// Signal the client that TOTP is required
+			writeJSON(w, http.StatusOK, fleet.Response{Data: fleet.LoginResponse{
+				TOTPRequired: true,
+			}})
+			return
+		}
+		// Validate TOTP code
+		if !fleetauth.ValidateTOTP(user.TOTPSecret, req.TOTPCode) {
+			// Check recovery codes
+			if !useRecoveryCode(r.Context(), h.users, user, req.TOTPCode) {
+				h.users.IncrementLoginAttempts(r.Context(), user.ID)
+				writeError(w, http.StatusUnauthorized, "invalid TOTP code")
+				return
+			}
+		}
+	}
+
+	// Success — reset lockout state
+	h.users.ResetLoginAttempts(r.Context(), user.ID)
 
 	token, err := fleetauth.GenerateJWT(h.jwtSecret, user.ID, user.AccountID, user.Role)
 	if err != nil {
@@ -213,13 +263,29 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	log.Infof("fleet: user logged in: %s (%s)", user.Email, user.ID)
 
-	// Clear password before returning user in response
 	user.Password = ""
 	resp := fleet.LoginResponse{
 		Token: token,
 		User:  *user,
 	}
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
+}
+
+// useRecoveryCode checks if the code matches a recovery code, and removes it if so.
+func useRecoveryCode(ctx context.Context, users store.UserStore, user *fleet.User, code string) bool {
+	if user.RecoveryCodes == "" {
+		return false
+	}
+	codes := strings.Split(user.RecoveryCodes, ",")
+	for i, c := range codes {
+		if strings.EqualFold(strings.TrimSpace(c), strings.TrimSpace(code)) {
+			// Remove used code
+			remaining := append(codes[:i], codes[i+1:]...)
+			users.SetTOTP(ctx, user.ID, user.TOTPSecret, user.TOTPEnabled, strings.Join(remaining, ","))
+			return true
+		}
+	}
+	return false
 }
 
 // ListOrganizations handles GET /api/v1/account/organizations
