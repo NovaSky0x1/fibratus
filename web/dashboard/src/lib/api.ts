@@ -219,6 +219,10 @@ export const api = {
   },
   getDetectionProcessTree: (id: string) =>
     fetchApi<{ detection: Detection; events: unknown[] }>(orgPath(`/detections/${id}/process-tree`)),
+  getDetectionProcessContext: (id: string, pid: number) =>
+    fetchApi<{ events: unknown[]; target_pid: number; parent_pid: number; child_pids: Record<number, boolean> }>(
+      orgPath(`/detections/${id}/process-context?pid=${pid}`)
+    ),
 
   // Rules (org-scoped)
   getRules: (params?: Record<string, string>) => {

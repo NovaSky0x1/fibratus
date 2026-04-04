@@ -92,7 +92,7 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
                   <td className="px-3 py-1.5 font-mono text-gray-700 align-top">{evt.process_name}</td>
                   <td className="px-3 py-1.5 text-gray-500 font-mono align-top">
                     {!isOpen ? (
-                      <span className="truncate block max-w-[600px]">{evt.process_cmdline || evt.process_exe || '-'}</span>
+                      <span className="break-all block">{evt.process_cmdline || evt.process_exe || '-'}</span>
                     ) : (
                       <div className="space-y-2" onClick={e => e.stopPropagation()}>
                         <div className="text-gray-700 break-all whitespace-pre-wrap">{evt.process_cmdline || evt.process_exe || '-'}</div>

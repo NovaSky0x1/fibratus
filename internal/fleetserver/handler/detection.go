@@ -302,36 +302,54 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build the ancestor spine: walk UP from each focus PID to root.
-	spine := make(map[int]bool)
+	// Relevant = the exact ancestor chain from the detection +
+	// descendants of the triggering PID(s). Nothing else.
+	relevant := make(map[int]bool)
 	for pid := range focusPIDs {
-		spine[pid] = true
+		relevant[pid] = true
+	}
+
+	// Walk UP from each focus PID — but ONLY follow PIDs that
+	// were already identified in the detection's ancestor list.
+	for pid := range focusPIDs {
 		cur := pid
 		for i := 0; i < 20; i++ {
 			pi, ok := procMap[cur]
 			if !ok || pi.parentPID <= 0 || pi.parentPID == cur {
 				break
 			}
-			spine[pi.parentPID] = true
-			cur = pi.parentPID
-		}
-	}
-
-	// Relevant set: spine + direct children of every spine node (siblings)
-	// + full descendant tree of focus PIDs.
-	relevant := make(map[int]bool)
-	for pid := range spine {
-		relevant[pid] = true
-		// Include all direct children of spine nodes so the user
-		// can see siblings and expand into them.
-		if pi, ok := procMap[pid]; ok {
-			for child := range pi.children {
-				relevant[child] = true
+			// Only include the parent if it's a known detection PID
+			// or if we can verify the chain links to one.
+			if focusPIDs[pi.parentPID] {
+				relevant[pi.parentPID] = true
+				cur = pi.parentPID
+				continue
+			}
+			// If the parent isn't a known detection PID, check if
+			// it eventually links to one (follow up to 5 more).
+			found := false
+			check := pi.parentPID
+			for j := 0; j < 5; j++ {
+				if focusPIDs[check] {
+					found = true
+					break
+				}
+				cpi, ok := procMap[check]
+				if !ok || cpi.parentPID <= 0 {
+					break
+				}
+				check = cpi.parentPID
+			}
+			if found {
+				relevant[pi.parentPID] = true
+				cur = pi.parentPID
+			} else {
+				break
 			}
 		}
 	}
 
-	// Walk DOWN: full descendants of each focus PID.
+	// Walk DOWN: descendants of each focus PID.
 	var walkDown func(pid int, depth int)
 	walkDown = func(pid int, depth int) {
 		if depth > 15 {
@@ -348,25 +366,6 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	}
 	for pid := range focusPIDs {
 		walkDown(pid, 0)
-	}
-
-	// Guarantee parent chain integrity: if a PID is relevant,
-	// every ancestor up to a root must also be relevant.
-	changed := true
-	for changed {
-		changed = false
-		for pid := range relevant {
-			pi, ok := procMap[pid]
-			if !ok {
-				continue
-			}
-			if pi.parentPID > 0 && pi.parentPID != pid {
-				if _, parentInMap := procMap[pi.parentPID]; parentInMap && !relevant[pi.parentPID] {
-					relevant[pi.parentPID] = true
-					changed = true
-				}
-			}
-		}
 	}
 
 	// Filter events to only relevant PIDs.
@@ -421,6 +420,88 @@ func extractDetectionPIDs(eventsRaw json.RawMessage) map[int]bool {
 	}
 
 	return pids
+}
+
+// ProcessContext handles GET /api/v1/orgs/{org_id}/detections/{id}/process-context?pid=X
+// Returns events for a specific PID, its parent, and its children within the
+// detection's time window. Used for live-loading tree expansion.
+func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
+	// Extract detection ID: .../detections/{id}/process-context
+	parts := strings.Split(r.URL.Path, "/detections/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "detection ID required")
+		return
+	}
+	detID := strings.TrimSuffix(parts[1], "/process-context")
+	detID = strings.TrimSuffix(detID, "/process-context/")
+
+	targetPID := intParam(r, "pid", 0)
+	if targetPID <= 0 {
+		writeError(w, http.StatusBadRequest, "pid parameter required")
+		return
+	}
+
+	det, err := h.detections.Get(r.Context(), orgID, detID)
+	if err != nil || det == nil {
+		writeError(w, http.StatusNotFound, "detection not found")
+		return
+	}
+
+	from := det.Timestamp.Add(-10 * time.Minute)
+	to := det.Timestamp.Add(10 * time.Minute)
+
+	allEvents, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+		AgentID: det.AgentID,
+		From:    from,
+		To:      to,
+		Limit:   5000,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Collect: the target PID, its parent, and its children.
+	parentPID := 0
+	children := make(map[int]bool)
+	for _, evt := range allEvents {
+		if evt.PID == targetPID && evt.ParentPID > 0 && parentPID == 0 {
+			parentPID = evt.ParentPID
+		}
+		if evt.ParentPID == targetPID && evt.PID != targetPID {
+			children[evt.PID] = true
+		}
+	}
+
+	relevant := map[int]bool{targetPID: true}
+	if parentPID > 0 {
+		relevant[parentPID] = true
+	}
+	for pid := range children {
+		relevant[pid] = true
+	}
+
+	filtered := make([]store.TelemetryEvent, 0)
+	for _, evt := range allEvents {
+		if relevant[evt.PID] {
+			filtered = append(filtered, evt)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{
+		Data: map[string]interface{}{
+			"events":     filtered,
+			"target_pid": targetPID,
+			"parent_pid": parentPID,
+			"child_pids": children,
+		},
+	})
 }
 
 func parseTime(s string, defaultVal time.Time) time.Time {

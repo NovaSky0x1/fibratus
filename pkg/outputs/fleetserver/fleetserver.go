@@ -112,16 +112,15 @@ func (f *fleetOutput) Close() error { return nil }
 // server. Everything else is only sent if it triggered a detection rule
 // or evasion flag.
 var telemetryEventNames = map[string]bool{
-	"CreateProcess": true, // process spawn — core EDR visibility
-	"Connect":       true, // outbound connections — C2, lateral movement
-	"QueryDns":      true, // DNS resolution — C2/exfil domain detection
-	"ReplyDns":      true, // DNS answers
-	"LoadImage":     true, // module/DLL loads — sideloading, injection detection
-	"CreateFile":    true, // file creation — malware drops, staging
-	"DeleteFile":    true, // file deletion — covering tracks
-	"RenameFile":    true, // file renames — evasion techniques
-	"RegCreateKey":  true, // registry key creation — persistence
-	"RegDeleteKey":  true, // registry key deletion — defense evasion
+	"CreateProcess":  true, // process spawn — core EDR visibility
+	"Connect":        true, // outbound connections — C2, lateral movement
+	"QueryDns":       true, // DNS resolution — C2/exfil domain detection
+	"ReplyDns":       true, // DNS answers
+	"LoadImage":      true, // module/DLL loads — sideloading, injection detection
+	"DeleteFile":     true, // file deletion — covering tracks
+	"RenameFile":     true, // file renames — evasion techniques
+	"RegCreateKey":   true, // registry key creation — persistence
+	"RegDeleteKey":   true, // registry key deletion — defense evasion
 	"RegDeleteValue": true, // registry value deletion — defense evasion
 }
 
@@ -138,7 +137,11 @@ var telemetryDropNames = map[string]bool{
 	"CreateHandle":             true,
 	"CloseHandle":              true,
 	"DuplicateHandle":          true,
+	"CreateFile":               true,
 	"ReadFile":                 true,
+	"WriteFile":                true,
+	"DeleteFile":               true,
+	"RenameFile":               true,
 	"CloseFile":                true,
 	"ReleaseFile":              true,
 	"EnumDirectory":            true,

@@ -128,7 +128,7 @@ export default function Macros() {
                 <tr key={m.id} className="hover:bg-gray-50/50">
                   <td className="px-6 py-3">
                     <span className="font-mono font-medium text-gray-900">{m.name}</span>
-                    {m.description && <div className="text-xs text-gray-400 mt-0.5 line-clamp-1">{m.description}</div>}
+                    {m.description && <div className="text-xs text-gray-400 mt-0.5">{m.description}</div>}
                   </td>
                   <td className="px-6 py-3">
                     <span className={'rounded px-1.5 py-0.5 text-xs font-medium ' +

@@ -198,7 +198,7 @@ export default function Rules() {
                     <td className="px-6 py-3">
                       <div className="font-medium text-gray-900">{rule.name}</div>
                       {rule.description && (
-                        <div className="mt-0.5 text-xs text-gray-500 line-clamp-1">
+                        <div className="mt-0.5 text-xs text-gray-500">
                           {rule.description}
                         </div>
                       )}

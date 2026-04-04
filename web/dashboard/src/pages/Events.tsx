@@ -191,13 +191,13 @@ export default function Events() {
                     </span>
                   </td>
                   <td className="px-3 py-1.5 text-gray-600">{evt.pid}</td>
-                  <td className="px-3 py-1.5 text-gray-900 truncate max-w-[140px]" title={evt.process_exe}>
+                  <td className="px-3 py-1.5 text-gray-900 break-all" title={evt.process_exe}>
                     {evt.process_name}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-500 truncate max-w-[300px]" title={JSON.stringify(evt.params)}>
+                  <td className="px-3 py-1.5 text-gray-500 break-all whitespace-pre-wrap" title={JSON.stringify(evt.params)}>
                     {summarizeParams(evt)}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-500 truncate">{evt.agent_hostname}</td>
+                  <td className="px-3 py-1.5 text-gray-500">{evt.agent_hostname}</td>
                 </tr>
               ))}
               {!isLoading && events.length === 0 && (
@@ -257,7 +257,7 @@ export default function Events() {
                 ].map(([label, value]) => (
                   <div key={label} className="rounded bg-gray-50 px-2 py-1.5">
                     <span className="text-xs text-gray-500">{label}</span>
-                    <p className="text-sm font-medium text-gray-900 font-mono truncate" title={value}>{value || '-'}</p>
+                    <p className="text-sm font-medium text-gray-900 font-mono break-all" title={value}>{value || '-'}</p>
                   </div>
                 ))}
               </div>

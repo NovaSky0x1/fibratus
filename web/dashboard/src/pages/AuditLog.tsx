@@ -84,7 +84,7 @@ export default function AuditLog() {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-3 text-xs text-gray-500 max-w-[200px] truncate">
+                  <td className="px-6 py-3 text-xs text-gray-500 break-all">
                     {entry.details && typeof entry.details === 'object' && Object.keys(entry.details as Record<string, unknown>).length > 0
                       ? Object.entries(entry.details as Record<string, unknown>).map(([k, v]) => `${k}: ${v}`).join(', ')
                       : '-'}

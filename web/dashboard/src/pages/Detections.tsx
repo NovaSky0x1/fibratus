@@ -93,7 +93,7 @@ export default function Detections() {
                   onClick={() => { setSelectedDet(det); setDetailView('detail') }}>
                   <td className="px-6 py-3">
                     <div className="font-medium text-gray-900">{det.title || det.rule_name}</div>
-                    {det.text && <div className="mt-0.5 text-xs text-gray-500 line-clamp-1">{det.text}</div>}
+                    {det.text && <div className="mt-0.5 text-xs text-gray-500">{det.text}</div>}
                   </td>
                   <td className="px-6 py-3 text-gray-600">{det.agent_hostname || det.agent_id?.slice(0, 8)}</td>
                   <td className="px-6 py-3"><SeverityBadge severity={det.severity} /></td>

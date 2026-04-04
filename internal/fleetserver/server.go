@@ -260,6 +260,8 @@ func (s *Server) Run(ctx context.Context) error {
 			detHandler.MitreHeatmap(w, r)
 		case strings.HasPrefix(subpath, "/detections/") && strings.HasSuffix(subpath, "/process-tree") && r.Method == http.MethodGet:
 			detHandler.ProcessTree(w, r)
+		case strings.HasPrefix(subpath, "/detections/") && strings.HasSuffix(subpath, "/process-context") && r.Method == http.MethodGet:
+			detHandler.ProcessContext(w, r)
 		case strings.HasPrefix(subpath, "/detections/") && r.Method == http.MethodGet:
 			detHandler.Get(w, r)
 
