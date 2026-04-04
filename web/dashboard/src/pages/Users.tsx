@@ -52,7 +52,7 @@ export default function Users() {
     })
   })
 
-  const isAdmin = currentUser?.role === 'admin'
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'root'
 
   const roleMut = useMutation({
     mutationFn: ({ id, role }: { id: string; role: string }) => api.updateUserRole(id, role),

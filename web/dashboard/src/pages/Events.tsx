@@ -368,6 +368,60 @@ export default function Events() {
               </div>
             )}
 
+            {/* Process ancestry, call stack, modules from raw event */}
+            {(() => {
+              const raw = selectedEvent.raw_event as Record<string, unknown> | null
+              const ps = (raw?.ps || {}) as Record<string, unknown>
+              const ancestors = (ps?.ancestors || (ps?.parent as Record<string, unknown>)?.ancestors) as string[] | undefined
+              const callstack = raw?.callstack as string[] | undefined
+              const modules = (ps?.modules || []) as { name?: string; size?: number; sha256?: string; md5?: string }[]
+
+              return (<>
+                {ancestors && ancestors.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Process Ancestry</h4>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {ancestors.map((a, i) => (
+                        <span key={i} className="flex items-center gap-0.5">
+                          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-mono text-blue-700">{a}</span>
+                          {i < ancestors.length - 1 && <span className="text-gray-300 text-xs">&larr;</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {callstack && callstack.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Call Stack ({callstack.length} frames)</h4>
+                    <div className="rounded-lg bg-gray-900 p-3 max-h-48 overflow-auto">
+                      {callstack.map((frame, i) => (
+                        <div key={i} className="text-[11px] font-mono text-gray-300 py-0.5">
+                          <span className="text-gray-500 mr-2">{String(callstack.length - i).padStart(2)}</span>
+                          {frame}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {modules.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Loaded Modules ({modules.length})</h4>
+                    <div className="space-y-0.5 max-h-48 overflow-auto">
+                      {modules.slice(0, 50).map((m, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded bg-gray-50 px-2 py-1 text-[11px]">
+                          <span className="text-gray-700 font-mono break-all flex-1">{m.name}</span>
+                          {m.sha256 && <span className="text-gray-400 font-mono text-[9px]">{m.sha256.slice(0, 12)}...</span>}
+                        </div>
+                      ))}
+                      {modules.length > 50 && <div className="text-[10px] text-gray-400 px-2">+{modules.length - 50} more modules</div>}
+                    </div>
+                  </div>
+                )}
+              </>)
+            })()}
+
             {/* Raw event JSON */}
             <div>
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Raw Event</h4>
