@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type User } from '../lib/api'
+import SlidePanel from '../components/SlidePanel'
 
 const roleBadge: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-700',
@@ -22,6 +23,7 @@ export default function Users() {
   const [form, setForm] = useState({ email: '', name: '', password: '', role: 'viewer' })
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
 
   const { data: currentUserData } = useQuery({
     queryKey: ['current-user'],
@@ -141,33 +143,43 @@ export default function Users() {
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-3">
-                      {isAdmin && !isSelf ? (
-                        deleteId === user.id ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => deleteMut.mutate(user.id)}
-                              className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setDeleteId(null)}
-                              className="rounded bg-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-300"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
+                      <div className="flex items-center gap-3">
+                        {isAdmin && !isSelf && (
                           <button
-                            onClick={() => setDeleteId(user.id)}
-                            className="text-xs text-red-600 hover:underline"
+                            onClick={() => setEditingUser(user)}
+                            className="text-xs text-fibratus-600 hover:underline"
                           >
-                            Remove
+                            Edit
                           </button>
-                        )
-                      ) : (
-                        <span className="text-xs text-gray-300">-</span>
-                      )}
+                        )}
+                        {isAdmin && !isSelf ? (
+                          deleteId === user.id ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => deleteMut.mutate(user.id)}
+                                className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setDeleteId(null)}
+                                className="rounded bg-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setDeleteId(user.id)}
+                              className="text-xs text-red-600 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-xs text-gray-300">-</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -274,6 +286,252 @@ export default function Users() {
           </div>
         </div>
       )}
+
+      {/* Edit user slide panel */}
+      {editingUser && (
+        <UserEditPanel
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onDeleted={() => { setEditingUser(null) }}
+        />
+      )}
     </div>
+  )
+}
+
+function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () => void; onDeleted: () => void }) {
+  const queryClient = useQueryClient()
+
+  // Profile form
+  const [profileName, setProfileName] = useState(user.name)
+  const [profileEmail, setProfileEmail] = useState(user.email)
+  const [profileMsg, setProfileMsg] = useState('')
+  const [profileError, setProfileError] = useState('')
+
+  // Password form
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordMsg, setPasswordMsg] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+
+  // 2FA
+  const [totpConfirm, setTotpConfirm] = useState(false)
+  const [totpMsg, setTotpMsg] = useState('')
+  const [totpError, setTotpError] = useState('')
+
+  // Delete
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+
+  const updateProfileMut = useMutation({
+    mutationFn: () => api.updateUser(user.id, { name: profileName, email: profileEmail }),
+    onSuccess: (res) => {
+      if (res.error) { setProfileError(res.error.message); return }
+      setProfileMsg('Profile updated.')
+      setProfileError('')
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setTimeout(() => setProfileMsg(''), 3000)
+    },
+    onError: () => setProfileError('Failed to update profile.'),
+  })
+
+  const resetPasswordMut = useMutation({
+    mutationFn: () => api.resetUserPassword(user.id, newPassword),
+    onSuccess: (res) => {
+      if (res.error) { setPasswordError(res.error.message); return }
+      setPasswordMsg('Password has been reset.')
+      setPasswordError('')
+      setNewPassword('')
+      setTimeout(() => setPasswordMsg(''), 3000)
+    },
+    onError: () => setPasswordError('Failed to reset password.'),
+  })
+
+  const disableTotpMut = useMutation({
+    mutationFn: () => api.disableUserTOTP(user.id),
+    onSuccess: (res) => {
+      if (res.error) { setTotpError(res.error.message); return }
+      setTotpMsg('2FA has been disabled for this user.')
+      setTotpError('')
+      setTotpConfirm(false)
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setTimeout(() => setTotpMsg(''), 3000)
+    },
+    onError: () => setTotpError('Failed to disable 2FA.'),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: () => api.deleteUser(user.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      onDeleted()
+    },
+  })
+
+  const allPasswordRulesPass = passwordRules.every(r => r.test(newPassword))
+
+  return (
+    <SlidePanel open={true} title={user.name || user.email} onClose={onClose}>
+      <div className="space-y-8">
+        {/* Profile Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Profile</h3>
+          <div className="mt-3 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
+              <input
+                value={profileName}
+                onChange={e => setProfileName(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+              <input
+                type="email"
+                value={profileEmail}
+                onChange={e => setProfileEmail(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+              />
+            </div>
+            {profileError && <p className="text-xs text-red-600">{profileError}</p>}
+            {profileMsg && <p className="text-xs text-emerald-600">{profileMsg}</p>}
+            <button
+              onClick={() => { setProfileError(''); updateProfileMut.mutate() }}
+              disabled={updateProfileMut.isPending || (!profileName.trim() && !profileEmail.trim())}
+              className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+            >
+              {updateProfileMut.isPending ? 'Saving...' : 'Save Profile'}
+            </button>
+          </div>
+        </div>
+
+        <hr className="border-gray-200" />
+
+        {/* Password Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Password</h3>
+          <p className="mt-1 text-xs text-gray-500">Reset this user's password. They will need to use the new password on next login.</p>
+          <div className="mt-3 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">New Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                placeholder="Enter new password"
+                minLength={12}
+              />
+              <div className="mt-2 space-y-1">
+                {passwordRules.map(rule => (
+                  <p key={rule.label} className={'text-[10px] ' + (rule.test(newPassword) ? 'text-emerald-600' : 'text-gray-400')}>
+                    {rule.test(newPassword) ? '\u2713' : '\u2022'} {rule.label}
+                  </p>
+                ))}
+              </div>
+            </div>
+            {passwordError && <p className="text-xs text-red-600">{passwordError}</p>}
+            {passwordMsg && <p className="text-xs text-emerald-600">{passwordMsg}</p>}
+            <button
+              onClick={() => { setPasswordError(''); resetPasswordMut.mutate() }}
+              disabled={!allPasswordRulesPass || resetPasswordMut.isPending}
+              className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+            >
+              {resetPasswordMut.isPending ? 'Resetting...' : 'Reset Password'}
+            </button>
+          </div>
+        </div>
+
+        <hr className="border-gray-200" />
+
+        {/* 2FA Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Two-Factor Authentication</h3>
+          <div className="mt-3 flex items-center gap-3">
+            <span className="text-sm text-gray-600">Status:</span>
+            <span className={'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
+              (user.totp_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500')}>
+              {user.totp_enabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+          {user.totp_enabled && (
+            <div className="mt-3">
+              {!totpConfirm ? (
+                <button
+                  onClick={() => setTotpConfirm(true)}
+                  className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  Disable 2FA
+                </button>
+              ) : (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+                  <p className="text-sm text-red-800">
+                    Are you sure you want to disable 2FA for this user? This will remove their TOTP configuration.
+                  </p>
+                  {totpError && <p className="text-xs text-red-600">{totpError}</p>}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setTotpError(''); disableTotpMut.mutate() }}
+                      disabled={disableTotpMut.isPending}
+                      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {disableTotpMut.isPending ? 'Disabling...' : 'Yes, Disable 2FA'}
+                    </button>
+                    <button
+                      onClick={() => setTotpConfirm(false)}
+                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {totpMsg && <p className="mt-2 text-xs text-emerald-600">{totpMsg}</p>}
+            </div>
+          )}
+          {!user.totp_enabled && (
+            <p className="mt-2 text-xs text-gray-500">This user has not enabled two-factor authentication.</p>
+          )}
+        </div>
+
+        <hr className="border-gray-200" />
+
+        {/* Danger Zone */}
+        <div>
+          <h3 className="text-sm font-semibold text-red-600">Danger Zone</h3>
+          <p className="mt-1 text-xs text-gray-500">Permanently delete this user account. This action cannot be undone.</p>
+          <div className="mt-3">
+            {!deleteConfirm ? (
+              <button
+                onClick={() => setDeleteConfirm(true)}
+                className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                Delete User
+              </button>
+            ) : (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+                <p className="text-sm text-red-800">
+                  Are you sure you want to permanently delete <strong>{user.name || user.email}</strong>?
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => deleteMut.mutate(user.id)}
+                    disabled={deleteMut.isPending}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deleteMut.isPending ? 'Deleting...' : 'Yes, Delete User'}
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(false)}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </SlidePanel>
   )
 }

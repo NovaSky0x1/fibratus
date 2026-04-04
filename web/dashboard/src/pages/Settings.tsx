@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type EnrollmentToken, type Organization, type User } from '../lib/api'
 import ConfirmDialog from '../components/ConfirmDialog'
+import QRCode from 'qrcode'
 
 function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
@@ -634,6 +635,17 @@ function SecuritySection() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [setupError, setSetupError] = useState('')
 
+  // QR code
+  const [qrDataUrl, setQrDataUrl] = useState('')
+
+  useEffect(() => {
+    if (totpUri) {
+      QRCode.toDataURL(totpUri, { width: 200, margin: 2 }).then(url => setQrDataUrl(url)).catch(() => setQrDataUrl(''))
+    } else {
+      setQrDataUrl('')
+    }
+  }, [totpUri])
+
   // Disable flow state
   const [showDisable, setShowDisable] = useState(false)
   const [disablePassword, setDisablePassword] = useState('')
@@ -791,37 +803,32 @@ function SecuritySection() {
             </div>
           )}
 
-          {/* Setup Step: Verify -- show secret & URI, code input */}
+          {/* Setup Step: Verify -- show QR code, secret & code input */}
           {setupStep === 'verify' && (
             <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
               <div>
-                <p className="text-sm font-medium text-gray-900">1. Add to your authenticator app</p>
+                <p className="text-sm font-medium text-gray-900">1. Scan with your authenticator app</p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Copy the secret key below into your authenticator app (Google Authenticator, Authy, etc.)
+                  Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
                 </p>
               </div>
+              <div className="flex flex-col items-center py-2">
+                {qrDataUrl ? (
+                  <img src={qrDataUrl} alt="Scan with authenticator app" className="rounded-lg border border-gray-200 bg-white p-2" width={200} height={200} />
+                ) : (
+                  <div className="flex h-[200px] w-[200px] items-center justify-center rounded-lg border border-gray-200 bg-white text-xs text-gray-400">
+                    Generating QR code...
+                  </div>
+                )}
+              </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Secret Key</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Or enter the secret key manually</label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 select-all rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-sm text-gray-900 break-all">
                     {totpSecret}
                   </code>
                   <button
                     onClick={() => navigator.clipboard.writeText(totpSecret)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Provisioning URI</label>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 select-all rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-600 break-all">
-                    {totpUri}
-                  </code>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(totpUri)}
                     className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100"
                   >
                     Copy

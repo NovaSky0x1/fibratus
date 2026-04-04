@@ -183,6 +183,90 @@ func (h *UserHandler) UpdateRole(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated", "role": req.Role}})
 }
 
+// Update handles PUT /api/v1/orgs/{org_id}/users/{id} — updates user name/email.
+func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/users/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+	userID := strings.TrimSuffix(parts[1], "/")
+
+	var req struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.users.UpdateProfile(r.Context(), userID, req.Name, req.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update user")
+		return
+	}
+
+	log.Infof("fleet: user %s updated", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated"}})
+}
+
+// ResetPassword handles PUT /api/v1/orgs/{org_id}/users/{id}/password — admin resets a user's password.
+func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/users/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+	userID := strings.TrimSuffix(parts[1], "/password")
+	userID = strings.TrimSuffix(userID, "/")
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "password is required")
+		return
+	}
+
+	if err := fleetauth.ValidatePasswordPolicy(req.Password); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	hashed, err := fleetauth.HashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := h.users.UpdatePassword(r.Context(), userID, hashed); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reset password")
+		return
+	}
+
+	log.Infof("fleet: user %s password reset by admin", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "password_reset"}})
+}
+
+// DisableTOTP handles DELETE /api/v1/orgs/{org_id}/users/{id}/totp — admin force-disables 2FA.
+func (h *UserHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/users/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+	userID := strings.TrimSuffix(parts[1], "/totp")
+	userID = strings.TrimSuffix(userID, "/")
+
+	if err := h.users.SetTOTP(r.Context(), userID, "", false, ""); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to disable 2FA")
+		return
+	}
+
+	log.Infof("fleet: user %s 2FA disabled by admin", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "totp_disabled"}})
+}
+
 // Delete handles DELETE /api/v1/orgs/{org_id}/users/{id} — deletes a user.
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())

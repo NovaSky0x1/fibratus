@@ -145,6 +145,20 @@ func (s *UserStore) ListAll(ctx context.Context) ([]*fleet.User, error) {
 	return users, rows.Err()
 }
 
+func (s *UserStore) UpdateProfile(ctx context.Context, userID, name, email string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET name = $2, email = $3, updated_at = NOW() WHERE id = $1`,
+		userID, name, email)
+	return err
+}
+
+func (s *UserStore) UpdatePassword(ctx context.Context, userID, hashedPassword string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET password = $2, updated_at = NOW() WHERE id = $1`,
+		userID, hashedPassword)
+	return err
+}
+
 func (s *UserStore) IncrementLoginAttempts(ctx context.Context, userID string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE users SET login_attempts = login_attempts + 1 WHERE id = $1`, userID)

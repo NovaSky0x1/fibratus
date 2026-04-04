@@ -235,6 +235,12 @@ export const api = {
     fetchApi<User>(orgPath('/users'), { method: 'POST', body: JSON.stringify(data) }),
   updateUserRole: (id: string, role: string) =>
     fetchApi<{ status: string; role: string }>(orgPath(`/users/${id}/role`), { method: 'PUT', body: JSON.stringify({ role }) }),
+  updateUser: (id: string, data: { name: string; email: string }) =>
+    fetchApi<{ status: string }>(orgPath(`/users/${id}`), { method: 'PUT', body: JSON.stringify(data) }),
+  resetUserPassword: (id: string, password: string) =>
+    fetchApi<{ status: string }>(orgPath(`/users/${id}/password`), { method: 'PUT', body: JSON.stringify({ password }) }),
+  disableUserTOTP: (id: string) =>
+    fetchApi<{ status: string }>(orgPath(`/users/${id}/totp`), { method: 'DELETE' }),
   deleteUser: (id: string) =>
     fetchApi<{ status: string }>(orgPath(`/users/${id}`), { method: 'DELETE' }),
 
