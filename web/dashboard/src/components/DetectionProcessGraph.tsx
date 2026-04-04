@@ -324,7 +324,7 @@ export default function DetectionProcessGraph({ detection, focusPid, focusProces
           expanded: expanded.has(pid),
           hasChildren: info.childPids.length > 0,
           onToggle: toggleExpand,
-        } as NodeData,
+        } as unknown as Record<string, unknown>,
       })
     }
 
