@@ -1038,6 +1038,11 @@ function GitHubSyncSection() {
             <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} className="rounded" />
             <span className="text-sm text-gray-700 dark:text-slate-300">Enable automatic sync</span>
           </label>
+          <select value={(form as Record<string, unknown>).scope as string || 'account'} onChange={e => setForm({ ...form, scope: e.target.value } as typeof form)}
+            className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-2 py-1 text-xs">
+            <option value="account">Account-wide (all orgs)</option>
+            <option value="org">This org only</option>
+          </select>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 dark:text-slate-400">every</span>
             <input

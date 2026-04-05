@@ -335,15 +335,20 @@ CREATE TABLE IF NOT EXISTS user_group_members (
 );
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS require_2fa BOOLEAN DEFAULT FALSE;
+ALTER TABLE global_rules ADD COLUMN IF NOT EXISTS account_id TEXT DEFAULT '';
+ALTER TABLE github_sync_configs DROP CONSTRAINT IF EXISTS github_sync_configs_pkey;
+ALTER TABLE github_sync_configs DROP CONSTRAINT IF EXISTS github_sync_configs_org_id_fkey;
 
 CREATE TABLE IF NOT EXISTS github_sync_configs (
-    org_id      TEXT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    account_id  TEXT NOT NULL DEFAULT '',
+    org_id      TEXT NOT NULL DEFAULT '',
     repo_url    TEXT DEFAULT '',
     branch      TEXT DEFAULT 'main',
     path        TEXT DEFAULT '',
     token       TEXT DEFAULT '',
     interval_min INT DEFAULT 30,
     enabled     BOOLEAN DEFAULT FALSE,
+    scope       TEXT DEFAULT 'account',
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 `
