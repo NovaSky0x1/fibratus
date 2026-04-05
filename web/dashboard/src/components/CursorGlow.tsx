@@ -13,9 +13,9 @@ export default function CursorGlow() {
     let mx = -1000
     let my = -1000
     let raf = 0
-    const GRID = 50
-    const GLOW_RADIUS = 250
-    const RING_INNER = 80
+    const GRID = 40
+    const RADIUS = 160
+    const RING_WIDTH = 40
     const isDark = () => document.documentElement.classList.contains('dark')
 
     const resize = () => {
@@ -30,83 +30,66 @@ export default function CursorGlow() {
       const h = canvas.height
       ctx.clearRect(0, 0, w, h)
 
+      if (mx < -500) { raf = requestAnimationFrame(draw); return }
+
       const dark = isDark()
-      const gridAlpha = dark ? 0.06 : 0.04
-      const glowColor = dark ? 'rgba(96, 206, 253,' : 'rgba(76, 110, 245,'
+      const baseColor = dark ? [96, 206, 253] : [76, 110, 245]
 
-      // Draw grid lines only where the cursor glow reaches
-      // This creates the "spotlight on grid" effect
-      const x0 = Math.max(0, mx - GLOW_RADIUS - GRID)
-      const x1 = Math.min(w, mx + GLOW_RADIUS + GRID)
-      const y0 = Math.max(0, my - GLOW_RADIUS - GRID)
-      const y1 = Math.min(h, my + GLOW_RADIUS + GRID)
+      // Only draw grid in a tight area around cursor
+      const extent = RADIUS + GRID
+      const x0 = Math.floor((mx - extent) / GRID) * GRID
+      const x1 = mx + extent
+      const y0 = Math.floor((my - extent) / GRID) * GRID
+      const y1 = my + extent
 
-      // Draw grid near cursor with distance-based alpha
-      for (let x = Math.floor(x0 / GRID) * GRID; x <= x1; x += GRID) {
-        for (let y = Math.floor(y0 / GRID) * GRID; y <= y1; y += GRID) {
-          const dx = x - mx
-          const dy = y - my
+      for (let gx = x0; gx <= x1; gx += GRID) {
+        for (let gy = y0; gy <= y1; gy += GRID) {
+          const dx = gx - mx
+          const dy = gy - my
           const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist > RADIUS) continue
 
-          if (dist > GLOW_RADIUS) continue
-
-          // Ring falloff: bright at RING_INNER..GLOW_RADIUS*0.6, fades at edges
+          // Hollow ring: fade in from center, peak at ring, fade out
+          const ringCenter = RADIUS - RING_WIDTH
           let alpha: number
-          if (dist < RING_INNER) {
-            alpha = gridAlpha * 0.3 // dim inside the ring
+          if (dist < ringCenter - 20) {
+            alpha = 0 // invisible inside the ring
+          } else if (dist < ringCenter) {
+            alpha = ((dist - (ringCenter - 20)) / 20) * 0.12 // fade in
+          } else if (dist < RADIUS - 10) {
+            alpha = 0.12 // peak brightness in ring band
           } else {
-            const t = (dist - RING_INNER) / (GLOW_RADIUS - RING_INNER)
-            alpha = gridAlpha * (1 - t) * 2.5 // bright ring, fading outward
+            alpha = ((RADIUS - dist) / 10) * 0.12 // fade out at edge
           }
 
-          ctx.strokeStyle = `${glowColor}${Math.min(alpha, 0.2).toFixed(3)})`
+          if (alpha <= 0) continue
+
+          const [r, g, b] = baseColor
+          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`
           ctx.lineWidth = 0.5
 
-          // Horizontal line segment
+          // Draw grid cell edges
           ctx.beginPath()
-          ctx.moveTo(x, y)
-          ctx.lineTo(x + GRID, y)
+          ctx.moveTo(gx, gy)
+          ctx.lineTo(Math.min(gx + GRID, x1), gy)
           ctx.stroke()
 
-          // Vertical line segment
           ctx.beginPath()
-          ctx.moveTo(x, y)
-          ctx.lineTo(x, y + GRID)
+          ctx.moveTo(gx, gy)
+          ctx.lineTo(gx, Math.min(gy + GRID, y1))
           ctx.stroke()
         }
       }
 
-      // Draw the ring glow itself
-      const ringGradient = ctx.createRadialGradient(mx, my, RING_INNER, mx, my, GLOW_RADIUS)
-      ringGradient.addColorStop(0, `${glowColor}0)`)
-      ringGradient.addColorStop(0.3, `${glowColor}${dark ? '0.07' : '0.04'})`)
-      ringGradient.addColorStop(0.6, `${glowColor}${dark ? '0.03' : '0.02'})`)
-      ringGradient.addColorStop(1, `${glowColor}0)`)
-
-      ctx.fillStyle = ringGradient
-      ctx.beginPath()
-      ctx.arc(mx, my, GLOW_RADIUS, 0, Math.PI * 2)
-      ctx.fill()
+      raf = requestAnimationFrame(draw)
     }
 
-    const loop = () => {
-      draw()
-      raf = requestAnimationFrame(loop)
-    }
-
-    const onMove = (e: MouseEvent) => {
-      mx = e.clientX
-      my = e.clientY
-    }
-
-    const onLeave = () => {
-      mx = -1000
-      my = -1000
-    }
+    const onMove = (e: MouseEvent) => { mx = e.clientX; my = e.clientY }
+    const onLeave = () => { mx = -1000; my = -1000 }
 
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseleave', onLeave)
-    raf = requestAnimationFrame(loop)
+    raf = requestAnimationFrame(draw)
 
     return () => {
       document.removeEventListener('mousemove', onMove)
@@ -120,7 +103,7 @@ export default function CursorGlow() {
     <canvas
       ref={canvasRef}
       className="pointer-events-none fixed inset-0"
-      style={{ zIndex: 0 }}
+      style={{ zIndex: 1 }}
       aria-hidden="true"
     />
   )

@@ -136,7 +136,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
       <CursorGlow />
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 w-64 sidebar-gradient dark:sidebar-gradient-dark flex flex-col">
+      <aside className="fixed inset-y-0 left-0 z-20 w-64 sidebar-gradient dark:sidebar-gradient-dark flex flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center gap-3 px-6 border-b border-white/10">
           <img src="/logo.png" alt="Fibratus" className="h-8 w-8" />
@@ -264,8 +264,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="pl-64">
+      {/* Main content — z-10 so it sits above the cursor glow canvas */}
+      <main className="relative z-10 pl-64">
         <div className="px-8 py-8">
           {children}
         </div>
