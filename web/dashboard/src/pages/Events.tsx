@@ -716,13 +716,12 @@ export default function Events() {
                 <th className="px-3 py-2 font-medium text-slate-400 w-[85px]">Category</th>
                 <SortableHeader label="PID" sortKey="pid" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[60px]" />
                 <SortableHeader label="Process" sortKey="process_name" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[130px]" />
-                <th className="px-3 py-2 font-medium text-slate-400">Preview</th>
                 <SortableHeader label="Agent" sortKey="agent_hostname" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[110px]" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/30">
               {isLoading && (
-                <tr><td colSpan={8} className="px-3 py-16 text-center text-slate-500 text-sm font-sans">
+                <tr><td colSpan={7} className="px-3 py-16 text-center text-slate-500 text-sm font-sans">
                   <div className="flex items-center justify-center gap-2">
                     <svg className="animate-spin h-4 w-4 text-slate-500" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -747,7 +746,7 @@ export default function Events() {
               ))}
               {!isLoading && events.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-16 text-center text-slate-500 text-sm font-sans">
+                  <td colSpan={7} className="px-3 py-16 text-center text-slate-500 text-sm font-sans">
                     {activeQuery
                       ? 'No events match your query.'
                       : 'No telemetry data yet. Agents will start streaming events when connected.'}
@@ -792,51 +791,40 @@ export default function Events() {
 // Event Preview — compact JSON snippet
 // ═════════════════════════════════════════════════
 
-function EventPreview({ evt }: { evt: TelemetryEvent }) {
+function EventPreviewInline({ evt }: { evt: TelemetryEvent }) {
   const raw = evt.raw_event as Record<string, unknown> | null
   const ps = (raw?.ps || {}) as Record<string, unknown>
   const params = (evt.params || {}) as Record<string, unknown>
 
-  // Build a compact preview of the most interesting fields
-  const parts: string[] = []
+  const chips: { k: string; v: string }[] = []
 
-  // Process info
-  if (evt.process_exe) parts.push(`exe: ${String(evt.process_exe).split('\\').pop()}`)
-  if (ps.sha256) parts.push(`sha256: ${String(ps.sha256).slice(0, 12)}...`)
+  if (ps.sha256) chips.push({ k: 'sha256', v: String(ps.sha256).slice(0, 12) + '...' })
 
-  // Event-specific params (pick the most interesting ones)
-  const interestingKeys = ['file_path', 'file_name', 'dip', 'dport', 'sip', 'sport', 'key_name', 'name', 'domain', 'image_size', 'signature_level', 'cert_subject']
-  for (const key of interestingKeys) {
+  const interesting = ['file_path', 'file_name', 'dip', 'dport', 'key_name', 'name', 'domain', 'cert_subject', 'signature_level']
+  for (const key of interesting) {
     if (params[key] !== undefined && params[key] !== '') {
       const val = String(params[key])
-      parts.push(`${key}: ${val.length > 40 ? val.slice(0, 40) + '...' : val}`)
-      if (parts.length >= 3) break
+      chips.push({ k: key, v: val.length > 35 ? val.slice(0, 35) + '...' : val })
+      if (chips.length >= 3) break
     }
   }
 
-  if (parts.length === 0) {
-    // Fallback to first few params
-    const entries = Object.entries(params).slice(0, 2)
+  if (chips.length === 0) {
+    const entries = Object.entries(params).filter(([, v]) => v !== '' && v !== undefined).slice(0, 2)
     for (const [k, v] of entries) {
       const val = String(v)
-      parts.push(`${k}: ${val.length > 30 ? val.slice(0, 30) + '...' : val}`)
+      chips.push({ k, v: val.length > 30 ? val.slice(0, 30) + '...' : val })
     }
   }
 
   return (
-    <div className="space-y-0.5 leading-tight">
-      {parts.map((p, i) => {
-        const [key, ...rest] = p.split(': ')
-        const val = rest.join(': ')
-        return (
-          <div key={i} className="truncate">
-            <span className="text-slate-600">{key}:</span>{' '}
-            <span className="text-slate-400">{val}</span>
-          </div>
-        )
-      })}
-      {parts.length === 0 && <span className="text-slate-600 italic">—</span>}
-    </div>
+    <>
+      {chips.map((c, i) => (
+        <span key={i} className="truncate max-w-[220px]">
+          <span className="text-slate-600">{c.k}:</span> {c.v}
+        </span>
+      ))}
+    </>
   )
 }
 
@@ -898,13 +886,29 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
             {evt.process_name}
           </span>
         </td>
-        <td className="px-3 py-1.5 text-slate-500 font-mono text-[10px] max-w-[320px]">
-          <EventPreview evt={evt} />
-        </td>
         <td className="px-3 py-1.5 text-slate-400">
           <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
             {evt.agent_hostname}
           </span>
+        </td>
+      </tr>
+      {/* Preview sub-row */}
+      <tr
+        className={`cursor-pointer border-b border-slate-800/50 ${
+          isExpanded ? 'bg-slate-800/80 dark:bg-slate-900/80' : 'hover:bg-slate-700/20 dark:hover:bg-slate-800/30'
+        }`}
+        onClick={onToggle}
+      >
+        <td></td>
+        <td colSpan={6} className="px-3 pb-2 pt-0">
+          <div className="flex items-center gap-3 text-[10px] font-mono text-slate-500">
+            {evt.process_exe && (
+              <span className="truncate max-w-[250px]" title={evt.process_exe}>
+                <span className="text-slate-600">exe:</span> {evt.process_exe}
+              </span>
+            )}
+            <EventPreviewInline evt={evt} />
+          </div>
         </td>
       </tr>
 
@@ -952,7 +956,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
 
   return (
     <tr>
-      <td colSpan={8} className="p-0">
+      <td colSpan={7} className="p-0">
         <div className="bg-slate-900/50 dark:bg-black/30 border-t border-b border-slate-700/50 px-4 py-4 space-y-4" onClick={(e) => e.stopPropagation()}>
           {/* ── Top section: 3 cards ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
