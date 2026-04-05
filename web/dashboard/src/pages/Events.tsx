@@ -187,7 +187,7 @@ export default function Events() {
   const [showFields, setShowFields] = useState(true)
 
   // Table state
-  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
   const [detailTab, setDetailTab] = useState<'ancestry' | 'callstack' | 'modules' | 'raw'>('ancestry')
   const [page, setPage] = useState(1)
   const [rawExpanded, setRawExpanded] = useState(false)
@@ -293,11 +293,9 @@ export default function Events() {
         offset: String((page - 1) * 100),
       }
       if (activeQuery) {
+        // Send as QL query AND as legacy search fallback
         params.query = activeQuery
-        // Also send as legacy search for basic text filtering fallback
-        if (!activeQuery.includes('=') && !activeQuery.includes('contains') && !activeQuery.includes('matches')) {
-          params.search = activeQuery
-        }
+        params.search = activeQuery
       }
       if (customTimeActive && customFrom && customTo) {
         params.from = new Date(customFrom).toISOString()
@@ -344,7 +342,7 @@ export default function Events() {
     const query = q !== undefined ? q : buildEffectiveQuery()
     setActiveQuery(query.trim())
     setPage(1)
-    setExpandedId(null)
+    setExpandedIdx(null)
     setShowAutocomplete(false)
     setHistoryIdx(-1)
     if (query.trim()) pushToHistory(query.trim())
@@ -444,12 +442,12 @@ export default function Events() {
     setActiveQuery('')
     setQueryError('')
     setPage(1)
-    setExpandedId(null)
+    setExpandedIdx(null)
     queryRef.current?.focus()
   }, [])
 
-  const toggleExpand = useCallback((id: number) => {
-    setExpandedId(prev => prev === id ? null : id)
+  const toggleExpand = useCallback((idx: number) => {
+    setExpandedIdx(prev => prev === idx ? null : idx)
     setDetailTab('ancestry')
     setRawExpanded(false)
   }, [])
@@ -751,12 +749,12 @@ export default function Events() {
                   </div>
                 </td></tr>
               )}
-              {!isLoading && sortedEvents.map((evt) => (
+              {!isLoading && sortedEvents.map((evt, idx) => (
                 <EventRow
-                  key={evt.id}
+                  key={`${evt.id}-${idx}`}
                   evt={evt}
-                  isExpanded={expandedId === evt.id}
-                  onToggle={() => toggleExpand(evt.id)}
+                  isExpanded={expandedIdx === idx}
+                  onToggle={() => toggleExpand(idx)}
                   detailTab={detailTab}
                   onTabChange={setDetailTab}
                   rawExpanded={rawExpanded}
