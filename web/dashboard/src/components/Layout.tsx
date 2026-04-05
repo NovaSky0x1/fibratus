@@ -101,23 +101,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     window.location.reload()
   }
 
-  const handleAccountChange = (accountId: string) => {
+  const handleAccountChange = async (accountId: string) => {
     setSelectedAccountId(accountId)
-    api.adminSwitchAccount(accountId).then(() => {
-      api.adminGetAccountOrgs(accountId).then(res => {
-        const accountOrgs = res.data as Organization[] | undefined
-        if (accountOrgs && accountOrgs.length > 0) {
-          setOrgs(accountOrgs)
-          setCurrentOrgId(accountOrgs[0].id)
-          setCurrentOrg(accountOrgs[0].id)
-        } else {
-          setOrgs([])
-          setCurrentOrgId('')
-          setCurrentOrg('')
-        }
-        window.location.reload()
-      })
-    })
+    try {
+      const res = await api.adminGetAccountOrgs(accountId)
+      const accountOrgs = res.data as Organization[] | undefined
+      if (accountOrgs && accountOrgs.length > 0) {
+        setOrgs(accountOrgs)
+        setCurrentOrgId(accountOrgs[0].id)
+        setCurrentOrg(accountOrgs[0].id)
+      } else {
+        setOrgs([])
+        // Keep the current org if no orgs in new account
+      }
+      // Soft reload — navigate to current page to refresh data
+      navigate(location.pathname)
+    } catch {
+      // Don't sign out on error — just log
+    }
   }
 
   const handleLogout = () => {

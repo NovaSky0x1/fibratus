@@ -966,10 +966,21 @@ function GitHubSyncSection() {
     setLoaded(true)
   }
 
+  const [saveMsg, setSaveMsg] = useState('')
+  const [saveError, setSaveError] = useState('')
+
   const saveMutation = useMutation({
-    mutationFn: () => api.saveGitHubSyncConfig(form),
-    onSuccess: () => {
+    mutationFn: () => api.saveGitHubSyncConfig({ ...form, scope: (form as Record<string, unknown>).scope as string || 'account' }),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['github-sync-config'] })
+      setSaveMsg('Configuration saved successfully')
+      setSaveError('')
+      if (res.error) setSaveError(res.error.message)
+      setTimeout(() => setSaveMsg(''), 3000)
+    },
+    onError: (err: Error) => {
+      setSaveError(err.message || 'Failed to save')
+      setSaveMsg('')
     },
   })
 
@@ -977,7 +988,11 @@ function GitHubSyncSection() {
     mutationFn: () => api.triggerGitHubSync(),
     onSuccess: (res) => {
       if (res.data) setSyncResult(res.data as typeof syncResult)
+      if (res.error) setSaveError(res.error.message)
       queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+    onError: (err: Error) => {
+      setSaveError(err.message || 'Sync failed')
     },
   })
 
@@ -1072,6 +1087,9 @@ function GitHubSyncSection() {
             {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
           </button>
         </div>
+
+        {saveMsg && <p className="mt-2 text-sm text-emerald-600 dark:text-emerald-400">{saveMsg}</p>}
+        {saveError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{saveError}</p>}
 
         {syncResult && (
           <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4">

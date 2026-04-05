@@ -358,7 +358,7 @@ export const api = {
 
   // GitHub Sync
   getGitHubSyncConfig: () => fetchApi<unknown>(orgPath('/github-sync')),
-  saveGitHubSyncConfig: (data: { repo_url: string; branch: string; path: string; token: string; interval: number; enabled: boolean }) =>
+  saveGitHubSyncConfig: (data: { repo_url: string; branch: string; path: string; token: string; interval: number; enabled: boolean; scope?: string }) =>
     fetchApi<unknown>(orgPath('/github-sync'), { method: 'PUT', body: JSON.stringify(data) }),
   triggerGitHubSync: () =>
     fetchApi<{ created: number; updated: number; skipped: number; errors: string[]; duration: string }>(orgPath('/github-sync/trigger'), { method: 'POST' }),
