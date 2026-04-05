@@ -47,9 +47,9 @@ const EVENT_COLORS: Record<string, string> = {
 
 const FIELD_SUGGESTIONS = [
   // Event
-  { field: 'kevt.name', desc: 'Event name', category: 'Event' },
-  { field: 'kevt.category', desc: 'Event category', category: 'Event' },
-  { field: 'kevt.seq', desc: 'Sequence number', category: 'Event' },
+  { field: 'evt.name', desc: 'Event name', category: 'Event' },
+  { field: 'evt.category', desc: 'Event category', category: 'Event' },
+  { field: 'evt.seq', desc: 'Sequence number', category: 'Event' },
   // Process
   { field: 'ps.name', desc: 'Process name', category: 'Process' },
   { field: 'ps.exe', desc: 'Executable path', category: 'Process' },
@@ -70,9 +70,9 @@ const FIELD_SUGGESTIONS = [
   { field: 'registry.key.name', desc: 'Registry key', category: 'Registry' },
   { field: 'registry.value', desc: 'Registry value', category: 'Registry' },
   // Image/Module
-  { field: 'image.name', desc: 'Module name', category: 'Image' },
-  { field: 'image.path', desc: 'Module path', category: 'Image' },
-  { field: 'image.is_signed', desc: 'Signature status', category: 'Image' },
+  { field: 'dll.name', desc: 'Module/DLL name', category: 'Module' },
+  { field: 'dll.path', desc: 'Module/DLL path', category: 'Module' },
+  { field: 'dll.is_signed', desc: 'Module signature status', category: 'Module' },
   // DNS
   { field: 'dns.name', desc: 'DNS query name', category: 'DNS' },
   // PE
@@ -459,7 +459,7 @@ export default function Events() {
       {/* ── Page Banner ── */}
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Discover Events</h1>
-        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Search and investigate endpoint telemetry using the Fibratus Query Language. Use field names like <code className="text-cyan-400">ps.name</code>, <code className="text-cyan-400">kevt.name</code>, <code className="text-cyan-400">net.dip</code> with operators like <code className="text-cyan-400">=</code>, <code className="text-cyan-400">contains</code>, <code className="text-cyan-400">imatches</code>.</p>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Search and investigate endpoint telemetry using the Fibratus Query Language. Use field names like <code className="text-cyan-400">ps.name</code>, <code className="text-cyan-400">evt.name</code>, <code className="text-cyan-400">net.dip</code> with operators like <code className="text-cyan-400">=</code>, <code className="text-cyan-400">contains</code>, <code className="text-cyan-400">imatches</code>.</p>
       </div>
 
       {/* ── Query Bar ── */}
@@ -480,7 +480,7 @@ export default function Events() {
                 const lastToken = tokens[tokens.length - 1] || ''
                 if (lastToken.length >= 1 && /^[a-z]/.test(lastToken)) setShowAutocomplete(true)
               }}
-              placeholder="Type a query... ps.name = 'cmd.exe' and kevt.name = 'CreateProcess'"
+              placeholder="Type a query... ps.name = 'cmd.exe' and evt.name = 'CreateProcess'"
               className="flex-1 bg-transparent text-blue-800 dark:text-cyan-400 font-mono text-sm placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none caret-blue-700 dark:caret-cyan-400"
               spellCheck={false}
               autoComplete="off"
@@ -631,7 +631,7 @@ export default function Events() {
             <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 flex items-end gap-2">
               <div>
                 <label className="text-[10px] text-gray-400 dark:text-slate-500 block mb-1">Field</label>
-                <select value={newFilterField} onChange={(e) => setNewFilterField(e.target.value)} className="rounded bg-gray-50 dark:bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
+                <select value={newFilterField} onChange={(e) => setNewFilterField(e.target.value)} className="rounded bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 px-2 py-1.5 text-xs text-gray-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 dark:focus:border-cyan-600">
                   {Object.entries(fieldsByCategory).map(([cat, fields]) => (
                     <optgroup key={cat} label={cat}>
                       {fields.map(f => <option key={f.field} value={f.field}>{f.field}</option>)}
@@ -641,7 +641,7 @@ export default function Events() {
               </div>
               <div>
                 <label className="text-[10px] text-gray-400 dark:text-slate-500 block mb-1">Operator</label>
-                <select value={newFilterOperator} onChange={(e) => setNewFilterOperator(e.target.value)} className="rounded bg-gray-50 dark:bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
+                <select value={newFilterOperator} onChange={(e) => setNewFilterOperator(e.target.value)} className="rounded bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 px-2 py-1.5 text-xs text-gray-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 dark:focus:border-cyan-600">
                   <option value="=">=</option>
                   <option value="!=">!=</option>
                   <option value="contains">contains</option>
@@ -699,9 +699,9 @@ export default function Events() {
                   <div>
                     <p className="text-[10px] text-blue-700 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Event Types</p>
                     {dynamicFields.event_types.map(t => (
-                      <button key={t} onClick={() => addQuickFilter('kevt.name', t)}
+                      <button key={t} onClick={() => addQuickFilter('evt.name', t)}
                         className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate"
-                        title={`Filter: kevt.name = '${t}'`}>
+                        title={`Filter: evt.name = '${t}'`}>
                         {t}
                       </button>
                     ))}
@@ -711,7 +711,7 @@ export default function Events() {
                   <div>
                     <p className="text-[10px] text-blue-700 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Categories</p>
                     {dynamicFields.event_categories.map(c => (
-                      <button key={c} onClick={() => addQuickFilter('kevt.category', c)}
+                      <button key={c} onClick={() => addQuickFilter('evt.category', c)}
                         className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate">
                         {c}
                       </button>
@@ -940,12 +940,12 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
           {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
         </td>
         <td className="px-3 py-1.5">
-          <span className="cursor-pointer font-semibold text-gray-900 dark:text-slate-100 hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
+          <span className="cursor-pointer font-semibold text-gray-900 dark:text-slate-100 hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('evt.name', evt.event_name) }} title="Click to filter by this event type">
             {evt.event_name}
           </span>
         </td>
         <td className="px-3 py-1.5">
-          <span className={'inline-flex dark:rounded dark:px-1.5 dark:py-0.5 text-[11px] font-semibold cursor-pointer hover:underline transition-all ' + (EVENT_COLORS[evt.event_category] || 'text-gray-600 dark:text-gray-500 dark:text-slate-400')} onClick={() => { onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
+          <span className={'inline-flex dark:rounded dark:px-1.5 dark:py-0.5 text-[11px] font-semibold cursor-pointer hover:underline transition-all ' + (EVENT_COLORS[evt.event_category] || 'text-gray-600 dark:text-gray-500 dark:text-slate-400')} onClick={() => { onAddFilter('evt.category', evt.event_category) }} title="Click to filter by this category">
             {evt.event_category}
           </span>
         </td>

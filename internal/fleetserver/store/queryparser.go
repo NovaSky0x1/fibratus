@@ -9,11 +9,14 @@ import (
 // fieldMapping maps Fibratus QL field names to database columns.
 // Fields not in this map are searched in the raw_event JSONB column.
 var fieldMapping = map[string]string{
-	// Event fields
+	// Event fields (evt.* is the current naming, kevt.* is deprecated but still supported)
+	"evt.name":      "event_name",
 	"kevt.name":     "event_name",
 	"event_name":    "event_name",
+	"evt.category":  "event_category",
 	"kevt.category": "event_category",
 	"event_category": "event_category",
+	"evt.seq":       "seq",
 	"kevt.seq":      "seq",
 
 	// Process fields
