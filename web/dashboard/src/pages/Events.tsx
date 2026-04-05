@@ -150,6 +150,13 @@ function getTimeRange(presetMs: number): { from: string; to: string } {
 // Component
 // ═════════════════════════════════════════════════
 
+interface ActiveFilter {
+  id: string
+  field: string
+  operator: string
+  value: string
+}
+
 export default function Events() {
   // Query state
   const [queryInput, setQueryInput] = useState('')
@@ -164,12 +171,95 @@ export default function Events() {
   // Time range
   const [timePreset, setTimePreset] = useState(TIME_PRESETS[2]) // default 1h
   const [liveMode, setLiveMode] = useState(true)
+  const [showCustomTime, setShowCustomTime] = useState(false)
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [customTimeActive, setCustomTimeActive] = useState(false)
+
+  // Filter pills
+  const [filters, setFilters] = useState<ActiveFilter[]>([])
+  const [showAddFilter, setShowAddFilter] = useState(false)
+  const [newFilterField, setNewFilterField] = useState('ps.name')
+  const [newFilterOperator, setNewFilterOperator] = useState('=')
+  const [newFilterValue, setNewFilterValue] = useState('')
+
+  // Fields sidebar
+  const [showFields, setShowFields] = useState(true)
 
   // Table state
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [detailTab, setDetailTab] = useState<'ancestry' | 'callstack' | 'modules' | 'raw'>('ancestry')
   const [page, setPage] = useState(1)
   const [rawExpanded, setRawExpanded] = useState(false)
+
+  // Group fields by category for sidebar
+  const fieldsByCategory = useMemo(() => {
+    const grouped: Record<string, typeof FIELD_SUGGESTIONS> = {}
+    for (const f of FIELD_SUGGESTIONS) {
+      if (!grouped[f.category]) grouped[f.category] = []
+      grouped[f.category].push(f)
+    }
+    return grouped
+  }, [])
+
+  // Build effective query combining typed query + filter pills
+  const buildEffectiveQuery = useCallback(() => {
+    const parts: string[] = []
+    if (queryInput.trim()) parts.push(queryInput.trim())
+    for (const f of filters) {
+      // Numeric-only values don't need quotes, everything else does
+      const isNumeric = /^\d+$/.test(f.value)
+      const noQuoteOps = ['>', '<', '>=', '<=']
+      const val = (isNumeric || noQuoteOps.includes(f.operator)) ? f.value : `'${f.value}'`
+      parts.push(`${f.field} ${f.operator} ${val}`)
+    }
+    return parts.join(' and ')
+  }, [queryInput, filters])
+
+  // Filter helpers
+  const addFilter = useCallback(() => {
+    if (!newFilterValue.trim()) return
+    setFilters(prev => [...prev, {
+      id: crypto.randomUUID(),
+      field: newFilterField,
+      operator: newFilterOperator,
+      value: newFilterValue.trim(),
+    }])
+    setNewFilterValue('')
+    setShowAddFilter(false)
+  }, [newFilterField, newFilterOperator, newFilterValue])
+
+  const removeFilter = useCallback((id: string) => {
+    setFilters(prev => prev.filter(f => f.id !== id))
+  }, [])
+
+  const addQuickFilter = useCallback((field: string, value: string) => {
+    if (!value) return
+    // Don't add duplicate
+    if (filters.some(f => f.field === field && f.value === value)) return
+    setFilters(prev => [...prev, {
+      id: crypto.randomUUID(),
+      field,
+      operator: '=',
+      value,
+    }])
+  }, [filters])
+
+  const insertFieldInQuery = useCallback((field: string) => {
+    setQueryInput(prev => {
+      if (!prev.trim()) return field
+      return prev + ' ' + field
+    })
+    queryRef.current?.focus()
+  }, [])
+
+  // Custom time range
+  const applyCustomRange = useCallback(() => {
+    if (!customFrom || !customTo) return
+    setCustomTimeActive(true)
+    setShowCustomTime(false)
+    setPage(1)
+  }, [customFrom, customTo])
 
   // Compute filtered autocomplete suggestions
   const autocompleteMatches = useMemo(() => {
@@ -196,16 +286,21 @@ export default function Events() {
 
   // Data fetching
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['telemetry', activeQuery, timePreset.label, page],
+    queryKey: ['telemetry', activeQuery, timePreset.label, page, customTimeActive, customFrom, customTo, filters.map(f => f.id).join(',')],
     queryFn: () => {
       const params: Record<string, string> = {
         limit: '100',
         offset: String((page - 1) * 100),
       }
       if (activeQuery) params.query = activeQuery
-      const range = getTimeRange(timePreset.ms)
-      params.from = range.from
-      params.to = range.to
+      if (customTimeActive && customFrom && customTo) {
+        params.from = new Date(customFrom).toISOString()
+        params.to = new Date(customTo).toISOString()
+      } else {
+        const range = getTimeRange(timePreset.ms)
+        params.from = range.from
+        params.to = range.to
+      }
       return api.getOrgTelemetry(params)
     },
     refetchInterval: liveMode ? 3000 : false,
@@ -215,6 +310,14 @@ export default function Events() {
   useEffect(() => {
     if (liveMode) setPage(1)
   }, [liveMode])
+
+  // Re-submit query when filters change
+  useEffect(() => {
+    const effective = buildEffectiveQuery()
+    setActiveQuery(effective.trim())
+    setPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters])
 
   // Handle query errors from backend
   useEffect(() => {
@@ -232,14 +335,14 @@ export default function Events() {
 
   // Submit query
   const submitQuery = useCallback((q?: string) => {
-    const query = q ?? queryInput
+    const query = q !== undefined ? q : buildEffectiveQuery()
     setActiveQuery(query.trim())
     setPage(1)
     setExpandedId(null)
     setShowAutocomplete(false)
     setHistoryIdx(-1)
     if (query.trim()) pushToHistory(query.trim())
-  }, [queryInput])
+  }, [buildEffectiveQuery])
 
   // Handle keyboard in query bar
   const handleQueryKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -349,8 +452,24 @@ export default function Events() {
   // Render
   // ═════════════════════════════════════════════════
 
+  // Time range display label
+  const timeRangeLabel = useMemo(() => {
+    if (customTimeActive && customFrom && customTo) {
+      const fmt = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      return `${fmt(customFrom)} - ${fmt(customTo)}`
+    }
+    const labels: Record<string, string> = { '5m': 'Last 5 minutes', '15m': 'Last 15 minutes', '1h': 'Last 1 hour', '6h': 'Last 6 hours', '24h': 'Last 24 hours', '7d': 'Last 7 days' }
+    return labels[timePreset.label] || `Last ${timePreset.label}`
+  }, [customTimeActive, customFrom, customTo, timePreset.label])
+
   return (
     <div className="space-y-0">
+      {/* ── Page Banner ── */}
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold text-slate-100">Discover Events</h1>
+        <p className="text-sm text-slate-400 mt-1">Search and investigate endpoint telemetry using the Fibratus Query Language. Use field names like <code className="text-cyan-400">ps.name</code>, <code className="text-cyan-400">kevt.name</code>, <code className="text-cyan-400">net.dip</code> with operators like <code className="text-cyan-400">=</code>, <code className="text-cyan-400">contains</code>, <code className="text-cyan-400">imatches</code>.</p>
+      </div>
+
       {/* ── Query Bar ── */}
       <div className="rounded-xl bg-slate-950 dark:bg-black border border-slate-700 p-3">
         <div className="relative">
@@ -417,14 +536,15 @@ export default function Events() {
       </div>
 
       {/* ── Time Range Bar ── */}
-      <div className="flex items-center justify-between rounded-b-xl bg-slate-900/80 dark:bg-slate-950/80 border-x border-b border-slate-700/50 px-4 py-2 -mt-1">
+      <div className="rounded-b-xl bg-slate-900/80 dark:bg-slate-950/80 border-x border-b border-slate-700/50 px-4 py-2 -mt-1">
+        <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {TIME_PRESETS.map(p => (
             <button
               key={p.label}
-              onClick={() => { setTimePreset(p); setPage(1) }}
+              onClick={() => { setTimePreset(p); setCustomTimeActive(false); setShowCustomTime(false); setPage(1) }}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                timePreset.label === p.label
+                timePreset.label === p.label && !customTimeActive
                   ? 'bg-cyan-600 text-white'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
@@ -432,6 +552,16 @@ export default function Events() {
               {p.label}
             </button>
           ))}
+          <button
+            onClick={() => { setShowCustomTime(!showCustomTime); setCustomTimeActive(false) }}
+            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              customTimeActive
+                ? 'bg-cyan-600 text-white'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            Custom
+          </button>
           <div className="mx-2 h-4 w-px bg-slate-700" />
           <button
             onClick={() => setLiveMode(!liveMode)}
@@ -447,6 +577,8 @@ export default function Events() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Time range label */}
+          <span className="text-xs text-slate-500">{timeRangeLabel}</span>
           {/* Active query tag */}
           {activeQuery && (
             <div className="flex items-center gap-1.5 rounded bg-cyan-900/30 border border-cyan-700/40 px-2.5 py-1">
@@ -469,10 +601,124 @@ export default function Events() {
             Refresh
           </button>
         </div>
+        </div>
+
+        {/* Custom time range inputs */}
+        {showCustomTime && (
+          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/50">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider">From</span>
+            <input type="datetime-local" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-600" />
+            <span className="text-slate-500 text-xs">to</span>
+            <input type="datetime-local" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-600" />
+            <button onClick={applyCustomRange} className="rounded bg-cyan-600 hover:bg-cyan-500 px-3 py-1 text-xs text-white transition-colors">Apply</button>
+            <button onClick={() => setShowCustomTime(false)} className="text-xs text-slate-500 hover:text-slate-300">Cancel</button>
+          </div>
+        )}
       </div>
 
+      {/* ── Filter Pills ── */}
+      {(filters.length > 0 || showAddFilter) && (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {filters.map(f => (
+              <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-cyan-900/40 border border-cyan-700/50 px-3 py-1 text-xs text-cyan-300">
+                <span className="text-cyan-500">{f.field}</span>
+                <span className="text-slate-500">{f.operator}</span>
+                <span className="text-cyan-300 font-mono">&quot;{f.value}&quot;</span>
+                <button onClick={() => removeFilter(f.id)} className="ml-1 text-slate-500 hover:text-red-400">&times;</button>
+              </span>
+            ))}
+            {!showAddFilter && (
+              <button onClick={() => setShowAddFilter(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
+                + Add filter
+              </button>
+            )}
+          </div>
+          {showAddFilter && (
+            <div className="rounded-lg border border-slate-700 bg-slate-800 p-3 flex items-end gap-2">
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">Field</label>
+                <select value={newFilterField} onChange={(e) => setNewFilterField(e.target.value)} className="rounded bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
+                  {Object.entries(fieldsByCategory).map(([cat, fields]) => (
+                    <optgroup key={cat} label={cat}>
+                      {fields.map(f => <option key={f.field} value={f.field}>{f.field}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">Operator</label>
+                <select value={newFilterOperator} onChange={(e) => setNewFilterOperator(e.target.value)} className="rounded bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
+                  <option value="=">=</option>
+                  <option value="!=">!=</option>
+                  <option value="contains">contains</option>
+                  <option value="imatches">imatches</option>
+                  <option value="startswith">startswith</option>
+                  <option value="endswith">endswith</option>
+                  <option value=">">{'>'}</option>
+                  <option value="<">{'<'}</option>
+                  <option value="in">in</option>
+                  <option value="matches">matches</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] text-slate-500 block mb-1">Value</label>
+                <input value={newFilterValue} onChange={(e) => setNewFilterValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addFilter() }} placeholder="Enter value..." className="w-full rounded bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-600" />
+              </div>
+              <button onClick={addFilter} className="rounded bg-cyan-600 hover:bg-cyan-500 px-3 py-1.5 text-xs text-white transition-colors">Apply</button>
+              <button onClick={() => setShowAddFilter(false)} className="text-xs text-slate-500 hover:text-slate-300">Cancel</button>
+            </div>
+          )}
+        </div>
+      )}
+      {filters.length === 0 && !showAddFilter && (
+        <div className="mt-2">
+          <button onClick={() => setShowAddFilter(true)}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
+            + Add filter
+          </button>
+        </div>
+      )}
+
+      {/* ── Main Content with Fields Sidebar ── */}
+      <div className="flex gap-4 mt-3">
+        {/* Fields sidebar */}
+        <div className={`flex-shrink-0 transition-all duration-200 ${showFields ? 'w-56' : 'w-10'}`}>
+          <div className="sticky top-4 rounded-lg border border-slate-700 bg-slate-800/50 overflow-hidden">
+            <div className="px-3 py-2 border-b border-slate-700 flex items-center justify-between">
+              {showFields && <span className="text-xs font-semibold text-slate-300">Available Fields</span>}
+              <button onClick={() => setShowFields(!showFields)} className="text-[10px] text-slate-500 hover:text-slate-300" title={showFields ? 'Collapse sidebar' : 'Expand sidebar'}>
+                {showFields ? (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                )}
+              </button>
+            </div>
+            {showFields && (
+              <div className="max-h-[70vh] overflow-auto p-2 space-y-0.5">
+                {Object.entries(fieldsByCategory).map(([cat, fields]) => (
+                  <div key={cat}>
+                    <p className="text-[10px] text-slate-500 uppercase font-semibold px-1 py-1 mt-1">{cat}</p>
+                    {fields.map(f => (
+                      <button key={f.field} onClick={() => insertFieldInQuery(f.field)}
+                        className="w-full text-left px-2 py-1 rounded text-xs text-slate-300 hover:bg-slate-700 font-mono truncate"
+                        title={f.desc}>
+                        {f.field}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
       {/* ── Event Stream Table ── */}
-      <div className="mt-3 rounded-xl border border-slate-700 bg-slate-800/50 dark:bg-slate-900/50 shadow-sm dark:shadow-slate-900/50 overflow-hidden">
+      <div className="rounded-xl border border-slate-700 bg-slate-800/50 dark:bg-slate-900/50 shadow-sm dark:shadow-slate-900/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
             <thead className="border-b border-slate-700 bg-slate-800/80 dark:bg-slate-900/80 sticky top-0 z-10">
@@ -509,6 +755,7 @@ export default function Events() {
                   onTabChange={setDetailTab}
                   rawExpanded={rawExpanded}
                   onRawToggle={() => setRawExpanded(!rawExpanded)}
+                  onAddFilter={addQuickFilter}
                 />
               ))}
               {!isLoading && events.length === 0 && (
@@ -548,6 +795,8 @@ export default function Events() {
           </div>
         )}
       </div>
+        </div>{/* end flex-1 min-w-0 */}
+      </div>{/* end flex gap-4 */}
     </div>
   )
 }
@@ -564,9 +813,10 @@ interface EventRowProps {
   onTabChange: (tab: 'ancestry' | 'callstack' | 'modules' | 'raw') => void
   rawExpanded: boolean
   onRawToggle: () => void
+  onAddFilter: (field: string, value: string) => void
 }
 
-function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpanded, onRawToggle }: EventRowProps) {
+function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpanded, onRawToggle, onAddFilter }: EventRowProps) {
   return (
     <>
       <tr
@@ -589,24 +839,38 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
         <td className="px-3 py-1.5 text-slate-400 whitespace-nowrap">
           {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
         </td>
-        <td className="px-3 py-1.5 text-slate-100 font-medium">{evt.event_name}</td>
+        <td className="px-3 py-1.5 text-slate-100 font-medium">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
+            {evt.event_name}
+          </span>
+        </td>
         <td className="px-3 py-1.5">
-          <span className={'inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ' + (EVENT_COLORS[evt.event_category] || 'bg-slate-600/30 text-slate-400')}>
+          <span className={'inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-cyan-500/50 transition-all ' + (EVENT_COLORS[evt.event_category] || 'bg-slate-600/30 text-slate-400')} onClick={(e) => { e.stopPropagation(); onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
             {evt.event_category}
           </span>
         </td>
-        <td className="px-3 py-1.5 text-slate-400">{evt.pid}</td>
+        <td className="px-3 py-1.5 text-slate-400">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('ps.pid', String(evt.pid)) }} title="Click to filter by this PID">
+            {evt.pid}
+          </span>
+        </td>
         <td className="px-3 py-1.5 text-slate-100 break-all" title={evt.process_exe}>
-          {evt.process_name}
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('ps.name', evt.process_name) }} title="Click to filter by this process">
+            {evt.process_name}
+          </span>
         </td>
         <td className="px-3 py-1.5 text-slate-500 break-all whitespace-pre-wrap" title={JSON.stringify(evt.params)}>
           {summarizeParams(evt)}
         </td>
-        <td className="px-3 py-1.5 text-slate-400">{evt.agent_hostname}</td>
+        <td className="px-3 py-1.5 text-slate-400">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
+            {evt.agent_hostname}
+          </span>
+        </td>
       </tr>
 
       {/* Inline expansion */}
-      {isExpanded && <EventDetail evt={evt} tab={detailTab} onTabChange={onTabChange} rawExpanded={rawExpanded} onRawToggle={onRawToggle} />}
+      {isExpanded && <EventDetail evt={evt} tab={detailTab} onTabChange={onTabChange} rawExpanded={rawExpanded} onRawToggle={onRawToggle} onAddFilter={onAddFilter} />}
     </>
   )
 }
@@ -621,9 +885,10 @@ interface EventDetailProps {
   onTabChange: (tab: 'ancestry' | 'callstack' | 'modules' | 'raw') => void
   rawExpanded: boolean
   onRawToggle: () => void
+  onAddFilter: (field: string, value: string) => void
 }
 
-function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle }: EventDetailProps) {
+function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFilter }: EventDetailProps) {
   const raw = evt.raw_event as Record<string, unknown> | null
   const psRaw = (raw?.ps || {}) as Record<string, unknown>
   const parentRaw = (psRaw?.parent || {}) as Record<string, unknown>
@@ -656,10 +921,10 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle }: EventD
             <div className="rounded-lg border-l-2 border-blue-500 bg-slate-800/60 dark:bg-slate-900/60 border-y border-r border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="rounded bg-blue-500/20 text-blue-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Process</span>
-                <span className="font-medium text-sm text-slate-100">{evt.process_name}</span>
+                <span className="font-medium text-sm text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-slate-500">PID <span className="text-slate-300 font-mono">{evt.pid}</span></span>
+                <span className="text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
                 <span className="text-slate-500">TID <span className="text-slate-300 font-mono">{evt.tid}</span></span>
               </div>
               {evt.process_exe && (
@@ -712,10 +977,10 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle }: EventD
             <div className="rounded-lg border-l-2 border-amber-500 bg-slate-800/60 dark:bg-slate-900/60 border-y border-r border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="rounded bg-amber-500/20 text-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Parent</span>
-                <span className="font-medium text-sm text-slate-100">{parentName || '(unknown)'}</span>
+                <span className="font-medium text-sm text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-slate-500">PID <span className="text-slate-300 font-mono">{evt.parent_pid}</span></span>
+                <span className="text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
               </div>
               {parentExe && (
                 <div>
