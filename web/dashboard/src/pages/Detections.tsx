@@ -9,7 +9,8 @@ import SortableHeader from '../components/SortableHeader'
 
 interface DetectionEvent {
   name?: string; category?: string; timestamp?: string
-  params?: Record<string, unknown>; callstack?: string[]
+  params?: Record<string, unknown>; callstack?: string[] | string
+  modules?: { name?: string; size?: number; sha256?: string; md5?: string }[]
   proc?: {
     pid?: number; tid?: number; ppid?: number; name?: string; exe?: string
     cmdline?: string; parent_name?: string; parent_cmdline?: string
@@ -276,82 +277,148 @@ export default function Detections() {
 }
 
 function EventCard({ evt }: { evt: DetectionEvent }) {
+  const [showRaw, setShowRaw] = useState(false)
   const proc = evt.proc
+  const callstack = evt.callstack
+    ? (Array.isArray(evt.callstack) ? evt.callstack : (typeof evt.callstack === 'string' ? (evt.callstack as string).split('\n').filter(Boolean) : []))
+    : []
+  const params = evt.params || {}
+  const paramEntries = Object.entries(params).filter(([k]) => k !== 'callstack' && k !== 'modules')
+
   return (
     <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm">
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 px-3 py-2 bg-gray-50/50 dark:bg-slate-800/50">
-        <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs font-medium">{evt.name || 'Unknown'}</span>
+      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 px-3 py-2 bg-gray-50/50 dark:bg-slate-900/40">
+        <span className="rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 text-xs font-medium">{evt.name || 'Unknown'}</span>
         {evt.category && <span className="text-xs text-gray-400 dark:text-slate-500">{evt.category}</span>}
         {evt.timestamp && <span className="ml-auto text-xs text-gray-400 dark:text-slate-500">{new Date(evt.timestamp).toLocaleString()}</span>}
       </div>
-      {proc && (
-        <div className="px-3 py-2.5 space-y-3">
-          {/* ── Process Card ── */}
-          <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Process</span>
-              <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{proc.name}</span>
-              {proc.pid != null && <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">PID {proc.pid}</span>}
-              {proc.username && <span className="text-xs text-gray-500 dark:text-slate-400">{proc.domain}\\{proc.username}</span>}
-              {proc.integrity_level && <span className="rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 px-1 py-0.5 text-[10px]">{proc.integrity_level}</span>}
-              {proc.is_wow64 && <span className="rounded bg-yellow-50 text-yellow-700 px-1 py-0.5 text-[10px] font-medium">WOW64</span>}
-              {proc.is_protected && <span className="rounded bg-blue-50 text-blue-700 px-1 py-0.5 text-[10px] font-medium">Protected</span>}
-            </div>
-            {proc.exe && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">Executable</span><p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all">{proc.exe}</p></div>}
-            {proc.cmdline && (
-              <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.cmdline}</div>
-            )}
-            <div className="flex items-center gap-2 flex-wrap">
-              {proc.is_signed !== undefined && (
-                <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (proc.is_signed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
-                  {proc.is_signed ? 'Signed' : 'Unsigned'}
-                </span>
-              )}
-              {proc.is_trusted !== undefined && proc.is_signed && (
-                <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (proc.is_trusted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
-                  {proc.is_trusted ? 'Trusted' : 'Untrusted'}
-                </span>
-              )}
-              {proc.cert_subject && <span className="text-[10px] text-gray-500 dark:text-slate-400">{proc.cert_subject}</span>}
-            </div>
-            {(proc.sha256 || proc.md5) && (
-              <div className="space-y-0.5">
-                {proc.sha256 && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{proc.sha256}</p></div>}
-                {proc.md5 && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{proc.md5}</p></div>}
+      <div className="px-3 py-2.5 space-y-3">
+        {proc && (
+          <>
+            {/* ── Process Card ── */}
+            <div className="rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50/30 dark:bg-blue-950/30 p-3 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="rounded bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 text-[10px] font-bold uppercase">Process</span>
+                <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{proc.name}</span>
+                {proc.pid != null && <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">PID {proc.pid}</span>}
+                {proc.tid != null && <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">TID {proc.tid}</span>}
+                {proc.username && <span className="text-xs text-gray-500 dark:text-slate-400">{proc.domain}\\{proc.username}</span>}
+                {proc.integrity_level && <span className="rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 px-1 py-0.5 text-[10px]">{proc.integrity_level}</span>}
+                {proc.is_wow64 && <span className="rounded bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-1 py-0.5 text-[10px] font-medium">WOW64</span>}
+                {proc.is_protected && <span className="rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1 py-0.5 text-[10px] font-medium">Protected</span>}
               </div>
-            )}
-          </div>
-
-          {/* ── Parent Process Card ── */}
-          {proc.parent_name && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-bold uppercase">Parent</span>
-                <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{proc.parent_name}</span>
-                {proc.ppid != null && <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">PID {proc.ppid}</span>}
-              </div>
-              {proc.parent_cmdline && (
-                <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.parent_cmdline}</div>
+              {proc.exe && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">Executable</span><p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all">{proc.exe}</p></div>}
+              {proc.cmdline && (
+                <div className="rounded bg-gray-900 dark:bg-black px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.cmdline}</div>
               )}
-            </div>
-          )}
-
-          {/* ── Ancestry Chain ── */}
-          {proc.ancestors && proc.ancestors.length > 0 && (
-            <div>
-              <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-medium">Process Ancestry</span>
-              <div className="mt-1 flex items-center gap-1 flex-wrap">
-                {proc.ancestors.map((a, i) => (
-                  <span key={i} className="flex items-center gap-0.5">
-                    <span className="rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-mono text-blue-700">{a}</span>
-                    {i < proc.ancestors!.length - 1 && <span className="text-gray-300 dark:text-slate-600 text-xs">&larr;</span>}
+              {proc.cwd && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">CWD</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{proc.cwd}</p></div>}
+              {proc.session_id != null && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">Session</span><span className="ml-1 text-[10px] text-gray-700 dark:text-slate-300 font-mono">{proc.session_id}</span></div>}
+              <div className="flex items-center gap-2 flex-wrap">
+                {proc.is_signed !== undefined && (
+                  <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (proc.is_signed ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400')}>
+                    {proc.is_signed ? 'Signed' : 'Unsigned'}
                   </span>
-                ))}
+                )}
+                {proc.is_trusted !== undefined && proc.is_signed && (
+                  <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium ' + (proc.is_trusted ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400')}>
+                    {proc.is_trusted ? 'Trusted' : 'Untrusted'}
+                  </span>
+                )}
+                {proc.cert_subject && <span className="text-[10px] text-gray-500 dark:text-slate-400">{proc.cert_subject}</span>}
               </div>
+              {(proc.sha256 || proc.md5) && (
+                <div className="space-y-0.5">
+                  {proc.sha256 && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{proc.sha256}</p></div>}
+                  {proc.md5 && <div><span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span><p className="text-[10px] text-gray-700 dark:text-slate-300 font-mono break-all">{proc.md5}</p></div>}
+                </div>
+              )}
             </div>
+
+            {/* ── Parent Process Card ── */}
+            {proc.parent_name && (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50/30 dark:bg-amber-950/30 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[10px] font-bold uppercase">Parent</span>
+                  <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{proc.parent_name}</span>
+                  {proc.ppid != null && <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">PID {proc.ppid}</span>}
+                </div>
+                {proc.parent_cmdline && (
+                  <div className="rounded bg-gray-900 dark:bg-black px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap">{proc.parent_cmdline}</div>
+                )}
+              </div>
+            )}
+
+            {/* ── Ancestry Chain ── */}
+            {proc.ancestors && proc.ancestors.length > 0 && (
+              <div>
+                <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-medium">Process Ancestry</span>
+                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                  {proc.ancestors.map((a, i) => (
+                    <span key={i} className="flex items-center gap-0.5">
+                      <span className="rounded bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 px-1.5 py-0.5 text-[10px] font-mono text-blue-700 dark:text-blue-300">{a}</span>
+                      {i < proc.ancestors!.length - 1 && <span className="text-gray-300 dark:text-slate-600 text-xs">&larr;</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Event Parameters ── */}
+        {paramEntries.length > 0 && (
+          <div>
+            <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-medium">Event Parameters</span>
+            <div className="mt-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 overflow-hidden">
+              <table className="w-full text-[11px]">
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700/50">
+                  {paramEntries.map(([k, v]) => (
+                    <tr key={k}>
+                      <td className="px-2.5 py-1 text-gray-500 dark:text-slate-500 font-medium whitespace-nowrap align-top w-1/4">{k}</td>
+                      <td className="px-2.5 py-1 text-gray-800 dark:text-slate-200 font-mono break-all">
+                        {typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── Callstack ── */}
+        {callstack.length > 0 && (
+          <div>
+            <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-medium">Call Stack</span>
+            <div className="mt-1.5 rounded-lg bg-gray-900 dark:bg-black border border-gray-700 dark:border-slate-700 p-2.5 max-h-48 overflow-auto">
+              {callstack.map((frame, i) => (
+                <div key={i} className="flex items-start gap-2 py-0.5">
+                  <span className="text-[9px] text-gray-500 font-mono tabular-nums flex-shrink-0 w-4 text-right">{i}</span>
+                  <span className="text-[10px] text-emerald-400 font-mono break-all">{frame}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Raw JSON toggle ── */}
+        <div>
+          <button
+            onClick={() => setShowRaw(!showRaw)}
+            className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 uppercase font-medium"
+          >
+            <svg className={'w-3 h-3 transition-transform ' + (showRaw ? 'rotate-90' : '')} fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            </svg>
+            Raw JSON
+          </button>
+          {showRaw && (
+            <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-gray-900 dark:bg-black border border-gray-700 dark:border-slate-700 p-3 text-[10px] text-gray-200 font-mono whitespace-pre-wrap">
+              {JSON.stringify(evt, null, 2)}
+            </pre>
           )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

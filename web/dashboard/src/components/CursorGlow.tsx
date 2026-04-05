@@ -10,8 +10,8 @@ export default function CursorGlow() {
     if (!ctx) return
 
     let mx = -1000, my = -1000, raf = 0
-    const GRID = 140
-    const GLOW_RADIUS = 350
+    const GRID = 56
+    const GLOW_RADIUS = 380
     const isDark = () => document.documentElement.classList.contains('dark')
 
     const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight }
@@ -23,9 +23,9 @@ export default function CursorGlow() {
       ctx.clearRect(0, 0, w, h)
 
       const dark = isDark()
-      const [cr, cg, cb] = dark ? [0, 180, 255] : [60, 130, 220]
-      const baseAlpha = dark ? 0.06 : 0.03     // always-visible grid
-      const glowAlpha = dark ? 0.35 : 0.15     // bright near cursor
+      const [cr, cg, cb] = dark ? [0, 180, 255] : [15, 50, 160]
+      const baseAlpha = dark ? 0.07 : 0.045     // always-visible grid
+      const glowAlpha = dark ? 0.5 : 0.32       // bright near cursor
 
       // Draw full-page grid with cursor-based brightness
       for (let x = 0; x <= w; x += GRID) {

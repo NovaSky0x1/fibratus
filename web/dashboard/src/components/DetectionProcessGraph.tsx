@@ -437,7 +437,7 @@ export default function DetectionProcessGraph({ detection, focusPid }: Props) {
     // Build edges
     const allEdges: Edge[] = []
 
-    // Process → child process edges
+    // Process → child process edges (glowing blue for focus path)
     for (const pid of visible) {
       if (!childrenExpanded.has(pid)) continue
       for (const cpid of childrenMap.get(pid) || []) {
@@ -449,7 +449,11 @@ export default function DetectionProcessGraph({ detection, focusPid }: Props) {
           id: `p-${pid}->p-${cpid}`,
           source: `p-${pid}`, target: `p-${cpid}`,
           type: 'smoothstep', animated: onFocus,
-          style: { stroke: onFocus ? '#3b82f6' : '#94a3b8', strokeWidth: onFocus ? 2.5 : 1.5 },
+          style: {
+            stroke: onFocus ? '#3b82f6' : '#94a3b8',
+            strokeWidth: onFocus ? 3 : 1.5,
+            filter: onFocus ? 'drop-shadow(0 0 6px rgba(59,130,246,0.7)) drop-shadow(0 0 12px rgba(59,130,246,0.4))' : undefined,
+          },
         })
       }
     }

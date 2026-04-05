@@ -1355,6 +1355,15 @@ function SystemTab() {
   const [query, setQuery] = useState('')
   const [result, setResult] = useState<{ columns: string[]; rows: unknown[][]; affected_rows?: number; error?: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [activeTable, setActiveTable] = useState<string | null>(null)
+  const [tableColumns, setTableColumns] = useState<{ columns: string[]; rows: unknown[][] } | null>(null)
+  const [tableData, setTableData] = useState<{ columns: string[]; rows: unknown[][] } | null>(null)
+  const [tableLoading, setTableLoading] = useState(false)
+  const [editCell, setEditCell] = useState<{ row: number; col: number; value: string } | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [browseView, setBrowseView] = useState<'tables' | 'browse' | 'query'>('tables')
+  const [browseOffset, setBrowseOffset] = useState(0)
+  const browseLimit = 50
 
   const { data: pgTables } = useQuery({ queryKey: ['pg-tables'], queryFn: () => api.dbTablesPostgres(), staleTime: 30000 })
   const { data: chTables } = useQuery({ queryKey: ['ch-tables'], queryFn: () => api.dbTablesClickhouse(), staleTime: 30000 })
@@ -1373,8 +1382,70 @@ function SystemTab() {
     setLoading(false)
   }
 
+  const openTable = async (tableName: string) => {
+    setActiveTable(tableName)
+    setBrowseView('browse')
+    setBrowseOffset(0)
+    setTableLoading(true)
+    setEditCell(null)
+    try {
+      // Fetch columns/schema
+      const schemaQuery = dbType === 'postgres'
+        ? `SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '${tableName}' ORDER BY ordinal_position`
+        : `SELECT name AS column_name, type AS data_type, default_expression AS column_default FROM system.columns WHERE database = 'fibratus' AND table = '${tableName}' ORDER BY position`
+      const schemaRes = dbType === 'postgres' ? await api.dbQueryPostgres(schemaQuery) : await api.dbQueryClickhouse(schemaQuery)
+      if (schemaRes.data) setTableColumns(schemaRes.data as typeof tableColumns)
+
+      // Fetch data
+      const dataQuery = dbType === 'postgres'
+        ? `SELECT * FROM "${tableName}" LIMIT ${browseLimit}`
+        : `SELECT * FROM ${tableName} LIMIT ${browseLimit}`
+      const dataRes = dbType === 'postgres' ? await api.dbQueryPostgres(dataQuery) : await api.dbQueryClickhouse(dataQuery)
+      if (dataRes.data) setTableData(dataRes.data as typeof tableData)
+    } catch { /* ignore */ }
+    setTableLoading(false)
+  }
+
+  const loadPage = async (offset: number) => {
+    if (!activeTable) return
+    setTableLoading(true)
+    setBrowseOffset(offset)
+    setEditCell(null)
+    try {
+      const q = dbType === 'postgres'
+        ? `SELECT * FROM "${activeTable}" LIMIT ${browseLimit} OFFSET ${offset}`
+        : `SELECT * FROM ${activeTable} LIMIT ${browseLimit} OFFSET ${offset}`
+      const res = dbType === 'postgres' ? await api.dbQueryPostgres(q) : await api.dbQueryClickhouse(q)
+      if (res.data) setTableData(res.data as typeof tableData)
+    } catch { /* ignore */ }
+    setTableLoading(false)
+  }
+
+  const saveCell = async () => {
+    if (!editCell || !activeTable || !tableData) return
+    setEditSaving(true)
+    const col = tableData.columns[editCell.col]
+    const pkCol = tableData.columns[0] // assume first column is the PK
+    const pkVal = tableData.rows[editCell.row][0]
+    const escaped = editCell.value.replace(/'/g, "''")
+    const pkEscaped = String(pkVal).replace(/'/g, "''")
+    const updateQuery = `UPDATE "${activeTable}" SET "${col}" = '${escaped}' WHERE "${pkCol}" = '${pkEscaped}'`
+    try {
+      const res = await api.dbQueryPostgres(updateQuery)
+      if (res.data && !(res.data as { error?: string }).error) {
+        // Update local state
+        const newRows = [...tableData.rows]
+        newRows[editCell.row] = [...newRows[editCell.row]]
+        newRows[editCell.row][editCell.col] = editCell.value
+        setTableData({ ...tableData, rows: newRows })
+        setEditCell(null)
+      }
+    } catch { /* ignore */ }
+    setEditSaving(false)
+  }
+
   const tables = dbType === 'postgres' ? pgTables?.data : chTables?.data
-  const tableData = tables as { columns?: string[]; rows?: unknown[][] } | undefined
+  const tablesArr = tables as { columns?: string[]; rows?: unknown[][] } | undefined
 
   return (
     <div className="space-y-4">
@@ -1388,105 +1459,272 @@ function SystemTab() {
         </div>
       </div>
 
-      {/* DB Toggle */}
-      <div className="flex items-center gap-2">
-        <button onClick={() => { setDbType('postgres'); setResult(null) }}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${dbType === 'postgres' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300'}`}>
-          PostgreSQL
-        </button>
-        <button onClick={() => { setDbType('clickhouse'); setResult(null) }}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${dbType === 'clickhouse' ? 'bg-amber-600 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300'}`}>
-          ClickHouse
-        </button>
+      {/* DB Toggle + View Toggle */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 rounded-lg bg-gray-100 dark:bg-slate-700 p-0.5">
+          <button onClick={() => { setDbType('postgres'); setResult(null); setActiveTable(null); setBrowseView('tables') }}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${dbType === 'postgres' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200'}`}>
+            PostgreSQL
+          </button>
+          <button onClick={() => { setDbType('clickhouse'); setResult(null); setActiveTable(null); setBrowseView('tables') }}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${dbType === 'clickhouse' ? 'bg-amber-600 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200'}`}>
+            ClickHouse
+          </button>
+        </div>
+        <div className="h-5 w-px bg-gray-200 dark:bg-slate-600" />
+        <div className="flex items-center gap-1 rounded-lg bg-gray-100 dark:bg-slate-700 p-0.5">
+          <button onClick={() => { setBrowseView('tables'); setActiveTable(null) }}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${browseView === 'tables' ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}>
+            Browse
+          </button>
+          <button onClick={() => setBrowseView('query')}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${browseView === 'query' ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}>
+            Query
+          </button>
+        </div>
+        {activeTable && browseView === 'browse' && (
+          <>
+            <div className="h-5 w-px bg-gray-200 dark:bg-slate-600" />
+            <button onClick={() => { setActiveTable(null); setBrowseView('tables') }}
+              className="text-xs text-fibratus-600 hover:underline flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              All Tables
+            </button>
+            <span className="text-xs font-mono font-medium text-gray-900 dark:text-slate-100">{activeTable}</span>
+          </>
+        )}
       </div>
 
-      {/* Tables Overview */}
-      {tableData?.rows && tableData.rows.length > 0 && (
-        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
-          <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
-            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Tables in {dbType === 'postgres' ? 'PostgreSQL' : 'ClickHouse'}</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 dark:bg-slate-900/50">
-                <tr>{tableData.columns?.map(c => <th key={c} className="px-3 py-1.5 text-left font-medium text-gray-500 dark:text-slate-400">{c}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                {tableData.rows.map((row, i) => (
-                  <tr key={i} className="hover:bg-blue-50/50 dark:hover:bg-slate-800/50 cursor-pointer"
-                    onClick={() => setQuery(`SELECT * FROM ${row[0]} LIMIT 100`)}>
-                    {(row as unknown[]).map((cell, j) => (
-                      <td key={j} className="px-3 py-1.5 font-mono text-gray-700 dark:text-slate-300">{String(cell ?? '')}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* ═════ Tables List View ═════ */}
+      {browseView === 'tables' && tablesArr?.rows && tablesArr.rows.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {tablesArr.rows.map((row, i) => {
+            const name = String(row[0])
+            const size = row[1] != null ? String(row[1]) : ''
+            const extra = row[2] != null ? String(row[2]) : ''
+            const extra2 = row[3] != null ? String(row[3]) : ''
+            return (
+              <button key={i} onClick={() => openTable(name)}
+                className="text-left rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all group">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-gray-400 dark:text-slate-500 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                  </svg>
+                  <span className="font-mono text-sm font-medium text-gray-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{name}</span>
+                </div>
+                <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-400 dark:text-slate-500">
+                  {size && <span>{size}</span>}
+                  {extra && <span>{tablesArr.columns?.[2]}: {extra}</span>}
+                  {extra2 && <span>{tablesArr.columns?.[3]}: {extra2}</span>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {browseView === 'tables' && (!tablesArr?.rows || tablesArr.rows.length === 0) && (
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center text-gray-400 dark:text-slate-500 text-sm">
+          No tables found
         </div>
       )}
 
-      {/* Query Editor */}
-      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">SQL Query — {dbType === 'postgres' ? 'PostgreSQL' : 'ClickHouse'}</span>
-          <span className="text-[10px] text-red-500">Root access only. Use with caution.</span>
-        </div>
-        <textarea
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) executeQuery() }}
-          placeholder={dbType === 'postgres'
-            ? 'SELECT * FROM users LIMIT 10;\n\n-- Ctrl+Enter to execute'
-            : 'SELECT count() FROM telemetry_events;\n\n-- Ctrl+Enter to execute'}
-          className="w-full h-32 rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-black px-4 py-3 font-mono text-sm text-gray-900 dark:text-cyan-400 placeholder-gray-400 dark:placeholder-slate-600 focus:border-blue-500 dark:focus:border-cyan-500 focus:outline-none resize-y"
-        />
-        <div className="flex items-center gap-2">
-          <button onClick={executeQuery} disabled={loading || !query.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            {loading ? 'Executing...' : 'Execute (Ctrl+Enter)'}
-          </button>
-          <button onClick={() => { setQuery(''); setResult(null) }}
-            className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700">
-            Clear
-          </button>
-        </div>
-      </div>
-
-      {/* Query Results */}
-      {result && (
-        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
-          <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
-              {result.error ? 'Error' : `Results — ${result.rows?.length || 0} rows`}
-              {result.affected_rows !== undefined && !result.error && ` (${result.affected_rows} affected)`}
-            </span>
-          </div>
-          {result.error ? (
-            <div className="p-4 text-sm text-red-600 dark:text-red-400 font-mono break-all">{result.error}</div>
-          ) : result.columns && result.columns.length > 0 ? (
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50 dark:bg-slate-900/50 sticky top-0">
-                  <tr>{result.columns.map(c => <th key={c} className="px-3 py-2 text-left font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{c}</th>)}</tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                  {result.rows?.map((row, i) => (
-                    <tr key={i} className="hover:bg-blue-50/50 dark:hover:bg-slate-800/30">
-                      {(row as unknown[]).map((cell, j) => (
-                        <td key={j} className="px-3 py-1.5 font-mono text-gray-700 dark:text-slate-300 whitespace-nowrap max-w-[400px] truncate" title={String(cell ?? '')}>
-                          {cell === null ? <span className="text-gray-300 dark:text-slate-600 italic">NULL</span> : String(cell)}
-                        </td>
+      {/* ═════ Table Browse View ═════ */}
+      {browseView === 'browse' && activeTable && (
+        <div className="space-y-4">
+          {/* Schema */}
+          {tableColumns && tableColumns.rows && tableColumns.rows.length > 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+              <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Schema — {tableColumns.rows.length} columns</span>
+                <button onClick={() => openTable(activeTable)} className="text-[10px] text-fibratus-600 hover:underline">Refresh</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50/50 dark:bg-slate-900/30">
+                    <tr>
+                      {tableColumns.columns.map(c => (
+                        <th key={c} className="px-3 py-1.5 text-left font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{c}</th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-700/50">
+                    {tableColumns.rows.map((row, i) => (
+                      <tr key={i} className="hover:bg-blue-50/30 dark:hover:bg-slate-800/30">
+                        {(row as unknown[]).map((cell, j) => (
+                          <td key={j} className="px-3 py-1 font-mono text-gray-700 dark:text-slate-300 whitespace-nowrap">
+                            {j === 0 ? <span className="text-blue-600 dark:text-blue-400 font-medium">{String(cell ?? '')}</span>
+                              : j === 1 ? <span className="text-amber-600 dark:text-amber-400">{String(cell ?? '')}</span>
+                              : <span>{cell === null ? <span className="text-gray-300 dark:text-slate-600 italic">NULL</span> : String(cell)}</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Data */}
+          {tableLoading ? (
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center text-gray-400 dark:text-slate-500 text-sm">Loading...</div>
+          ) : tableData && tableData.columns && tableData.columns.length > 0 ? (
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+              <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+                  Rows {browseOffset + 1}–{browseOffset + (tableData.rows?.length || 0)}
+                  {dbType === 'postgres' && <span className="ml-1 text-[10px] text-gray-400 dark:text-slate-500">(click cell to edit)</span>}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button disabled={browseOffset === 0} onClick={() => loadPage(Math.max(0, browseOffset - browseLimit))}
+                    className="rounded border border-gray-300 dark:border-slate-600 px-2 py-0.5 text-[10px] text-gray-600 dark:text-slate-400 disabled:opacity-30 hover:bg-gray-50 dark:hover:bg-slate-700">Prev</button>
+                  <button disabled={(tableData.rows?.length || 0) < browseLimit} onClick={() => loadPage(browseOffset + browseLimit)}
+                    className="rounded border border-gray-300 dark:border-slate-600 px-2 py-0.5 text-[10px] text-gray-600 dark:text-slate-400 disabled:opacity-30 hover:bg-gray-50 dark:hover:bg-slate-700">Next</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 dark:bg-slate-900/50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-2 py-2 text-left font-medium text-gray-400 dark:text-slate-500 w-8">#</th>
+                      {tableData.columns.map(c => (
+                        <th key={c} className="px-3 py-2 text-left font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-700/50">
+                    {tableData.rows?.map((row, ri) => (
+                      <tr key={ri} className="hover:bg-blue-50/30 dark:hover:bg-slate-800/20 group">
+                        <td className="px-2 py-1 text-[10px] text-gray-300 dark:text-slate-600 tabular-nums">{browseOffset + ri + 1}</td>
+                        {(row as unknown[]).map((cell, ci) => {
+                          const isEditing = editCell?.row === ri && editCell?.col === ci
+                          return (
+                            <td key={ci}
+                              className={'px-3 py-1 font-mono text-gray-700 dark:text-slate-300 max-w-[300px] ' +
+                                (dbType === 'postgres' ? 'cursor-pointer hover:bg-blue-100/40 dark:hover:bg-blue-900/20' : '') +
+                                (ci === 0 ? ' text-blue-600 dark:text-blue-400 font-medium' : '')}
+                              onClick={() => {
+                                if (dbType === 'postgres' && !isEditing) {
+                                  setEditCell({ row: ri, col: ci, value: cell === null ? '' : String(cell) })
+                                }
+                              }}
+                              title={cell === null ? 'NULL' : String(cell)}>
+                              {isEditing ? (
+                                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                  <input
+                                    autoFocus
+                                    value={editCell.value}
+                                    onChange={e => setEditCell({ ...editCell, value: e.target.value })}
+                                    onKeyDown={e => { if (e.key === 'Enter') saveCell(); if (e.key === 'Escape') setEditCell(null) }}
+                                    className="w-full rounded border border-blue-400 dark:border-blue-600 bg-white dark:bg-slate-700 px-1.5 py-0.5 text-xs text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                  <button onClick={saveCell} disabled={editSaving}
+                                    className="rounded bg-blue-600 px-1.5 py-0.5 text-[9px] text-white hover:bg-blue-700 flex-shrink-0">
+                                    {editSaving ? '...' : 'Save'}
+                                  </button>
+                                  <button onClick={() => setEditCell(null)}
+                                    className="rounded bg-gray-200 dark:bg-slate-600 px-1.5 py-0.5 text-[9px] text-gray-600 dark:text-slate-300 flex-shrink-0">
+                                    Esc
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="truncate block">
+                                  {cell === null ? <span className="text-gray-300 dark:text-slate-600 italic">NULL</span> : String(cell)}
+                                </span>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
-            <div className="p-4 text-sm text-gray-500 dark:text-slate-400">No results</div>
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center text-gray-400 dark:text-slate-500 text-sm">
+              No data in this table
+            </div>
           )}
         </div>
+      )}
+
+      {/* ═════ Query View ═════ */}
+      {browseView === 'query' && (
+        <>
+          {/* Quick table buttons */}
+          {tablesArr?.rows && tablesArr.rows.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {tablesArr.rows.map((row, i) => (
+                <button key={i} onClick={() => setQuery(`SELECT * FROM ${dbType === 'postgres' ? `"${row[0]}"` : row[0]} LIMIT 100`)}
+                  className="rounded-md border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-[10px] font-mono text-gray-600 dark:text-slate-400 hover:border-blue-300 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  {String(row[0])}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">SQL Query — {dbType === 'postgres' ? 'PostgreSQL' : 'ClickHouse'}</span>
+              <span className="text-[10px] text-red-500 dark:text-red-400">Root access only. Use with caution.</span>
+            </div>
+            <textarea
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) executeQuery() }}
+              placeholder={dbType === 'postgres'
+                ? 'SELECT * FROM users LIMIT 10;\n\n-- Ctrl+Enter to execute'
+                : 'SELECT count() FROM telemetry_events;\n\n-- Ctrl+Enter to execute'}
+              className="w-full h-32 rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-black px-4 py-3 font-mono text-sm text-gray-900 dark:text-cyan-400 placeholder-gray-400 dark:placeholder-slate-600 focus:border-blue-500 dark:focus:border-cyan-500 focus:outline-none resize-y"
+            />
+            <div className="flex items-center gap-2">
+              <button onClick={executeQuery} disabled={loading || !query.trim()}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                {loading ? 'Executing...' : 'Execute (Ctrl+Enter)'}
+              </button>
+              <button onClick={() => { setQuery(''); setResult(null) }}
+                className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700">
+                Clear
+              </button>
+            </div>
+          </div>
+
+          {result && (
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+              <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+                  {result.error ? 'Error' : `Results — ${result.rows?.length || 0} rows`}
+                  {result.affected_rows !== undefined && !result.error && ` (${result.affected_rows} affected)`}
+                </span>
+              </div>
+              {result.error ? (
+                <div className="p-4 text-sm text-red-600 dark:text-red-400 font-mono break-all">{result.error}</div>
+              ) : result.columns && result.columns.length > 0 ? (
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 dark:bg-slate-900/50 sticky top-0">
+                      <tr>{result.columns.map(c => <th key={c} className="px-3 py-2 text-left font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{c}</th>)}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                      {result.rows?.map((row, i) => (
+                        <tr key={i} className="hover:bg-blue-50/30 dark:hover:bg-slate-800/30">
+                          {(row as unknown[]).map((cell, j) => (
+                            <td key={j} className="px-3 py-1.5 font-mono text-gray-700 dark:text-slate-300 whitespace-nowrap max-w-[400px] truncate" title={String(cell ?? '')}>
+                              {cell === null ? <span className="text-gray-300 dark:text-slate-600 italic">NULL</span> : String(cell)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-4 text-sm text-gray-500 dark:text-slate-400">No results</div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
