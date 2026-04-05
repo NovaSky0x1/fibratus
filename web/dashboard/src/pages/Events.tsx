@@ -274,7 +274,6 @@ export default function Events() {
     const prevPart = parts.length >= 2 ? parts[parts.length - 2] : ''
 
     // After a logical keyword or at start → suggest fields
-    const _isAfterLogical = ['and', 'or', 'not'].includes(prevPart.toLowerCase()) || parts.length <= 1
     // After a field name (contains dot) → suggest operators
     const isAfterField = prevPart.includes('.') && !lastPart.includes('.')
     // After an operator → suggest value wrapper
