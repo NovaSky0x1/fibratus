@@ -158,34 +158,6 @@ export default function Overview() {
 
   return (
     <div className="relative space-y-6">
-      {/* Electric grid background */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden opacity-[0.03] dark:opacity-[0.04]" aria-hidden="true">
-        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
-              <path d="M 60 0 L 0 0 0 60" fill="none" stroke="currentColor" strokeWidth="0.5" />
-            </pattern>
-            <linearGradient id="gridFade" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="white" stopOpacity="1" />
-              <stop offset="70%" stopColor="white" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <mask id="gridMask"><rect width="100%" height="100%" fill="url(#gridFade)" /></mask>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" mask="url(#gridMask)" className="text-fibratus-600" />
-          {/* Glitch lines */}
-          <line x1="0" y1="25%" x2="100%" y2="25%" stroke="currentColor" strokeWidth="0.3" className="text-cyan-500 dark:text-cyan-400" opacity="0.15">
-            <animate attributeName="y1" values="25%;25.1%;24.9%;25%" dur="4s" repeatCount="indefinite" />
-          </line>
-          <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" strokeWidth="0.2" className="text-blue-500 dark:text-blue-400" opacity="0.1">
-            <animate attributeName="y1" values="50%;50.2%;49.8%;50%" dur="6s" repeatCount="indefinite" />
-          </line>
-          <line x1="0" y1="75%" x2="100%" y2="75%" stroke="currentColor" strokeWidth="0.3" className="text-violet-500 dark:text-violet-400" opacity="0.12">
-            <animate attributeName="y1" values="75%;75.15%;74.85%;75%" dur="5s" repeatCount="indefinite" />
-          </line>
-        </svg>
-      </div>
-
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Fleet Overview</h1>
