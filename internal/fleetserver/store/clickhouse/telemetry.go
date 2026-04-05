@@ -219,6 +219,15 @@ func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.Te
 		countQuery += " AND timestamp <= ?"
 		args = append(args, opts.To)
 	}
+	if opts.Query != "" {
+		qlClause, qlArgs, _, err := store.ParseQueryToSQL(opts.Query, "clickhouse", 0)
+		if err == nil && qlClause != "" {
+			clause := " AND (" + qlClause + ")"
+			query += clause
+			countQuery += clause
+			args = append(args, qlArgs...)
+		}
+	}
 
 	var total int
 	countArgs := make([]interface{}, len(args))

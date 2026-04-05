@@ -178,6 +178,17 @@ func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.Te
 		args = append(args, opts.To)
 		argIdx++
 	}
+	// Fibratus QL query
+	if opts.Query != "" {
+		qlClause, qlArgs, newIdx, err := store.ParseQueryToSQL(opts.Query, "postgres", argIdx)
+		if err == nil && qlClause != "" {
+			clause := " AND (" + qlClause + ")"
+			query += clause
+			countQuery += clause
+			args = append(args, qlArgs...)
+			argIdx = newIdx
+		}
+	}
 
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {

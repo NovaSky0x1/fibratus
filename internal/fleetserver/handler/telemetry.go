@@ -128,6 +128,7 @@ func (h *TelemetryHandler) Search(w http.ResponseWriter, r *http.Request) {
 		ProcessName: q.Get("process_name"),
 		PID:         intParam(r, "pid", 0),
 		Search:      q.Get("search"),
+		Query:       q.Get("query"),
 		From:        from,
 		To:          to,
 		Limit:       intParam(r, "limit", 100),
