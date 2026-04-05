@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, type AuditEntry } from '../lib/api'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 const actionColors: Record<string, string> = {
   create: 'bg-emerald-50 text-emerald-700',
@@ -22,13 +24,22 @@ const resourceIcons: Record<string, string> = {
 
 export default function AuditLog() {
   const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['audit-log', page],
     queryFn: () => api.getAuditLog({ page: String(page), per_page: '50' }),
   })
 
-  const entries = (data?.data || []) as AuditEntry[]
+  const allEntries = (data?.data || []) as AuditEntry[]
+  const entries = search
+    ? allEntries.filter(e =>
+        (e.user_email || '').toLowerCase().includes(search.toLowerCase()) ||
+        e.action.toLowerCase().includes(search.toLowerCase()) ||
+        e.resource_type.toLowerCase().includes(search.toLowerCase()) ||
+        (e.resource_name || '').toLowerCase().includes(search.toLowerCase()))
+    : allEntries
+  const { sorted: sortedEntries, sort, toggleSort } = useTableSort(entries, 'timestamp', 'desc')
   const total = data?.meta?.total ?? 0
   const perPage = data?.meta?.per_page ?? 50
   const totalPages = Math.ceil(total / perPage)
@@ -40,15 +51,25 @@ export default function AuditLog() {
         <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{total} action(s) recorded</p>
       </div>
 
-      <div className="mt-6 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
+      <div className="mt-6 flex gap-4">
+        <input
+          type="text"
+          placeholder="Search by user, action, or resource..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+        />
+      </div>
+
+      <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Timestamp</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">User</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Action</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Resource</th>
+                <SortableHeader label="Timestamp" sortKey="timestamp" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="User" sortKey="user_email" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Action" sortKey="action" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Resource" sortKey="resource_type" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Details</th>
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">IP</th>
               </tr>
@@ -57,7 +78,7 @@ export default function AuditLog() {
               {isLoading && (
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && entries.map((entry) => (
+              {!isLoading && sortedEntries.map((entry) => (
                 <tr key={entry.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                   <td className="px-6 py-3 text-gray-500 dark:text-slate-400 tabular-nums text-xs whitespace-nowrap">
                     {new Date(entry.timestamp).toLocaleString()}
@@ -92,9 +113,9 @@ export default function AuditLog() {
                   <td className="px-6 py-3 text-xs text-gray-400 dark:text-slate-500 font-mono">{entry.ip_address?.split(':')[0] || '-'}</td>
                 </tr>
               ))}
-              {!isLoading && entries.length === 0 && (
+              {!isLoading && sortedEntries.length === 0 && (
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">
-                  No audit log entries yet. Actions will be recorded as users interact with the portal.
+                  {search ? 'No audit log entries match your search.' : 'No audit log entries yet. Actions will be recorded as users interact with the portal.'}
                 </td></tr>
               )}
             </tbody>

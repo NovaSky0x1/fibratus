@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Account, type Organization, type User } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 type Tab = 'accounts' | 'users' | 'organizations'
 
@@ -117,6 +119,8 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
     )
   }, [accounts, search])
 
+  const { sorted: sortedAccounts, sort: accountSort, toggleSort: toggleAccountSort } = useTableSort<Account>(filtered, 'name', 'asc')
+
   const createMut = useMutation({
     mutationFn: (data: { name: string; plan: string }) => api.adminCreateAccount(data),
     onSuccess: () => {
@@ -180,12 +184,12 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Plan</th>
+                <SortableHeader label="Name" sortKey="name" sort={accountSort} onSort={toggleAccountSort} />
+                <SortableHeader label="Plan" sortKey="plan" sort={accountSort} onSort={toggleAccountSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA Required</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Orgs</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Users</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Created</th>
+                <SortableHeader label="Orgs" sortKey="org_count" sort={accountSort} onSort={toggleAccountSort} />
+                <SortableHeader label="Users" sortKey="user_count" sort={accountSort} onSort={toggleAccountSort} />
+                <SortableHeader label="Created" sortKey="created_at" sort={accountSort} onSort={toggleAccountSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -193,7 +197,7 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
               {isLoading && (
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && filtered.map(acct => (
+              {!isLoading && sortedAccounts.map(acct => (
                 <tr key={acct.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                   <td className="px-6 py-3">
                     <button
@@ -449,6 +453,8 @@ function UsersTab() {
     )
   }, [allUsers, search])
 
+  const { sorted: sortedUsers, sort: userSort, toggleSort: toggleUserSort } = useTableSort<User & { account_name?: string }>(filtered, 'name', 'asc')
+
   const roleMut = useMutation({
     mutationFn: ({ id, role }: { id: string; role: string }) => api.adminUpdateUser(id, { role }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
@@ -493,13 +499,13 @@ function UsersTab() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Email</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Role</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Account</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA</th>
+                <SortableHeader label="Name" sortKey="name" sort={userSort} onSort={toggleUserSort} />
+                <SortableHeader label="Email" sortKey="email" sort={userSort} onSort={toggleUserSort} />
+                <SortableHeader label="Role" sortKey="role" sort={userSort} onSort={toggleUserSort} />
+                <SortableHeader label="Account" sortKey="account_name" sort={userSort} onSort={toggleUserSort} />
+                <SortableHeader label="2FA" sortKey="totp_enabled" sort={userSort} onSort={toggleUserSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Status</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Created</th>
+                <SortableHeader label="Created" sortKey="created_at" sort={userSort} onSort={toggleUserSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -507,7 +513,7 @@ function UsersTab() {
               {isLoading && (
                 <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && filtered.map(user => {
+              {!isLoading && sortedUsers.map(user => {
                 const isSelf = currentUser?.id === user.id
                 return (
                   <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
@@ -970,6 +976,8 @@ function OrganizationsTab({ filterAccountId, onClearFilter }: { filterAccountId:
     return list
   }, [allOrgs, filterAccountId, search])
 
+  const { sorted: sortedOrgs, sort: orgSort, toggleSort: toggleOrgSort } = useTableSort<Organization & { account_name?: string }>(filtered, 'name', 'asc')
+
   const createMut = useMutation({
     mutationFn: (data: { name: string; slug: string }) => api.createOrganization(data),
     onSuccess: () => {
@@ -1040,10 +1048,10 @@ function OrganizationsTab({ filterAccountId, onClearFilter }: { filterAccountId:
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Account</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Agents</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Slug</th>
+                <SortableHeader label="Name" sortKey="name" sort={orgSort} onSort={toggleOrgSort} />
+                <SortableHeader label="Account" sortKey="account_name" sort={orgSort} onSort={toggleOrgSort} />
+                <SortableHeader label="Agents" sortKey="agent_count" sort={orgSort} onSort={toggleOrgSort} />
+                <SortableHeader label="Slug" sortKey="slug" sort={orgSort} onSort={toggleOrgSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -1051,7 +1059,7 @@ function OrganizationsTab({ filterAccountId, onClearFilter }: { filterAccountId:
               {isLoading && (
                 <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && filtered.map(org => (
+              {!isLoading && sortedOrgs.map(org => (
                 <tr key={org.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                   <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">{org.name}</td>
                   <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{org.account_name || '-'}</td>

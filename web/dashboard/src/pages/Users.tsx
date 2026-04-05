@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type User, type UserGroup, type Organization } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 const roleBadge: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-700',
@@ -60,6 +62,8 @@ export default function Users() {
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'root'
 
+  const { sorted: sortedUsers, sort: userSort, toggleSort: toggleUserSort } = useTableSort<User>(users, 'name', 'asc')
+
   const roleMut = useMutation({
     mutationFn: ({ id, role }: { id: string; role: string }) => api.updateUserRole(id, role),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
@@ -114,12 +118,12 @@ export default function Users() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Email</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Role</th>
+                <SortableHeader label="Name" sortKey="name" sort={userSort} onSort={toggleUserSort} />
+                <SortableHeader label="Email" sortKey="email" sort={userSort} onSort={toggleUserSort} />
+                <SortableHeader label="Role" sortKey="role" sort={userSort} onSort={toggleUserSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Groups</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Created</th>
+                <SortableHeader label="2FA" sortKey="totp_enabled" sort={userSort} onSort={toggleUserSort} />
+                <SortableHeader label="Created" sortKey="created_at" sort={userSort} onSort={toggleUserSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -127,7 +131,7 @@ export default function Users() {
               {isLoading && (
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && users.map(user => {
+              {!isLoading && sortedUsers.map(user => {
                 const isSelf = currentUser?.id === user.id
                 return (
                   <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">

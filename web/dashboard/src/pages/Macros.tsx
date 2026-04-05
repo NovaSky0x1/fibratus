@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Macro } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 export default function Macros() {
   const queryClient = useQueryClient()
@@ -12,6 +14,7 @@ export default function Macros() {
   const [form, setForm] = useState({ name: '', expr: '', list: '', description: '' })
   const [macroType, setMacroType] = useState<'expr' | 'list'>('expr')
   const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['macros'],
@@ -46,7 +49,14 @@ export default function Macros() {
     },
   })
 
-  const macros = (data?.data || []) as Macro[]
+  const allMacros = (data?.data || []) as Macro[]
+  const macros = search
+    ? allMacros.filter(m =>
+        m.name.toLowerCase().includes(search.toLowerCase()) ||
+        (m.description || '').toLowerCase().includes(search.toLowerCase()) ||
+        (m.expr || '').toLowerCase().includes(search.toLowerCase()))
+    : allMacros
+  const { sorted: sortedMacros, sort, toggleSort } = useTableSort(macros, 'name', 'asc')
 
   function resetForm() {
     setForm({ name: '', expr: '', list: '', description: '' })
@@ -108,13 +118,25 @@ export default function Macros() {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="mt-6 flex gap-4">
+        <input
+          type="text"
+          placeholder="Search macros by name, description, or expression..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+        />
+        <span className="flex items-center text-sm text-gray-400 dark:text-slate-500">{macros.length} shown</span>
+      </div>
+
       {/* Macros table */}
-      <div className="mt-6 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
+      <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <SortableHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400 w-16">Type</th>
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Value</th>
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
@@ -124,7 +146,7 @@ export default function Macros() {
               {isLoading && (
                 <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && macros.map((m) => (
+              {!isLoading && sortedMacros.map((m) => (
                 <tr key={m.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                   <td className="px-6 py-3">
                     <span className="font-mono font-medium text-gray-900 dark:text-slate-100">{m.name}</span>
@@ -148,9 +170,9 @@ export default function Macros() {
                   </td>
                 </tr>
               ))}
-              {!isLoading && macros.length === 0 && (
+              {!isLoading && sortedMacros.length === 0 && (
                 <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">
-                  No macros defined.
+                  {search ? 'No macros match your search.' : 'No macros defined.'}
                 </td></tr>
               )}
             </tbody>

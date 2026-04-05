@@ -5,6 +5,8 @@ import { api, type Rule, type ApiResponse } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 export default function Rules() {
   const queryClient = useQueryClient()
@@ -75,6 +77,7 @@ export default function Rules() {
         r.condition?.toLowerCase().includes(search.toLowerCase()) ||
         r.labels?.['technique.id']?.toLowerCase().includes(search.toLowerCase()))
     : allRules
+  const { sorted: sortedRules, sort, toggleSort } = useTableSort(rules, 'name', 'asc')
   const total = data?.meta?.total ?? allRules.length
 
   // Auto-open rule from URL ?rule=ID (linked from detection page)
@@ -176,11 +179,11 @@ export default function Rules() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Severity</th>
+                <SortableHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Severity" sortKey="severity" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">MITRE</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Version</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Status</th>
+                <SortableHeader label="Version" sortKey="version" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Status" sortKey="enabled" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -193,7 +196,7 @@ export default function Rules() {
                 </tr>
               )}
               {!isLoading &&
-                rules.map((rule) => (
+                sortedRules.map((rule) => (
                   <tr key={rule.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/30">
                     <td className="px-6 py-3">
                       <div className="font-medium text-gray-900 dark:text-slate-100">{rule.name}</div>
@@ -257,7 +260,7 @@ export default function Rules() {
                     </td>
                   </tr>
                 ))}
-              {!isLoading && rules.length === 0 && (
+              {!isLoading && sortedRules.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">
                     {search ? 'No rules match your search.' : 'No rules configured. Upload detection rules above.'}

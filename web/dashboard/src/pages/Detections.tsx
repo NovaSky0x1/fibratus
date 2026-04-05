@@ -4,6 +4,8 @@ import { api, type Detection, type Rule } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
 import DetectionProcessGraph from '../components/DetectionProcessGraph'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 interface DetectionEvent {
   name?: string; category?: string; timestamp?: string
@@ -32,6 +34,7 @@ type DetailView = 'detail' | 'tree'
 export default function Detections() {
   const [page, setPage] = useState(1)
   const [severityFilter, setSeverityFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [selectedDet, setSelectedDet] = useState<Detection | null>(null)
   const [detailView, setDetailView] = useState<DetailView>('detail')
 
@@ -52,7 +55,14 @@ export default function Detections() {
     for (const r of rulesData.data as Rule[]) { rulesMap.set(r.id, r) }
   }
 
-  const detections = (data?.data || []) as Detection[]
+  const allDetections = (data?.data || []) as Detection[]
+  const detections = search
+    ? allDetections.filter(d =>
+        (d.title || d.rule_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (d.text || '').toLowerCase().includes(search.toLowerCase()) ||
+        (d.agent_hostname || '').toLowerCase().includes(search.toLowerCase()))
+    : allDetections
+  const { sorted: sortedDetections, sort, toggleSort } = useTableSort(detections, 'timestamp', 'desc')
   const total = data?.meta?.total ?? 0
   const perPage = data?.meta?.per_page ?? 50
   const totalPages = Math.ceil(total / perPage)
@@ -67,6 +77,13 @@ export default function Detections() {
       <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{total} detection(s)</p>
 
       <div className="mt-6 flex gap-4">
+        <input
+          type="text"
+          placeholder="Search by rule name, text, or agent..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+        />
         <select value={severityFilter} onChange={e => { setSeverityFilter(e.target.value); setPage(1) }}
           className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500">
           <option value="">All severities</option>
@@ -83,16 +100,16 @@ export default function Detections() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Rule</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Agent</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Severity</th>
+                <SortableHeader label="Rule" sortKey="rule_name" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Agent" sortKey="agent_hostname" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Severity" sortKey="severity" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">MITRE</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Time</th>
+                <SortableHeader label="Time" sortKey="timestamp" sort={sort} onSort={toggleSort} />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>}
-              {!isLoading && detections.map(det => (
+              {!isLoading && sortedDetections.map(det => (
                 <tr key={det.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30"
                   onClick={() => { setSelectedDet(det); setDetailView('detail') }}>
                   <td className="px-6 py-3">
@@ -107,8 +124,8 @@ export default function Detections() {
                   <td className="px-6 py-3 text-gray-500 dark:text-slate-400 whitespace-nowrap">{new Date(det.timestamp).toLocaleString()}</td>
                 </tr>
               ))}
-              {!isLoading && detections.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No detections yet.</td></tr>
+              {!isLoading && sortedDetections.length === 0 && (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">{search ? 'No detections match your search.' : 'No detections yet.'}</td></tr>
               )}
             </tbody>
           </table>

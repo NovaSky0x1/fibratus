@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type UserGroup, type PermissionDef, type User, type Organization } from '../lib/api'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 // Category display order and colors
 const categoryMeta: Record<string, { color: string; bg: string }> = {
@@ -69,6 +71,17 @@ export default function Groups() {
     return map
   }, [permissions])
 
+  // Build sortable rows with computed counts for sorting
+  const groupsWithCounts = useMemo(() =>
+    groups.map(g => ({
+      ...g,
+      _permCount: (g.permissions || []).length,
+      _orgCount: (g.org_restrictions || []).length,
+    })),
+  [groups])
+
+  const { sorted: sortedGroups, sort: groupSort, toggleSort: toggleGroupSort } = useTableSort(groupsWithCounts, 'name', 'asc')
+
   const openCreate = () => {
     setEditingGroup(null)
     setShowModal(true)
@@ -104,10 +117,10 @@ export default function Groups() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <SortableHeader label="Name" sortKey="name" sort={groupSort} onSort={toggleGroupSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Description</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Permissions</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Org Access</th>
+                <SortableHeader label="Permissions" sortKey="_permCount" sort={groupSort} onSort={toggleGroupSort} />
+                <SortableHeader label="Org Access" sortKey="_orgCount" sort={groupSort} onSort={toggleGroupSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -115,7 +128,7 @@ export default function Groups() {
               {isLoading && (
                 <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && groups.map(group => {
+              {!isLoading && sortedGroups.map(group => {
                 const isExpanded = expandedId === group.id
                 const orgRestrictions = group.org_restrictions || []
                 const orgLabel = orgRestrictions.length === 0

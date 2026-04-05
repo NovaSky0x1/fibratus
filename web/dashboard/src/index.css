@@ -62,4 +62,29 @@
   .badge {
     @apply inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
+
+  /* Cursor glow */
+  .cursor-glow {
+    pointer-events: none;
+    position: fixed;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(96, 206, 253, 0.08) 0%, transparent 70%);
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    transition: opacity 0.3s;
+  }
+  html.dark .cursor-glow {
+    background: radial-gradient(circle, rgba(96, 206, 253, 0.12) 0%, transparent 70%);
+  }
+
+  /* Sortable table header */
+  .th-sort {
+    @apply cursor-pointer select-none transition-colors;
+    @apply hover:text-fibratus-600 dark:hover:text-fibratus-400;
+  }
+  .th-sort-active {
+    @apply text-fibratus-600 dark:text-fibratus-400;
+  }
 }

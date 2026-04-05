@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Account, type Organization, type User } from '../lib/api'
+import CursorGlow from './CursorGlow'
 
 const navigation = [
   { name: 'Overview', href: '/' },
@@ -133,6 +134,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
+      <CursorGlow />
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 w-64 sidebar-gradient dark:sidebar-gradient-dark flex flex-col">
         {/* Logo */}

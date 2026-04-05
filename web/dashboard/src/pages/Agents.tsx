@@ -7,6 +7,8 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import RemoteShell from '../components/RemoteShell'
 import FileBrowser from '../components/FileBrowser'
 import ProcessInvestigation from '../components/ProcessInvestigation'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 interface TelemetryEvent {
   id: number; timestamp: string; event_name: string; event_category: string;
@@ -162,6 +164,7 @@ export default function Agents() {
   })
 
   const agents = (data?.data || []) as Agent[]
+  const { sorted: sortedAgents, sort, toggleSort } = useTableSort(agents, 'hostname', 'asc')
   const total = data?.meta?.total ?? 0
   const perPage = data?.meta?.per_page ?? 50
   const totalPages = Math.ceil(total / perPage)
@@ -208,11 +211,11 @@ export default function Agents() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Hostname</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Status</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">OS</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Engine</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Last Heartbeat</th>
+                <SortableHeader label="Hostname" sortKey="hostname" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="OS" sortKey="os_version" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Engine" sortKey="engine_version" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Last Heartbeat" sortKey="last_heartbeat" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Registered</th>
               </tr>
             </thead>
@@ -220,7 +223,7 @@ export default function Agents() {
               {isLoading && (
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && agents.map((agent) => (
+              {!isLoading && sortedAgents.map((agent) => (
                 <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" onClick={() => { setSelectedAgent(agent); setActiveTab('details') }}>
                   <td className="px-6 py-3">
                     <span className="font-medium text-gray-900 dark:text-slate-100">{agent.hostname}</span>
@@ -233,7 +236,7 @@ export default function Agents() {
                   <td className="px-6 py-3 text-gray-500 dark:text-slate-400">{new Date(agent.registered_at).toLocaleDateString()}</td>
                 </tr>
               ))}
-              {!isLoading && agents.length === 0 && (
+              {!isLoading && sortedAgents.length === 0 && (
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No agents enrolled. Create an enrollment token in Settings.</td></tr>
               )}
             </tbody>

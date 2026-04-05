@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Organization, type UserGroup, type User, type PermissionDef } from '../lib/api'
 import Users from './Users'
+import { useTableSort } from '../hooks/useTableSort'
+import SortableHeader from '../components/SortableHeader'
 
 type Tab = 'account' | 'organizations' | 'groups' | 'users'
 
@@ -243,6 +245,8 @@ function OrganizationsTab() {
   })
   const orgs = (orgsData?.data || []) as Organization[]
 
+  const { sorted: sortedOrgs, sort: orgSort, toggleSort: toggleOrgSort } = useTableSort<Organization>(orgs, 'name', 'asc')
+
   const createMut = useMutation({
     mutationFn: () => api.createOrganization({ name: orgName, slug: orgSlug }),
     onSuccess: (res) => {
@@ -294,9 +298,9 @@ function OrganizationsTab() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Slug</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Agents</th>
+                <SortableHeader label="Name" sortKey="name" sort={orgSort} onSort={toggleOrgSort} />
+                <SortableHeader label="Slug" sortKey="slug" sort={orgSort} onSort={toggleOrgSort} />
+                <SortableHeader label="Agents" sortKey="agent_count" sort={orgSort} onSort={toggleOrgSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Created</th>
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
@@ -305,7 +309,7 @@ function OrganizationsTab() {
               {isLoading && (
                 <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && orgs.map(org => (
+              {!isLoading && sortedOrgs.map(org => (
                 <tr key={org.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                   <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">{org.name}</td>
                   <td className="px-6 py-3 font-mono text-xs text-gray-500">{org.slug}</td>
@@ -446,6 +450,17 @@ function UserGroupsTab() {
     return map
   }, [permissions])
 
+  // Build sortable rows with computed counts
+  const groupsWithCounts = useMemo(() =>
+    groups.map(g => ({
+      ...g,
+      _permCount: (g.permissions || []).length,
+      _memberCount: g.members?.length || 0,
+    })),
+  [groups])
+
+  const { sorted: sortedGroups, sort: groupSort, toggleSort: toggleGroupSort } = useTableSort(groupsWithCounts, 'name', 'asc')
+
   const openCreate = () => {
     setEditingGroup(null)
     setShowModal(true)
@@ -477,10 +492,10 @@ function UserGroupsTab() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <SortableHeader label="Name" sortKey="name" sort={groupSort} onSort={toggleGroupSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Description</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Permissions</th>
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Members</th>
+                <SortableHeader label="Permissions" sortKey="_permCount" sort={groupSort} onSort={toggleGroupSort} />
+                <SortableHeader label="Members" sortKey="_memberCount" sort={groupSort} onSort={toggleGroupSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
@@ -488,7 +503,7 @@ function UserGroupsTab() {
               {isLoading && (
                 <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
-              {!isLoading && groups.map(group => {
+              {!isLoading && sortedGroups.map(group => {
                 const isExpanded = expandedId === group.id
                 const memberCount = group.members?.length || 0
                 return (
