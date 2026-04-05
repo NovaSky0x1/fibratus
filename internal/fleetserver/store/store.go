@@ -177,6 +177,7 @@ type TelemetryStore interface {
 	GetLatestForAgent(ctx context.Context, orgID, agentID string, limit int) ([]TelemetryEvent, error)
 	Purge(ctx context.Context, retentionDays int) (int64, error)
 	CountByAgent(ctx context.Context, orgID string) (map[string]int64, error)
+	GetFieldValues(ctx context.Context, orgID string) (map[string][]string, error)
 }
 
 // TelemetryEvent represents a kernel event forwarded by an agent.

@@ -173,6 +173,15 @@ export default function Events() {
   const [page, setPage] = useState(1)
   const [rawExpanded, setRawExpanded] = useState(false)
 
+  // Fetch dynamic field values from telemetry data
+  const { data: fieldValuesData } = useQuery({
+    queryKey: ['telemetry-fields'],
+    queryFn: () => api.getTelemetryFields(),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+  const dynamicFields = fieldValuesData?.data as { event_types?: string[]; event_categories?: string[]; process_names?: string[]; agents?: string[] } | undefined
+
   // Group fields by category for sidebar
   const fieldsByCategory = useMemo(() => {
     const grouped: Record<string, typeof FIELD_SUGGESTIONS> = {}
@@ -685,12 +694,63 @@ export default function Events() {
             </div>
             {showFields && (
               <div className="max-h-[70vh] overflow-auto p-2 space-y-0.5">
+                {/* Dynamic values from actual data */}
+                {dynamicFields?.event_types && dynamicFields.event_types.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Event Types</p>
+                    {dynamicFields.event_types.map(t => (
+                      <button key={t} onClick={() => addQuickFilter('kevt.name', t)}
+                        className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate"
+                        title={`Filter: kevt.name = '${t}'`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {dynamicFields?.event_categories && dynamicFields.event_categories.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Categories</p>
+                    {dynamicFields.event_categories.map(c => (
+                      <button key={c} onClick={() => addQuickFilter('kevt.category', c)}
+                        className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate">
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {dynamicFields?.process_names && dynamicFields.process_names.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Top Processes</p>
+                    {dynamicFields.process_names.slice(0, 20).map(p => (
+                      <button key={p} onClick={() => addQuickFilter('ps.name', p)}
+                        className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate">
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {dynamicFields?.agents && dynamicFields.agents.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Agents</p>
+                    {dynamicFields.agents.map(a => (
+                      <button key={a} onClick={() => addQuickFilter('agent.hostname', a)}
+                        className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate">
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Divider */}
+                <div className="border-t border-gray-200 dark:border-slate-700 my-2" />
+
+                {/* Static field reference */}
                 {Object.entries(fieldsByCategory).map(([cat, fields]) => (
                   <div key={cat}>
                     <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-semibold px-1 py-1 mt-1">{cat}</p>
                     {fields.map(f => (
                       <button key={f.field} onClick={() => insertFieldInQuery(f.field)}
-                        className="w-full text-left px-2 py-1 rounded text-xs text-slate-300 hover:bg-slate-700 font-mono truncate"
+                        className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate"
                         title={f.desc}>
                         {f.field}
                       </button>

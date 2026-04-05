@@ -328,6 +328,8 @@ export const api = {
     const q = new URLSearchParams(params || {}).toString()
     return fetchApi<unknown[]>(orgPath(`/telemetry?${q}`))
   },
+  getTelemetryFields: () =>
+    fetchApi<{ event_types: string[]; event_categories: string[]; process_names: string[]; agents: string[] }>(orgPath('/telemetry/fields')),
   getAgentEvents: (agentId: string, limit?: number) =>
     fetchApi<unknown[]>(orgPath(`/agents/${agentId}/events?limit=${limit || 100}`)),
 

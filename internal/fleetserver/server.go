@@ -296,6 +296,8 @@ func (s *Server) Run(ctx context.Context) error {
 		// Telemetry
 		case subpath == "/telemetry" && r.Method == http.MethodGet:
 			telemetryHandler.Search(w, r)
+		case subpath == "/telemetry/fields" && r.Method == http.MethodGet:
+			telemetryHandler.GetFieldValues(w, r)
 
 		// Macros
 		case subpath == "/macros" && r.Method == http.MethodGet:

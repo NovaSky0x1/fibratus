@@ -148,6 +148,25 @@ func (h *TelemetryHandler) Search(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetFieldValues handles GET /api/v1/orgs/{org_id}/telemetry/fields
+// Returns distinct values for indexable fields (event types, categories, top processes, agents)
+func (h *TelemetryHandler) GetFieldValues(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
+	values, err := h.telemetry.GetFieldValues(r.Context(), orgID)
+	if err != nil {
+		log.Errorf("fleet: field values error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: values})
+}
+
 // GetLiveEvents handles GET /api/v1/orgs/{org_id}/agents/{id}/events
 func (h *TelemetryHandler) GetLiveEvents(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())

@@ -133,6 +133,10 @@ func (b *BufferedTelemetryStore) CountByAgent(ctx context.Context, orgID string)
 	return b.store.CountByAgent(ctx, orgID)
 }
 
+func (b *BufferedTelemetryStore) GetFieldValues(ctx context.Context, orgID string) (map[string][]string, error) {
+	return b.store.GetFieldValues(ctx, orgID)
+}
+
 func (b *BufferedTelemetryStore) flushLoop() {
 	defer close(b.done)
 	ticker := time.NewTicker(b.flushInterval)

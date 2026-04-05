@@ -310,6 +310,41 @@ func (s *TelemetryStore) CountByAgent(ctx context.Context, orgID string) (map[st
 	return counts, rows.Err()
 }
 
+func (s *TelemetryStore) GetFieldValues(ctx context.Context, orgID string) (map[string][]string, error) {
+	result := make(map[string][]string)
+
+	queries := map[string]string{
+		"event_types":      "SELECT DISTINCT event_name FROM telemetry_events WHERE org_id = $1 AND event_name != '' ORDER BY event_name LIMIT 100",
+		"event_categories": "SELECT DISTINCT event_category FROM telemetry_events WHERE org_id = $1 AND event_category != '' ORDER BY event_category LIMIT 50",
+		"process_names":    "SELECT process_name, COUNT(*) as c FROM telemetry_events WHERE org_id = $1 AND process_name != '' GROUP BY process_name ORDER BY c DESC LIMIT 50",
+		"agents":           "SELECT DISTINCT agent_hostname FROM telemetry_events WHERE org_id = $1 AND agent_hostname != '' ORDER BY agent_hostname LIMIT 50",
+	}
+
+	for key, query := range queries {
+		rows, err := s.db.QueryContext(ctx, query, orgID)
+		if err != nil {
+			continue
+		}
+		var values []string
+		for rows.Next() {
+			var val string
+			if key == "process_names" {
+				var count int64
+				rows.Scan(&val, &count)
+			} else {
+				rows.Scan(&val)
+			}
+			if val != "" {
+				values = append(values, val)
+			}
+		}
+		rows.Close()
+		result[key] = values
+	}
+
+	return result, nil
+}
+
 // sanitizeUTF8 replaces invalid UTF-8 bytes with the Unicode replacement character.
 func sanitizeUTF8(s string) string {
 	if utf8.ValidString(s) {
