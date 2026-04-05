@@ -65,8 +65,9 @@ type User struct {
 	OrgRestrictions string `json:"org_restrictions,omitempty"` // JSON array of org IDs, empty = all
 	Groups          []UserGroupMembership `json:"groups,omitempty"`
 
-	LoginAttempts int       `json:"-"`
-	LockedUntil   time.Time `json:"-"`
+	LoginAttempts int       `json:"login_attempts,omitempty"`
+	LockedUntil   time.Time `json:"locked_until,omitempty"`
+	IsLocked      bool      `json:"is_locked,omitempty"`
 	TOTPSecret    string    `json:"-"`
 	TOTPEnabled   bool      `json:"totp_enabled"`
 	RecoveryCodes string    `json:"-"`

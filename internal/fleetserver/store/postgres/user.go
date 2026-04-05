@@ -127,7 +127,8 @@ func (s *UserStore) HasOrgAccess(ctx context.Context, userID, orgID string) (boo
 
 func (s *UserStore) ListAll(ctx context.Context) ([]*fleet.User, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, email, name, account_id, role, created_at, totp_enabled
+		`SELECT id, email, name, account_id, role, created_at, totp_enabled,
+			COALESCE(org_restrictions, ''), login_attempts, COALESCE(locked_until, '1970-01-01'::timestamptz)
 		 FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -137,7 +138,8 @@ func (s *UserStore) ListAll(ctx context.Context) ([]*fleet.User, error) {
 	users := make([]*fleet.User, 0)
 	for rows.Next() {
 		u := &fleet.User{}
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AccountID, &u.Role, &u.CreatedAt, &u.TOTPEnabled); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AccountID, &u.Role, &u.CreatedAt,
+			&u.TOTPEnabled, &u.OrgRestrictions, &u.LoginAttempts, &u.LockedUntil); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
@@ -156,6 +158,42 @@ func (s *UserStore) UpdatePassword(ctx context.Context, userID, hashedPassword s
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE users SET password = $2, updated_at = NOW() WHERE id = $1`,
 		userID, hashedPassword)
+	return err
+}
+
+func (s *UserStore) ListByAccount(ctx context.Context, accountID string) ([]*fleet.User, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT u.id, u.email, u.name, u.account_id, u.role, u.created_at, u.totp_enabled,
+			COALESCE(u.org_restrictions, ''), u.login_attempts, COALESCE(u.locked_until, '1970-01-01'::timestamptz)
+		 FROM users u WHERE u.account_id = $1 ORDER BY u.created_at`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]*fleet.User, 0)
+	for rows.Next() {
+		u := &fleet.User{}
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AccountID, &u.Role, &u.CreatedAt,
+			&u.TOTPEnabled, &u.OrgRestrictions, &u.LoginAttempts, &u.LockedUntil); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *UserStore) SetOrgRestrictions(ctx context.Context, userID string, orgRestrictions string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET org_restrictions = $2, updated_at = NOW() WHERE id = $1`,
+		userID, orgRestrictions)
+	return err
+}
+
+func (s *UserStore) SetAccount(ctx context.Context, userID, accountID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET account_id = $2, updated_at = NOW() WHERE id = $1`,
+		userID, accountID)
 	return err
 }
 

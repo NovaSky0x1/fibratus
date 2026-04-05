@@ -398,8 +398,10 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	})
 	dashMux.HandleFunc("/api/v1/admin/accounts/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/orgs") {
+		if strings.HasSuffix(r.URL.Path, "/orgs") && r.Method == http.MethodGet {
 			adminHandler.ListAccountOrgs(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/users") && r.Method == http.MethodGet {
+			adminHandler.ListAccountUsers(w, r)
 		} else if r.Method == http.MethodDelete {
 			adminHandler.DeleteAccount(w, r)
 		} else if r.Method == http.MethodPut {

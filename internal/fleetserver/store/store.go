@@ -53,8 +53,11 @@ type UserStore interface {
 	GetOrgAccess(ctx context.Context, userID string) ([]fleet.UserOrg, error)
 	HasOrgAccess(ctx context.Context, userID, orgID string) (bool, error)
 	ListAll(ctx context.Context) ([]*fleet.User, error)
+	ListByAccount(ctx context.Context, accountID string) ([]*fleet.User, error)
 	UpdateProfile(ctx context.Context, userID, name, email string) error
 	UpdatePassword(ctx context.Context, userID, hashedPassword string) error
+	SetOrgRestrictions(ctx context.Context, userID string, orgRestrictions string) error
+	SetAccount(ctx context.Context, userID, accountID string) error
 	IncrementLoginAttempts(ctx context.Context, userID string) error
 	LockAccount(ctx context.Context, userID string, until time.Time) error
 	ResetLoginAttempts(ctx context.Context, userID string) error

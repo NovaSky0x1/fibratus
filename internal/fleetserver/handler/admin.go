@@ -171,6 +171,34 @@ func (h *AdminHandler) ListAccountOrgs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: orgs})
 }
 
+// ListAccountUsers handles GET /api/v1/admin/accounts/{id}/users
+func (h *AdminHandler) ListAccountUsers(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/accounts/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "account ID required")
+		return
+	}
+	accountID := strings.TrimSuffix(parts[1], "/users")
+	accountID = strings.TrimSuffix(accountID, "/")
+
+	users, err := h.users.ListByAccount(r.Context(), accountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	for _, u := range users {
+		u.Password = ""
+		u.IsLocked = !u.LockedUntil.IsZero() && time.Now().UTC().Before(u.LockedUntil)
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: users})
+}
+
 // ListAllUsers handles GET /api/v1/admin/users
 func (h *AdminHandler) ListAllUsers(w http.ResponseWriter, r *http.Request) {
 	role := ctxutil.RoleFromContext(r.Context())
@@ -188,6 +216,7 @@ func (h *AdminHandler) ListAllUsers(w http.ResponseWriter, r *http.Request) {
 
 	for _, u := range users {
 		u.Password = ""
+		u.IsLocked = !u.LockedUntil.IsZero() && time.Now().UTC().Before(u.LockedUntil)
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: users})
@@ -233,9 +262,12 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-		Role  string `json:"role"`
+		Name            string   `json:"name"`
+		Email           string   `json:"email"`
+		Role            string   `json:"role"`
+		AccountID       string   `json:"account_id"`
+		OrgRestrictions []string `json:"org_restrictions"` // null/empty = all orgs, array = specific
+		SetOrgRestrict  *bool    `json:"set_org_restrictions"` // explicit flag to clear restrictions
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -244,6 +276,33 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name != "" || req.Email != "" {
 		h.users.UpdateProfile(r.Context(), userID, req.Name, req.Email)
+	}
+	if req.Role != "" && fleetauth.ValidRole(req.Role) {
+		// Update role in user_orgs for all their org memberships
+		access, _ := h.users.GetOrgAccess(r.Context(), userID)
+		for _, uo := range access {
+			h.users.AddOrgAccess(r.Context(), userID, uo.OrgID, req.Role)
+		}
+	}
+	if req.AccountID != "" {
+		h.users.SetAccount(r.Context(), userID, req.AccountID)
+	}
+	// Handle org restrictions
+	if req.SetOrgRestrict != nil || len(req.OrgRestrictions) > 0 {
+		var orgJSON string
+		if len(req.OrgRestrictions) > 0 {
+			b, _ := json.Marshal(req.OrgRestrictions)
+			orgJSON = string(b)
+		}
+		h.users.SetOrgRestrictions(r.Context(), userID, orgJSON)
+		// Also update org access entries
+		for _, oid := range req.OrgRestrictions {
+			role := "viewer"
+			if req.Role != "" {
+				role = req.Role
+			}
+			h.users.AddOrgAccess(r.Context(), userID, oid, role)
+		}
 	}
 
 	log.Infof("fleet: user %s updated by root", userID)
