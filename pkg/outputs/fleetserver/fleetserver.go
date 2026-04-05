@@ -112,62 +112,86 @@ func (f *fleetOutput) Close() error { return nil }
 // server. Everything else is only sent if it triggered a detection rule
 // or evasion flag.
 var telemetryEventNames = map[string]bool{
-	"CreateProcess":  true, // process spawn — core EDR visibility
-	"Connect":        true, // outbound connections — C2, lateral movement
-	"QueryDns":       true, // DNS resolution — C2/exfil domain detection
-	"ReplyDns":       true, // DNS answers
-	"LoadImage":      true, // module/DLL loads — sideloading, injection detection
-	"DeleteFile":     true, // file deletion — covering tracks
-	"RenameFile":     true, // file renames — evasion techniques
-	"RegCreateKey":   true, // registry key creation — persistence
-	"RegDeleteKey":   true, // registry key deletion — defense evasion
+	// Process lifecycle
+	"CreateProcess":    true, // process spawn — core EDR visibility
+	"TerminateProcess": true, // process exit — track process lifetimes
+	"OpenProcess":      true, // process handle open — injection detection
+
+	// File system
+	"CreateFile":  true, // file creation — malware drops, staging
+	"WriteFile":   true, // file writes — payload drops, config modification
+	"DeleteFile":  true, // file deletion — covering tracks
+	"RenameFile":  true, // file renames — evasion techniques
+
+	// Registry
+	"RegSetValue":   true, // registry value writes — persistence, config changes
+	"RegCreateKey":  true, // registry key creation — persistence
+	"RegDeleteKey":  true, // registry key deletion — defense evasion
 	"RegDeleteValue": true, // registry value deletion — defense evasion
+
+	// Network
+	"Connect":  true, // outbound connections — C2, lateral movement
+	"Accept":   true, // inbound connections — backdoors, bind shells
+
+	// DNS
+	"QueryDns": true, // DNS resolution — C2/exfil domain detection
+	"ReplyDns": true, // DNS answers
+
+	// Module/DLL loads
+	"LoadImage":   true, // module loads — sideloading, injection detection
+	"UnloadImage": true, // module unloads — unhooking detection
+
+	// Thread context (injection indicator)
+	"SetThreadContext": true, // thread context manipulation — injection technique
 }
 
-// telemetryDropNames is a fast-reject set for noisy events that should
-// never be sent, even if they somehow have metadata attached.
+// telemetryDropNames is a fast-reject set for noisy/low-value events
+// that should never be sent, even if they have metadata attached.
 var telemetryDropNames = map[string]bool{
+	// Threadpool — extremely noisy, low security value
 	"SubmitThreadpoolWork":     true,
 	"SubmitThreadpoolCallback": true,
 	"SetThreadpoolTimer":       true,
-	"VirtualAlloc":             true,
-	"VirtualFree":              true,
-	"MapViewFile":              true,
-	"UnmapViewFile":            true,
-	"CreateHandle":             true,
-	"CloseHandle":              true,
-	"DuplicateHandle":          true,
-	"CreateFile":               true,
-	"ReadFile":                 true,
-	"WriteFile":                true,
-	"DeleteFile":               true,
-	"RenameFile":               true,
-	"CloseFile":                true,
-	"ReleaseFile":              true,
-	"EnumDirectory":            true,
-	"FileOpEnd":                true,
-	"FileRundown":              true,
-	"SetFileInformation":       true,
-	"RegOpenKey":               true,
-	"RegCloseKey":              true,
-	"RegQueryKey":              true,
-	"RegQueryValue":            true,
-	"RegSetValue":              true,
-	"RegKCBRundown":            true,
-	"RegCreateKCB":             true,
-	"MapFileRundown":           true,
-	"OpenProcess":              true,
-	"TerminateProcess":         true,
-	"Accept":                   true,
-	"UnloadImage":              true,
-	"CreateThread":             true,
-	"TerminateThread":          true,
-	"OpenThread":               true,
-	"ThreadRundown":            true,
-	"SetThreadContext":         true,
-	"ProcessRundown":           true,
-	"ImageRundown":             true,
-	"StackWalk":                true,
+
+	// Memory — very noisy
+	"VirtualAlloc": true,
+	"VirtualFree":  true,
+
+	// File I/O noise — read-only operations, handle lifecycle
+	"ReadFile":           true,
+	"CloseFile":          true,
+	"ReleaseFile":        true,
+	"EnumDirectory":      true,
+	"FileOpEnd":          true,
+	"FileRundown":        true,
+	"SetFileInformation": true,
+	"MapViewFile":        true,
+	"UnmapViewFile":      true,
+	"MapFileRundown":     true,
+
+	// Registry noise — read-only operations
+	"RegOpenKey":    true,
+	"RegCloseKey":   true,
+	"RegQueryKey":   true,
+	"RegQueryValue": true,
+	"RegKCBRundown": true,
+	"RegCreateKCB":  true,
+
+	// Handle lifecycle — extremely noisy
+	"CreateHandle":    true,
+	"CloseHandle":     true,
+	"DuplicateHandle": true,
+
+	// Thread lifecycle — very noisy, low value for raw telemetry
+	"CreateThread":    true,
+	"TerminateThread": true,
+	"OpenThread":      true,
+	"ThreadRundown":   true,
+
+	// Rundown/internal events
+	"ProcessRundown": true,
+	"ImageRundown":   true,
+	"StackWalk":      true,
 	"CreateSymbolicLinkObject": true,
 }
 
