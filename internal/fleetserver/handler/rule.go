@@ -206,6 +206,27 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	rule.ID = ruleID
 	rule.OrgID = orgID
 
+	// For JSON partial updates (e.g., just {enabled: false}), merge with existing rule
+	// to prevent overwriting all fields with empty values.
+	if !strings.Contains(contentType, "yaml") {
+		existing, err := h.rules.Get(r.Context(), orgID, ruleID)
+		if err != nil || existing == nil {
+			writeError(w, http.StatusNotFound, "rule not found")
+			return
+		}
+		// Merge: only overwrite fields that were explicitly set in the request
+		if rule.Name == "" { rule.Name = existing.Name }
+		if rule.Version == "" { rule.Version = existing.Version }
+		if rule.Description == "" { rule.Description = existing.Description }
+		if rule.Condition == "" { rule.Condition = existing.Condition }
+		if rule.Output == "" { rule.Output = existing.Output }
+		if rule.Severity == "" { rule.Severity = existing.Severity }
+		if rule.RawYAML == "" { rule.RawYAML = existing.RawYAML }
+		if rule.Labels == nil { rule.Labels = existing.Labels }
+		if rule.Tags == nil { rule.Tags = existing.Tags }
+		if rule.References == nil { rule.References = existing.References }
+	}
+
 	if err := h.rules.Update(r.Context(), &rule); err != nil {
 		log.Errorf("fleet: update rule error: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to update rule")

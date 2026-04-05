@@ -163,7 +163,7 @@ export default function Events() {
   const [activeQuery, setActiveQuery] = useState('')
   const [queryError, setQueryError] = useState('')
   const [showAutocomplete, setShowAutocomplete] = useState(false)
-  const [autocompleteIdx, setAutocompleteIdx] = useState(0)
+  const [autocompleteIdx, setAutocompleteIdx] = useState(-1)
   const [historyIdx, setHistoryIdx] = useState(-1)
   const queryRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<HTMLDivElement>(null)
@@ -471,7 +471,7 @@ export default function Events() {
       </div>
 
       {/* ── Query Bar ── */}
-      <div className="rounded-xl bg-slate-950 dark:bg-black border border-slate-700 p-3">
+      <div className="rounded-xl bg-slate-950 dark:bg-black border border-slate-700 p-3 overflow-visible">
         <div className="relative">
           <div className="flex items-center gap-2">
             <svg className="w-4 h-4 text-cyan-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -840,22 +840,22 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
           {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
         </td>
         <td className="px-3 py-1.5 text-slate-100 font-medium">
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
             {evt.event_name}
           </span>
         </td>
         <td className="px-3 py-1.5">
-          <span className={'inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-cyan-500/50 transition-all ' + (EVENT_COLORS[evt.event_category] || 'bg-slate-600/30 text-slate-400')} onClick={(e) => { e.stopPropagation(); onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
+          <span className={'inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-cyan-500/50 transition-all ' + (EVENT_COLORS[evt.event_category] || 'bg-slate-600/30 text-slate-400')} onClick={(e) => { onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
             {evt.event_category}
           </span>
         </td>
         <td className="px-3 py-1.5 text-slate-400">
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('ps.pid', String(evt.pid)) }} title="Click to filter by this PID">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { onAddFilter('ps.pid', String(evt.pid)) }} title="Click to filter by this PID">
             {evt.pid}
           </span>
         </td>
         <td className="px-3 py-1.5 text-slate-100 break-all" title={evt.process_exe}>
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('ps.name', evt.process_name) }} title="Click to filter by this process">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { onAddFilter('ps.name', evt.process_name) }} title="Click to filter by this process">
             {evt.process_name}
           </span>
         </td>
@@ -863,7 +863,7 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
           {summarizeParams(evt)}
         </td>
         <td className="px-3 py-1.5 text-slate-400">
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { e.stopPropagation(); onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={(e) => { onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
             {evt.agent_hostname}
           </span>
         </td>
