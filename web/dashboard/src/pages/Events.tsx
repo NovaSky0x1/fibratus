@@ -99,25 +99,6 @@ const MAX_HISTORY = 10
 // Helpers
 // ═════════════════════════════════════════════════
 
-function _summarizeParams(evt: TelemetryEvent): string {
-  const p = evt.params
-  if (!p || typeof p !== 'object') return ''
-
-  if (p.file_name) return String(p.file_name)
-  if (p.file_path) return String(p.file_path)
-  if (p.key_name) return String(p.key_name)
-  if (p.key_handle) return String(p.key_handle)
-  if (p.dip) return `${p.dip}:${p.dport}`
-  if (p.sip) return `${p.sip}:${p.sport}`
-  if (p.exe) return String(p.exe)
-  if (p.cmdline) return String(p.cmdline)
-  if (p.image_name) return String(p.image_name)
-  if (p.name) return String(p.name)
-
-  const firstVal = Object.values(p).find(v => typeof v === 'string' && v.length > 0)
-  return firstVal ? String(firstVal) : ''
-}
-
 function loadQueryHistory(): string[] {
   try {
     const raw = localStorage.getItem(QUERY_HISTORY_KEY)
