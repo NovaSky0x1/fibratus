@@ -85,6 +85,19 @@ func (h *GitHubSyncHandler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-convert GitHub web URLs to API URLs
+	// e.g., "https://github.com/owner/repo" → "https://api.github.com/repos/owner/repo"
+	if strings.HasPrefix(cfg.RepoURL, "https://github.com/") {
+		path := strings.TrimPrefix(cfg.RepoURL, "https://github.com/")
+		path = strings.TrimSuffix(path, "/")
+		// Remove /tree/branch/path if present
+		if idx := strings.Index(path, "/tree/"); idx >= 0 {
+			path = path[:idx]
+		}
+		cfg.RepoURL = "https://api.github.com/repos/" + path
+	}
+	cfg.RepoURL = strings.TrimSuffix(cfg.RepoURL, "/")
+
 	if cfg.Branch == "" {
 		cfg.Branch = "main"
 	}
