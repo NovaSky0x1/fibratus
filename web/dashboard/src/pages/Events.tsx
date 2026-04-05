@@ -251,15 +251,75 @@ export default function Events() {
     setPage(1)
   }, [customFrom, customTo])
 
-  // Compute filtered autocomplete suggestions
+  // Context-aware autocomplete: fields → operators → value hints
+  const OPERATORS = [
+    { value: '=', desc: 'Equals' },
+    { value: '!=', desc: 'Not equals' },
+    { value: 'contains', desc: 'Contains substring' },
+    { value: 'icontains', desc: 'Contains (case-insensitive)' },
+    { value: 'imatches', desc: 'Wildcard match (* and ?)' },
+    { value: 'startswith', desc: 'Starts with' },
+    { value: 'endswith', desc: 'Ends with' },
+    { value: 'in', desc: 'In list (val1, val2)' },
+    { value: '>', desc: 'Greater than' },
+    { value: '<', desc: 'Less than' },
+  ]
+
   const autocompleteMatches = useMemo(() => {
-    if (!queryInput) return []
-    // Extract the last token being typed (after space, =, !=, etc.)
-    const tokens = queryInput.split(/[\s=!<>()]+/)
-    const lastToken = tokens[tokens.length - 1] || ''
-    if (!lastToken || lastToken.length < 1) return []
-    const lower = lastToken.toLowerCase()
-    return FIELD_SUGGESTIONS.filter(s => s.field.toLowerCase().startsWith(lower)).slice(0, 12)
+    if (!queryInput) return [] as { text: string; desc: string; type: 'field' | 'operator' | 'keyword' | 'value' }[]
+
+    const trimmed = queryInput.trimEnd()
+    const parts = trimmed.split(/\s+/)
+    const lastPart = parts[parts.length - 1] || ''
+    const prevPart = parts.length >= 2 ? parts[parts.length - 2] : ''
+
+    // After a logical keyword or at start → suggest fields
+    const isAfterLogical = ['and', 'or', 'not'].includes(prevPart.toLowerCase()) || parts.length <= 1
+    // After a field name (contains dot) → suggest operators
+    const isAfterField = prevPart.includes('.') && !lastPart.includes('.')
+    // After an operator → suggest value wrapper
+    const isAfterOperator = ['=', '!=', '>', '<', 'contains', 'icontains', 'imatches', 'startswith', 'endswith', 'in'].includes(prevPart.toLowerCase())
+
+    if (isAfterOperator && lastPart === '') {
+      // Suggest value format hints
+      return [
+        { text: "'", desc: "Start string value with single quote", type: 'value' as const },
+        { text: "(", desc: "Start value list for 'in' operator", type: 'value' as const },
+        { text: "true", desc: "Boolean true", type: 'value' as const },
+        { text: "false", desc: "Boolean false", type: 'value' as const },
+      ]
+    }
+
+    if (isAfterField && lastPart === '') {
+      // Suggest operators
+      return OPERATORS.map(op => ({ text: op.value, desc: op.desc, type: 'operator' as const }))
+    }
+
+    if (isAfterField && lastPart.length > 0) {
+      // Filter operators by what's typed
+      const lower = lastPart.toLowerCase()
+      return OPERATORS.filter(op => op.value.startsWith(lower) || op.desc.toLowerCase().includes(lower))
+        .map(op => ({ text: op.value, desc: op.desc, type: 'operator' as const }))
+    }
+
+    // Default: suggest fields
+    const lower = lastPart.toLowerCase()
+    if (lower.length < 1) {
+      // After space with nothing typed — suggest logical keywords or fields
+      if (queryInput.endsWith(' ') && trimmed.length > 0) {
+        return [
+          { text: 'and', desc: 'Logical AND', type: 'keyword' as const },
+          { text: 'or', desc: 'Logical OR', type: 'keyword' as const },
+          { text: 'not', desc: 'Logical NOT', type: 'keyword' as const },
+        ]
+      }
+      return []
+    }
+
+    return FIELD_SUGGESTIONS
+      .filter(s => s.field.toLowerCase().startsWith(lower) || s.desc.toLowerCase().includes(lower))
+      .slice(0, 12)
+      .map(s => ({ text: s.field, desc: `${s.desc} (${s.category})`, type: 'field' as const }))
   }, [queryInput])
 
   // Close autocomplete on outside click
@@ -351,21 +411,22 @@ export default function Events() {
         setAutocompleteIdx(i => Math.max(i - 1, 0))
         return
       }
-      if (e.key === 'Tab' || e.key === 'Enter') {
-        if (e.key === 'Tab' || (e.key === 'Enter' && showAutocomplete && autocompleteMatches.length > 0 && autocompleteIdx >= 0)) {
-          // Only accept autocomplete on Tab, or Enter when user has actively navigated
-          if (e.key === 'Tab') {
-            e.preventDefault()
-            const match = autocompleteMatches[autocompleteIdx]
-            if (match) {
-              const tokens = queryInput.split(/(\s+|[=!<>()]+)/)
-              tokens[tokens.length - 1] = match.field
-              setQueryInput(tokens.join(''))
-              setShowAutocomplete(false)
-              return
-            }
-          }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const idx = autocompleteIdx >= 0 ? autocompleteIdx : 0
+        const match = autocompleteMatches[idx]
+        if (match) {
+          selectAutocomplete(match.text, match.type)
         }
+        return
+      }
+      if (e.key === 'Enter' && autocompleteIdx >= 0) {
+        e.preventDefault()
+        const match = autocompleteMatches[autocompleteIdx]
+        if (match) {
+          selectAutocomplete(match.text, match.type)
+        }
+        return
       }
       if (e.key === 'Escape') {
         setShowAutocomplete(false)
@@ -406,22 +467,35 @@ export default function Events() {
     const val = e.target.value
     setQueryInput(val)
     setHistoryIdx(-1)
-    // Show autocomplete when typing field-like tokens
-    const tokens = val.split(/[\s=!<>()]+/)
-    const lastToken = tokens[tokens.length - 1] || ''
-    if (lastToken.length >= 1 && /^[a-z]/.test(lastToken)) {
+    // Show autocomplete on any meaningful input
+    if (val.length > 0) {
       setShowAutocomplete(true)
-      setAutocompleteIdx(0)
+      setAutocompleteIdx(-1)
     } else {
       setShowAutocomplete(false)
     }
   }, [])
 
-  const selectAutocomplete = useCallback((field: string) => {
-    const tokens = queryInput.split(/(\s+|[=!<>()]+)/)
-    tokens[tokens.length - 1] = field
-    setQueryInput(tokens.join(''))
-    setShowAutocomplete(false)
+  const selectAutocomplete = useCallback((text: string, type: string) => {
+    if (type === 'field') {
+      // Replace the last token with the field name and add a space
+      const tokens = queryInput.split(/(\s+)/)
+      const lastNonEmpty = tokens.map((t, i) => ({ t, i })).filter(x => x.t.trim()).pop()
+      if (lastNonEmpty && !queryInput.endsWith(' ')) {
+        tokens[lastNonEmpty.i] = text
+        setQueryInput(tokens.join('') + ' ')
+      } else {
+        setQueryInput(queryInput + text + ' ')
+      }
+    } else if (type === 'operator') {
+      setQueryInput(queryInput.trimEnd() + ' ' + text + ' ')
+    } else if (type === 'keyword') {
+      setQueryInput(queryInput.trimEnd() + ' ' + text + ' ')
+    } else if (type === 'value') {
+      setQueryInput(queryInput + text)
+    }
+    setShowAutocomplete(true) // Keep open to show next suggestions
+    setAutocompleteIdx(-1)
     queryRef.current?.focus()
   }, [queryInput])
 
@@ -497,21 +571,31 @@ export default function Events() {
           {showAutocomplete && autocompleteMatches.length > 0 && (
             <div
               ref={autocompleteRef}
-              className="absolute left-6 top-full mt-1 z-50 w-[420px] rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 shadow-xl overflow-hidden"
+              className="absolute left-6 top-full mt-1 z-50 w-[460px] rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden max-h-80 overflow-y-auto"
             >
-              {autocompleteMatches.map((s, i) => (
-                <button
-                  key={s.field}
-                  onMouseDown={(e) => { e.preventDefault(); selectAutocomplete(s.field) }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                    i === autocompleteIdx ? 'bg-cyan-900/40 text-cyan-300' : 'text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  <span className="font-mono text-cyan-400 text-xs min-w-[140px]">{s.field}</span>
-                  <span className="text-gray-400 dark:text-slate-500 text-xs">{s.desc}</span>
-                  <span className="ml-auto rounded bg-white dark:bg-slate-800 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-slate-500">{s.category}</span>
-                </button>
-              ))}
+              {autocompleteMatches.map((s, i) => {
+                const typeBadge = {
+                  field: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
+                  operator: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400',
+                  keyword: 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400',
+                  value: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+                }[s.type] || ''
+                return (
+                  <button
+                    key={`${s.text}-${i}`}
+                    onMouseDown={(e) => { e.preventDefault(); selectAutocomplete(s.text, s.type) }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                      i === autocompleteIdx
+                        ? 'bg-blue-50 dark:bg-cyan-900/40 text-blue-900 dark:text-cyan-300'
+                        : 'text-gray-700 dark:text-slate-300 hover:bg-blue-50/70 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="font-mono text-blue-700 dark:text-cyan-400 text-xs min-w-[130px]">{s.text}</span>
+                    <span className="text-gray-500 dark:text-slate-500 text-xs flex-1 truncate">{s.desc}</span>
+                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${typeBadge}`}>{s.type}</span>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
