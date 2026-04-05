@@ -34,15 +34,15 @@ interface TelemetryEvent {
 // ═════════════════════════════════════════════════
 
 const EVENT_COLORS: Record<string, string> = {
-  Process: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-  Thread: 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
-  File: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
-  Registry: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
-  Net: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  Image: 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30',
-  Mem: 'bg-pink-500/20 text-pink-400 border border-pink-500/30',
-  Handle: 'bg-gray-500/20 text-gray-400 border border-gray-500/30',
-  DNS: 'bg-teal-500/20 text-teal-400 border border-teal-500/30',
+  process: 'text-blue-700 dark:text-blue-400 dark:bg-blue-500/20 dark:border dark:border-blue-500/30',
+  thread: 'text-purple-700 dark:text-purple-400 dark:bg-purple-500/20 dark:border dark:border-purple-500/30',
+  file: 'text-amber-700 dark:text-amber-400 dark:bg-amber-500/20 dark:border dark:border-amber-500/30',
+  registry: 'text-orange-700 dark:text-orange-400 dark:bg-orange-500/20 dark:border dark:border-orange-500/30',
+  net: 'text-emerald-700 dark:text-emerald-400 dark:bg-emerald-500/20 dark:border dark:border-emerald-500/30',
+  image: 'text-indigo-700 dark:text-cyan-400 dark:bg-cyan-500/20 dark:border dark:border-cyan-500/30',
+  mem: 'text-pink-700 dark:text-pink-400 dark:bg-pink-500/20 dark:border dark:border-pink-500/30',
+  handle: 'text-gray-700 dark:text-gray-400 dark:bg-gray-500/20 dark:border dark:border-gray-500/30',
+  dns: 'text-teal-700 dark:text-teal-400 dark:bg-teal-500/20 dark:border dark:border-teal-500/30',
 }
 
 const FIELD_SUGGESTIONS = [
@@ -504,7 +504,7 @@ export default function Events() {
                   key={s.field}
                   onMouseDown={(e) => { e.preventDefault(); selectAutocomplete(s.field) }}
                   className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                    i === autocompleteIdx ? 'bg-cyan-900/40 text-cyan-300' : 'text-slate-300 hover:bg-white dark:bg-slate-800'
+                    i === autocompleteIdx ? 'bg-cyan-900/40 text-cyan-300' : 'text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   <span className="font-mono text-cyan-400 text-xs min-w-[140px]">{s.field}</span>
@@ -538,7 +538,7 @@ export default function Events() {
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 timePreset.label === p.label && !customTimeActive
                   ? 'bg-cyan-600 text-white'
-                  : 'text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800'
+                  : 'text-gray-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700'
               }`}
             >
               {p.label}
@@ -549,7 +549,7 @@ export default function Events() {
             className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
               customTimeActive
                 ? 'bg-cyan-600 text-white'
-                : 'text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800'
+                : 'text-gray-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700'
             }`}
           >
             Custom
@@ -560,7 +560,7 @@ export default function Events() {
             className={`flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors ${
               liveMode
                 ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800'
+                : 'text-gray-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700'
             }`}
           >
             {liveMode && <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
@@ -588,7 +588,7 @@ export default function Events() {
           </span>
           <button
             onClick={() => refetch()}
-            className="rounded border border-gray-200 dark:border-slate-700 px-2.5 py-1 text-xs text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800 transition-colors"
+            className="rounded border border-gray-200 dark:border-slate-700 px-2.5 py-1 text-xs text-gray-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors"
           >
             Refresh
           </button>
@@ -768,7 +768,7 @@ export default function Events() {
       <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 dark:bg-gray-50 dark:bg-slate-900/50 shadow-sm dark:shadow-slate-900/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
-            <thead className="border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80 sticky top-0 z-10">
+            <thead className="border-b border-gray-200 dark:border-slate-700 bg-blue-50/50 dark:bg-slate-800/80 sticky top-0 z-10">
               <tr>
                 <th className="w-8 px-2 py-2" />
                 <SortableHeader label="Timestamp" sortKey="timestamp" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[155px]" />
@@ -922,8 +922,8 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
       <tr
         className={`cursor-pointer transition-colors ${
           isExpanded
-            ? 'bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80'
-            : 'hover:bg-blue-50/70 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
+            ? 'bg-blue-50/50 dark:bg-slate-800/80'
+            : 'hover:bg-blue-50/70 dark:hover:bg-slate-800/60'
         }`}
         onClick={onToggle}
       >
@@ -939,13 +939,13 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
         <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 whitespace-nowrap">
           {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
         </td>
-        <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100 font-medium">
-          <span className="cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
+        <td className="px-3 py-1.5">
+          <span className="cursor-pointer font-semibold text-gray-900 dark:text-slate-100 hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
             {evt.event_name}
           </span>
         </td>
         <td className="px-3 py-1.5">
-          <span className={'inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-cyan-500/50 transition-all ' + (EVENT_COLORS[evt.event_category] || 'bg-slate-600/30 text-gray-500 dark:text-slate-400')} onClick={() => { onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
+          <span className={'inline-flex dark:rounded dark:px-1.5 dark:py-0.5 text-[11px] font-semibold cursor-pointer hover:underline transition-all ' + (EVENT_COLORS[evt.event_category] || 'text-gray-600 dark:text-gray-500 dark:text-slate-400')} onClick={() => { onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
             {evt.event_category}
           </span>
         </td>
@@ -968,7 +968,7 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
       {/* Preview sub-row */}
       <tr
         className={`cursor-pointer border-b border-slate-800/50 ${
-          isExpanded ? 'bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80' : 'hover:bg-blue-50/70 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
+          isExpanded ? 'bg-blue-50/50 dark:bg-slate-800/80' : 'hover:bg-blue-50/70 dark:hover:bg-slate-800/60'
         }`}
         onClick={onToggle}
       >
@@ -1190,7 +1190,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                 {callstack && callstack.length > 0 ? (
                   <div className="rounded-lg bg-black/50 border border-gray-200 dark:border-slate-700/50 p-3 max-h-60 overflow-auto">
                     {callstack.map((frame, i) => (
-                      <div key={i} className="text-[11px] font-mono text-slate-300 py-0.5 hover:bg-white dark:bg-slate-800/50">
+                      <div key={i} className="text-[11px] font-mono text-slate-300 py-0.5 hover:bg-blue-50 dark:hover:bg-slate-700/50">
                         <span className="text-slate-600 mr-3 select-none">{String(callstack.length - i).padStart(2, ' ')}</span>
                         {frame}
                       </div>
