@@ -55,11 +55,11 @@ Example:
     --account "Acme Corp" --org "Production" \
     --email admin@acme.com --name "Admin" --password "changeme123"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Auto-generate password if not provided
+		// Auto-generate password if not provided (must meet policy: 12+ chars, upper/lower/digit/special)
 		if bsAdminPass == "" {
 			b := make([]byte, 12)
 			rand.Read(b)
-			bsAdminPass = hex.EncodeToString(b)[:16]
+			bsAdminPass = "Fb!" + hex.EncodeToString(b)[:13]
 		}
 
 		cfg, err := fleetserver.LoadConfig(configFile)
@@ -128,7 +128,7 @@ Example:
 			return fmt.Errorf("failed to create default group: %w", err)
 		}
 
-		// Create admin user
+		// Create admin user (root role — full system access)
 		userStore := postgres.NewUserStore(db)
 		err = userStore.Create(ctx, &fleet.User{
 			ID:        userID,
@@ -136,7 +136,7 @@ Example:
 			Name:      bsAdminName,
 			Password:  passHash,
 			AccountID: accountID,
-			Role:      "admin",
+			Role:      "root",
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create user: %w", err)
@@ -147,7 +147,15 @@ Example:
 		if err != nil {
 			return fmt.Errorf("failed to grant org access: %w", err)
 		}
-		log.Infof("created admin user: %s (%s)", bsAdminEmail, userID)
+		log.Infof("created root user: %s (%s)", bsAdminEmail, userID)
+
+		// Enforce 2FA on the account — admin must set up TOTP on first login
+		err = accountStore.UpdateSettings(ctx, accountID, true)
+		if err != nil {
+			log.Warnf("failed to enable 2FA enforcement: %v", err)
+		} else {
+			log.Info("2FA enforcement enabled — admin must configure TOTP on first login")
+		}
 
 		// Create enrollment token
 		enrollTokenID := "ft-enroll-" + generateID()
@@ -179,6 +187,11 @@ Example:
 		fmt.Println("  Dashboard login:")
 		fmt.Printf("    Email:          %s\n", bsAdminEmail)
 		fmt.Printf("    Password:       %s\n", bsAdminPass)
+		fmt.Printf("    Role:           root\n")
+		fmt.Println("")
+		fmt.Println("  2FA enforcement is ON — you will be required to set up")
+		fmt.Println("  an authenticator app (Google Authenticator, Authy, etc.)")
+		fmt.Println("  on your first login.")
 		fmt.Println("")
 		fmt.Printf("  Enrollment Token: %s\n", enrollTokenID)
 		fmt.Printf("  API Key:          %s\n", apiKey)

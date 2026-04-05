@@ -381,6 +381,16 @@ export const api = {
     fetchApi<Account>(`/admin/accounts/${accountId}`, { method: 'PUT', body: JSON.stringify(data) }),
   adminSwitchAccount: (accountId: string) =>
     fetchApi<{ account_id: string; account_name: string }>('/admin/switch-account', { method: 'POST', body: JSON.stringify({ account_id: accountId }) }),
+
+  // DB Admin (root only)
+  dbQueryPostgres: (query: string) =>
+    fetchApi<{ columns: string[]; rows: unknown[][]; affected_rows: number; error?: string }>('/admin/db/postgres/query', { method: 'POST', body: JSON.stringify({ query }) }),
+  dbQueryClickhouse: (query: string) =>
+    fetchApi<{ columns: string[]; rows: unknown[][]; affected_rows: number; error?: string }>('/admin/db/clickhouse/query', { method: 'POST', body: JSON.stringify({ query }) }),
+  dbTablesPostgres: () =>
+    fetchApi<{ columns: string[]; rows: unknown[][] }>('/admin/db/postgres/tables'),
+  dbTablesClickhouse: () =>
+    fetchApi<{ columns: string[]; rows: unknown[][] }>('/admin/db/clickhouse/tables'),
   adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),
   adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string; account_id?: string; org_restrictions?: string[]; set_org_restrictions?: boolean }) =>
     fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

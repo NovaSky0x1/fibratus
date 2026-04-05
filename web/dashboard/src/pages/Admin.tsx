@@ -1351,51 +1351,143 @@ function GroupsTab() {
 // ═══════════════════════════════════════════════════
 
 function SystemTab() {
-  const [purgeConfirm, setPurgeConfirm] = useState(false)
+  const [dbType, setDbType] = useState<'postgres' | 'clickhouse'>('postgres')
+  const [query, setQuery] = useState('')
+  const [result, setResult] = useState<{ columns: string[]; rows: unknown[][]; affected_rows?: number; error?: string } | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const { data: pgTables } = useQuery({ queryKey: ['pg-tables'], queryFn: () => api.dbTablesPostgres(), staleTime: 30000 })
+  const { data: chTables } = useQuery({ queryKey: ['ch-tables'], queryFn: () => api.dbTablesClickhouse(), staleTime: 30000 })
+
+  const executeQuery = async () => {
+    if (!query.trim()) return
+    setLoading(true)
+    setResult(null)
+    try {
+      const res = dbType === 'postgres' ? await api.dbQueryPostgres(query) : await api.dbQueryClickhouse(query)
+      if (res.data) setResult(res.data as typeof result)
+      if (res.error) setResult({ columns: [], rows: [], error: res.error.message })
+    } catch (err) {
+      setResult({ columns: [], rows: [], error: String(err) })
+    }
+    setLoading(false)
+  }
+
+  const tables = dbType === 'postgres' ? pgTables?.data : chTables?.data
+  const tableData = tables as { columns?: string[]; rows?: unknown[][] } | undefined
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 uppercase tracking-wider">Server Information</h3>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div><span className="text-gray-500 dark:text-slate-400">Server URL</span><p className="font-mono text-gray-900 dark:text-slate-100">{window.location.origin}</p></div>
-          <div><span className="text-gray-500 dark:text-slate-400">Dashboard Version</span><p className="font-mono text-gray-900 dark:text-slate-100">Fleet Server v1.0</p></div>
-          <div><span className="text-gray-500 dark:text-slate-400">Environment</span><p className="font-mono text-gray-900 dark:text-slate-100">Production</p></div>
-          <div><span className="text-gray-500 dark:text-slate-400">Data Retention</span><p className="font-mono text-gray-900 dark:text-slate-100">10 minutes (dev mode)</p></div>
+    <div className="space-y-4">
+      {/* Server Info */}
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+        <div className="grid grid-cols-4 gap-4 text-sm">
+          <div><span className="text-gray-500 dark:text-slate-400 text-xs">Server</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">{window.location.origin}</p></div>
+          <div><span className="text-gray-500 dark:text-slate-400 text-xs">Version</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">Fleet v1.0</p></div>
+          <div><span className="text-gray-500 dark:text-slate-400 text-xs">Retention</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">10 min (dev)</p></div>
+          <div><span className="text-gray-500 dark:text-slate-400 text-xs">Environment</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">Production</p></div>
         </div>
       </div>
-      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 uppercase tracking-wider">Database</h3>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="rounded-lg border border-gray-200 dark:border-slate-600 p-4">
-            <span className="text-gray-500 dark:text-slate-400 text-xs uppercase">PostgreSQL</span>
-            <p className="text-lg font-bold text-gray-900 dark:text-slate-100 mt-1">Fleet State</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Accounts, users, agents, rules, detections, commands</p>
+
+      {/* DB Toggle */}
+      <div className="flex items-center gap-2">
+        <button onClick={() => { setDbType('postgres'); setResult(null) }}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${dbType === 'postgres' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300'}`}>
+          PostgreSQL
+        </button>
+        <button onClick={() => { setDbType('clickhouse'); setResult(null) }}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${dbType === 'clickhouse' ? 'bg-amber-600 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300'}`}>
+          ClickHouse
+        </button>
+      </div>
+
+      {/* Tables Overview */}
+      {tableData?.rows && tableData.rows.length > 0 && (
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Tables in {dbType === 'postgres' ? 'PostgreSQL' : 'ClickHouse'}</span>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-slate-600 p-4">
-            <span className="text-gray-500 dark:text-slate-400 text-xs uppercase">ClickHouse</span>
-            <p className="text-lg font-bold text-gray-900 dark:text-slate-100 mt-1">Telemetry</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Kernel events, buffered ingestion, ZSTD compression</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-slate-900/50">
+                <tr>{tableData.columns?.map(c => <th key={c} className="px-3 py-1.5 text-left font-medium text-gray-500 dark:text-slate-400">{c}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                {tableData.rows.map((row, i) => (
+                  <tr key={i} className="hover:bg-blue-50/50 dark:hover:bg-slate-800/50 cursor-pointer"
+                    onClick={() => setQuery(`SELECT * FROM ${row[0]} LIMIT 100`)}>
+                    {(row as unknown[]).map((cell, j) => (
+                      <td key={j} className="px-3 py-1.5 font-mono text-gray-700 dark:text-slate-300">{String(cell ?? '')}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
-      <div className="rounded-xl border-2 border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-900/10 p-6 space-y-4">
-        <h3 className="text-sm font-semibold text-red-700 dark:text-red-400 uppercase tracking-wider">Danger Zone</h3>
+      )}
+
+      {/* Query Editor */}
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Purge Telemetry Data</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400">Delete all telemetry events. Cannot be undone.</p>
+          <span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">SQL Query — {dbType === 'postgres' ? 'PostgreSQL' : 'ClickHouse'}</span>
+          <span className="text-[10px] text-red-500">Root access only. Use with caution.</span>
+        </div>
+        <textarea
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) executeQuery() }}
+          placeholder={dbType === 'postgres'
+            ? 'SELECT * FROM users LIMIT 10;\n\n-- Ctrl+Enter to execute'
+            : 'SELECT count() FROM telemetry_events;\n\n-- Ctrl+Enter to execute'}
+          className="w-full h-32 rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-black px-4 py-3 font-mono text-sm text-gray-900 dark:text-cyan-400 placeholder-gray-400 dark:placeholder-slate-600 focus:border-blue-500 dark:focus:border-cyan-500 focus:outline-none resize-y"
+        />
+        <div className="flex items-center gap-2">
+          <button onClick={executeQuery} disabled={loading || !query.trim()}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {loading ? 'Executing...' : 'Execute (Ctrl+Enter)'}
+          </button>
+          <button onClick={() => { setQuery(''); setResult(null) }}
+            className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700">
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {/* Query Results */}
+      {result && (
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+              {result.error ? 'Error' : `Results — ${result.rows?.length || 0} rows`}
+              {result.affected_rows !== undefined && !result.error && ` (${result.affected_rows} affected)`}
+            </span>
           </div>
-          {purgeConfirm ? (
-            <div className="flex gap-2">
-              <button onClick={() => setPurgeConfirm(false)} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-700">Confirm</button>
-              <button onClick={() => setPurgeConfirm(false)} className="rounded-lg bg-gray-200 dark:bg-slate-600 px-3 py-1.5 text-xs">Cancel</button>
+          {result.error ? (
+            <div className="p-4 text-sm text-red-600 dark:text-red-400 font-mono break-all">{result.error}</div>
+          ) : result.columns && result.columns.length > 0 ? (
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 dark:bg-slate-900/50 sticky top-0">
+                  <tr>{result.columns.map(c => <th key={c} className="px-3 py-2 text-left font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{c}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                  {result.rows?.map((row, i) => (
+                    <tr key={i} className="hover:bg-blue-50/50 dark:hover:bg-slate-800/30">
+                      {(row as unknown[]).map((cell, j) => (
+                        <td key={j} className="px-3 py-1.5 font-mono text-gray-700 dark:text-slate-300 whitespace-nowrap max-w-[400px] truncate" title={String(cell ?? '')}>
+                          {cell === null ? <span className="text-gray-300 dark:text-slate-600 italic">NULL</span> : String(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
-            <button onClick={() => setPurgeConfirm(true)} className="rounded-lg border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Purge All Telemetry</button>
+            <div className="p-4 text-sm text-gray-500 dark:text-slate-400">No results</div>
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 }

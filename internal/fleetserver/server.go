@@ -97,8 +97,10 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Telemetry store: use ClickHouse if configured, otherwise PostgreSQL
 	var telemetryStore store.TelemetryStore
+	var chDB *sql.DB
 	if s.config.ClickHouse.Enabled {
-		chDB, err := sql.Open("clickhouse", s.config.ClickHouse.DSN())
+		var err error
+		chDB, err = sql.Open("clickhouse", s.config.ClickHouse.DSN())
 		if err != nil {
 			return fmt.Errorf("clickhouse connect: %w", err)
 		}
@@ -153,6 +155,7 @@ func (s *Server) Run(ctx context.Context) error {
 	installHandler := handler.NewInstallHandler(enrollStore,
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
+	dbAdminHandler := handler.NewDBAdminHandler(db, chDB)
 	groupHandler := handler.NewGroupHandler(groupStore)
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
@@ -431,6 +434,12 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	})
 	dashMux.HandleFunc("/api/v1/admin/switch-account", methodGuard(http.MethodPost, adminHandler.SwitchAccount))
+
+	// DB Admin routes (root only)
+	dashMux.HandleFunc("/api/v1/admin/db/postgres/query", methodGuard(http.MethodPost, dbAdminHandler.QueryPG))
+	dashMux.HandleFunc("/api/v1/admin/db/postgres/tables", methodGuard(http.MethodGet, dbAdminHandler.TablesPG))
+	dashMux.HandleFunc("/api/v1/admin/db/clickhouse/query", methodGuard(http.MethodPost, dbAdminHandler.QueryCH))
+	dashMux.HandleFunc("/api/v1/admin/db/clickhouse/tables", methodGuard(http.MethodGet, dbAdminHandler.TablesCH))
 
 	// TOTP 2FA routes (JWT auth, user-scoped)
 	dashMux.HandleFunc("/api/v1/auth/totp/setup", methodGuard(http.MethodPost, totpHandler.Setup))

@@ -213,22 +213,22 @@ export default function Settings() {
 
         {/* Created token display */}
         {createdToken && (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
-            <h3 className="text-sm font-semibold text-emerald-800">
+          <div className="mt-4 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-6">
+            <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-400">
               Token Created
             </h3>
-            <p className="mt-1 text-xs text-emerald-600">
-              Copy this token -- it will not be shown again in full.
+            <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-500">
+              Copy this token — it will not be shown again in full.
             </p>
             <div className="mt-3 flex items-center gap-2">
-              <code className="flex-1 select-all rounded-lg border border-emerald-200 bg-white px-4 py-2.5 font-mono text-sm text-gray-900 dark:text-slate-100">
+              <code className="flex-1 select-all rounded-lg border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-800 px-4 py-2.5 font-mono text-sm text-gray-900 dark:text-slate-100">
                 {createdToken}
               </code>
               <CopyButton text={createdToken} label="Copy Token" />
             </div>
 
             <div className="mt-4 space-y-3">
-              <div className="rounded-lg border border-emerald-200 bg-white p-4">
+              <div className="rounded-lg border border-emerald-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
                 <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-slate-300">
                   One-liner install (elevated PowerShell):
                 </p>
@@ -245,7 +245,7 @@ export default function Settings() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-emerald-200 bg-white p-4">
+              <div className="rounded-lg border border-emerald-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
                 <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-slate-300">
                   Manual enrollment (if agent is already installed):
                 </p>
