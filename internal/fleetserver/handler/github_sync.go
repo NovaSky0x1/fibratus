@@ -333,13 +333,31 @@ func saveGitHubSyncConfig(orgID string, cfg *GitHubSyncConfig) {
 // Call this from server startup.
 func (h *GitHubSyncHandler) StartPeriodicSync(ctx context.Context) {
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute) // check for configs every 5 minutes
+		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				for orgID, cfg := range githubSyncConfigs {
-					if !cfg.Enabled || cfg.RepoURL == "" {
+				if githubSyncDB == nil {
+					continue
+				}
+				rows, err := githubSyncDB.QueryContext(ctx,
+					`SELECT org_id FROM github_sync_configs WHERE enabled = true AND repo_url != ''`)
+				if err != nil {
+					continue
+				}
+				var orgIDs []string
+				for rows.Next() {
+					var orgID string
+					if rows.Scan(&orgID) == nil {
+						orgIDs = append(orgIDs, orgID)
+					}
+				}
+				rows.Close()
+
+				for _, orgID := range orgIDs {
+					cfg := loadGitHubSyncConfig(orgID)
+					if cfg.RepoURL == "" {
 						continue
 					}
 					result, err := h.syncFromGitHub(ctx, orgID, cfg)
