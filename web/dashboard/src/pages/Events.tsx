@@ -1030,46 +1030,46 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
   return (
     <tr>
       <td colSpan={7} className="p-0">
-        <div className="bg-gray-50 dark:bg-slate-900/50 dark:bg-black/30 border-t border-b border-gray-200 dark:border-slate-700/50 px-4 py-4 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-blue-50/30 dark:bg-black/30 border-t border-b border-blue-100 dark:border-slate-700/50 px-4 py-4 space-y-4" onClick={(e) => e.stopPropagation()}>
           {/* ── Top section: 3 cards ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             {/* Process Card */}
-            <div className="rounded-lg border-l-2 border-blue-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
+            <div className="rounded-lg border-l-4 border-blue-500 bg-white dark:bg-slate-900/60 border-y border-r border-blue-100 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
-                <span className="rounded bg-blue-500/20 text-blue-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Process</span>
-                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
+                <span className="text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider">Process</span>
+                <span className="font-semibold text-sm text-blue-700 dark:text-cyan-400 cursor-pointer hover:text-blue-900 dark:hover:text-cyan-300 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
-                <span className="text-gray-400 dark:text-slate-500">TID <span className="text-slate-300 font-mono">{evt.tid}</span></span>
+                <span className="text-gray-500 dark:text-slate-500">PID <span className="text-gray-800 dark:text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
+                <span className="text-gray-500 dark:text-slate-500">TID <span className="text-gray-800 dark:text-slate-300 font-mono">{evt.tid}</span></span>
               </div>
               {evt.process_exe && (
                 <div>
-                  <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wider">Executable</span>
-                  <p className="text-xs text-slate-200 font-mono break-all mt-0.5">{evt.process_exe}</p>
+                  <span className="text-[10px] text-gray-500 dark:text-slate-500 uppercase tracking-wider">Executable</span>
+                  <p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all mt-0.5">{evt.process_exe}</p>
                 </div>
               )}
               {evt.process_cmdline && (
-                <div className="rounded bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-slate-200 font-mono break-all whitespace-pre-wrap">
+                <div className="rounded bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-gray-800 dark:text-slate-200 font-mono break-all whitespace-pre-wrap">
                   {evt.process_cmdline}
                 </div>
               )}
               <div className="flex items-center gap-2 flex-wrap">
                 {ps.is_signed !== undefined && (
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                    ps.is_signed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                    ps.is_signed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
                   }`}>
                     {ps.is_signed ? 'Signed' : 'Unsigned'}
                   </span>
                 )}
                 {ps.is_trusted !== undefined && ps.is_signed && (
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                    ps.is_trusted ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                    ps.is_trusted ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
                   }`}>
                     {ps.is_trusted ? 'Trusted' : 'Untrusted'}
                   </span>
                 )}
-                {ps.cert_subject && <span className="text-[10px] text-gray-400 dark:text-slate-500">{ps.cert_subject}</span>}
+                {ps.cert_subject && <span className="text-[10px] text-gray-600 dark:text-slate-500">{ps.cert_subject}</span>}
               </div>
               {(ps.sha256 || ps.md5) && (
                 <div className="space-y-1 mt-1">
@@ -1090,22 +1090,22 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             </div>
 
             {/* Parent Card */}
-            <div className="rounded-lg border-l-2 border-amber-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
+            <div className="rounded-lg border-l-4 border-amber-500 bg-white dark:bg-slate-900/60 border-y border-r border-amber-100 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
-                <span className="rounded bg-amber-500/20 text-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Parent</span>
-                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
+                <span className="text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wider">Parent</span>
+                <span className="font-semibold text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
+                <span className="text-gray-500 dark:text-slate-500">PID <span className="text-gray-800 dark:text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
               </div>
               {parentExe && (
                 <div>
-                  <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wider">Executable</span>
-                  <p className="text-xs text-slate-200 font-mono break-all mt-0.5">{parentExe}</p>
+                  <span className="text-[10px] text-gray-500 dark:text-slate-500 uppercase tracking-wider">Executable</span>
+                  <p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all mt-0.5">{parentExe}</p>
                 </div>
               )}
               {parentCmdline && (
-                <div className="rounded bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-slate-200 font-mono break-all whitespace-pre-wrap">
+                <div className="rounded bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-gray-800 dark:text-slate-200 font-mono break-all whitespace-pre-wrap">
                   {parentCmdline}
                 </div>
               )}
@@ -1128,22 +1128,22 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             </div>
 
             {/* Event Params Card */}
-            <div className="rounded-lg border-l-2 border-slate-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
+            <div className="rounded-lg border-l-4 border-gray-400 dark:border-slate-500 bg-white dark:bg-slate-900/60 border-y border-r border-gray-100 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
-                <span className="rounded bg-slate-600/30 text-gray-500 dark:text-slate-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Params</span>
-                <span className="text-xs text-gray-400 dark:text-slate-500">{Object.keys(evt.params || {}).length} fields</span>
+                <span className="text-gray-600 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wider">Params</span>
+                <span className="text-xs text-gray-500 dark:text-slate-500">{Object.keys(evt.params || {}).length} fields</span>
               </div>
               {evt.params && Object.keys(evt.params).length > 0 ? (
                 <div className="space-y-0.5 max-h-[200px] overflow-auto">
                   {Object.entries(evt.params).map(([key, value]) => (
-                    <div key={key} className="flex gap-2 rounded bg-black/30 px-2 py-1">
-                      <span className="text-[11px] text-gray-400 dark:text-slate-500 whitespace-nowrap min-w-[90px]">{key}</span>
-                      <span className="text-[11px] text-slate-300 font-mono break-all">{String(value)}</span>
+                    <div key={key} className="flex gap-2 rounded bg-gray-50 dark:bg-black/30 px-2 py-1">
+                      <span className="text-[11px] text-gray-500 dark:text-slate-500 whitespace-nowrap min-w-[90px]">{key}</span>
+                      <span className="text-[11px] text-gray-800 dark:text-slate-300 font-mono break-all">{String(value)}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-600">No parameters</p>
+                <p className="text-xs text-gray-500 dark:text-slate-600">No parameters</p>
               )}
             </div>
           </div>
@@ -1157,8 +1157,8 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                   onClick={() => onTabChange(t)}
                   className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors capitalize ${
                     tab === t
-                      ? 'border-cyan-500 text-cyan-400'
-                      : 'border-transparent text-gray-400 dark:text-slate-500 hover:text-slate-300'
+                      ? 'border-blue-600 dark:border-cyan-500 text-blue-700 dark:text-cyan-400'
+                      : 'border-transparent text-gray-500 dark:text-slate-500 hover:text-blue-600 dark:hover:text-slate-300'
                   }`}
                 >
                   {t === 'callstack' ? 'Call Stack' : t === 'raw' ? 'Raw JSON' : t}
@@ -1173,13 +1173,13 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {ancestors.map((a, i) => (
                       <span key={i} className="flex items-center gap-1">
-                        <span className="rounded bg-blue-500/15 border border-blue-500/25 px-2 py-0.5 text-[11px] font-mono text-blue-400">{a}</span>
-                        {i < ancestors.length - 1 && <span className="text-slate-600 text-xs">&larr;</span>}
+                        <span className="rounded bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/25 px-2 py-0.5 text-[11px] font-mono text-blue-700 dark:text-blue-400">{a}</span>
+                        {i < ancestors.length - 1 && <span className="text-gray-400 dark:text-slate-600 text-xs">&larr;</span>}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-600">No ancestry data available</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-600">No ancestry data available</p>
                 )}
               </div>
             )}
@@ -1188,16 +1188,16 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             {tab === 'callstack' && (
               <div>
                 {callstack && callstack.length > 0 ? (
-                  <div className="rounded-lg bg-black/50 border border-gray-200 dark:border-slate-700/50 p-3 max-h-60 overflow-auto">
+                  <div className="rounded-lg bg-gray-50 dark:bg-black/50 border border-gray-200 dark:border-slate-700/50 p-3 max-h-60 overflow-auto">
                     {callstack.map((frame, i) => (
-                      <div key={i} className="text-[11px] font-mono text-slate-300 py-0.5 hover:bg-blue-50 dark:hover:bg-slate-700/50">
-                        <span className="text-slate-600 mr-3 select-none">{String(callstack.length - i).padStart(2, ' ')}</span>
+                      <div key={i} className="text-[11px] font-mono text-gray-700 dark:text-slate-300 py-0.5 hover:bg-blue-50 dark:hover:bg-slate-700/50">
+                        <span className="text-gray-400 dark:text-slate-600 mr-3 select-none">{String(callstack.length - i).padStart(2, ' ')}</span>
                         {frame}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-600">No call stack data available</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-600">No call stack data available</p>
                 )}
               </div>
             )}
@@ -1208,9 +1208,9 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                 {modules.length > 0 ? (
                   <div className="space-y-0.5 max-h-60 overflow-auto">
                     {modules.slice(0, 50).map((m, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded bg-black/30 border border-gray-200 dark:border-slate-700/30 px-2 py-1 text-[11px]">
-                        <span className="text-slate-300 font-mono break-all flex-1">{m.name}</span>
-                        {m.sha256 && <span className="text-slate-600 font-mono text-[9px]">{m.sha256.slice(0, 16)}...</span>}
+                      <div key={i} className="flex items-center gap-2 rounded bg-gray-50 dark:bg-black/30 border border-gray-100 dark:border-slate-700/30 px-2 py-1 text-[11px]">
+                        <span className="text-gray-700 dark:text-slate-300 font-mono break-all flex-1">{m.name}</span>
+                        {m.sha256 && <span className="text-gray-400 dark:text-slate-600 font-mono text-[9px]">{m.sha256.slice(0, 16)}...</span>}
                       </div>
                     ))}
                     {modules.length > 50 && (
@@ -1218,7 +1218,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-600">No module data available</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-600">No module data available</p>
                 )}
               </div>
             )}
@@ -1240,7 +1240,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                   {rawExpanded ? 'Collapse' : 'Expand'} raw event JSON
                 </button>
                 {rawExpanded && (
-                  <pre className="max-h-80 overflow-auto rounded-lg bg-black/50 border border-gray-200 dark:border-slate-700/50 p-3 text-[11px] text-slate-300 font-mono">
+                  <pre className="max-h-80 overflow-auto rounded-lg bg-gray-50 dark:bg-black/50 border border-gray-200 dark:border-slate-700/50 p-3 text-[11px] text-gray-700 dark:text-slate-300 font-mono">
                     {JSON.stringify(evt.raw_event, null, 2)}
                   </pre>
                 )}
