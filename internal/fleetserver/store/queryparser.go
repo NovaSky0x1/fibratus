@@ -315,33 +315,20 @@ func buildComparison(field, op, value, dbType string, argIdx int) (string, []int
 		case ">", "<", ">=", "<=":
 			ph := placeholder()
 			return fmt.Sprintf("%s %s %s", col, op, ph), []interface{}{value}, argIdx
-		case "~=", "icontains":
+		case "~=", "icontains", "contains":
 			ph := placeholder()
-			return fmt.Sprintf("LOWER(%s) LIKE LOWER(%s)", col, ph), []interface{}{"%" + value + "%"}, argIdx
-		case "contains":
-			ph := placeholder()
-			return fmt.Sprintf("%s LIKE %s", col, ph), []interface{}{"%" + value + "%"}, argIdx
+			return fmt.Sprintf("%s ILIKE %s", col, ph), []interface{}{"%" + value + "%"}, argIdx
 		case "startswith", "istartswith":
 			ph := placeholder()
-			if op == "istartswith" {
-				return fmt.Sprintf("LOWER(%s) LIKE LOWER(%s)", col, ph), []interface{}{value + "%"}, argIdx
-			}
-			return fmt.Sprintf("%s LIKE %s", col, ph), []interface{}{value + "%"}, argIdx
+			return fmt.Sprintf("%s ILIKE %s", col, ph), []interface{}{value + "%"}, argIdx
 		case "endswith", "iendswith":
 			ph := placeholder()
-			if op == "iendswith" {
-				return fmt.Sprintf("LOWER(%s) LIKE LOWER(%s)", col, ph), []interface{}{"%" + value}, argIdx
-			}
-			return fmt.Sprintf("%s LIKE %s", col, ph), []interface{}{"%" + value}, argIdx
+			return fmt.Sprintf("%s ILIKE %s", col, ph), []interface{}{"%" + value}, argIdx
 		case "matches", "imatches":
-			// Convert wildcard pattern to SQL LIKE: * → %, ? → _
 			pattern := strings.ReplaceAll(value, "*", "%")
 			pattern = strings.ReplaceAll(pattern, "?", "_")
 			ph := placeholder()
-			if op == "imatches" {
-				return fmt.Sprintf("LOWER(%s) LIKE LOWER(%s)", col, ph), []interface{}{pattern}, argIdx
-			}
-			return fmt.Sprintf("%s LIKE %s", col, ph), []interface{}{pattern}, argIdx
+			return fmt.Sprintf("%s ILIKE %s", col, ph), []interface{}{pattern}, argIdx
 		}
 	}
 

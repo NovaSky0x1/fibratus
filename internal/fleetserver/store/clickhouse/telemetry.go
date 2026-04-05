@@ -226,6 +226,12 @@ func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.Te
 			query += clause
 			countQuery += clause
 			args = append(args, qlArgs...)
+		} else if err != nil {
+			// Fallback: treat as plain text search
+			like := "%" + opts.Query + "%"
+			query += " AND (process_name ILIKE ? OR process_exe ILIKE ? OR process_cmdline ILIKE ? OR event_name ILIKE ?)"
+			countQuery += " AND (process_name ILIKE ? OR process_exe ILIKE ? OR process_cmdline ILIKE ? OR event_name ILIKE ?)"
+			args = append(args, like, like, like, like)
 		}
 	}
 

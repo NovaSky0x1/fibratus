@@ -293,9 +293,7 @@ export default function Events() {
         offset: String((page - 1) * 100),
       }
       if (activeQuery) {
-        // Send as QL query AND as legacy search fallback
         params.query = activeQuery
-        params.search = activeQuery
       }
       if (customTimeActive && customFrom && customTo) {
         params.from = new Date(customFrom).toISOString()
