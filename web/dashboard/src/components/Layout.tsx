@@ -12,7 +12,6 @@ const navigation = [
   { name: 'Rules', href: '/rules' },
   { name: 'Macros', href: '/macros' },
   { name: 'Audit Log', href: '/audit-log' },
-  { name: 'Settings', href: '/settings' },
 ]
 
 function getInitialTheme(): 'dark' | 'light' {
@@ -195,9 +194,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
 
-          {/* Divider before management links */}
+          {/* Divider before admin links */}
           {isAdminOrRoot && (
             <div className="my-2 border-t border-white/10" />
+          )}
+
+          {isAdminOrRoot && (
+            <Link
+              to="/settings"
+              className={clsx(
+                'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mb-1',
+                location.pathname === '/settings'
+                  ? 'bg-white/10 text-white'
+                  : 'text-white/70 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              Settings
+            </Link>
           )}
 
           {isAdminOrRoot && (

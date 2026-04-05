@@ -186,19 +186,41 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 // GetPermissions handles GET /api/v1/orgs/{org_id}/permissions — returns all available permissions.
 func (h *GroupHandler) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	permissions := []map[string]string{
+		// Agents
 		{"id": "agents:view", "name": "View Agents", "category": "Agents"},
 		{"id": "agents:manage", "name": "Manage Agents", "category": "Agents"},
 		{"id": "agents:delete", "name": "Delete Agents", "category": "Agents"},
+		// Detections
 		{"id": "detections:view", "name": "View Detections", "category": "Detections"},
+		// Events
 		{"id": "events:view", "name": "View Events", "category": "Events"},
+		// Rules
 		{"id": "rules:view", "name": "View Rules", "category": "Rules"},
 		{"id": "rules:manage", "name": "Create/Edit/Delete Rules", "category": "Rules"},
-		{"id": "commands:view", "name": "View Commands", "category": "Active Response"},
-		{"id": "commands:execute", "name": "Execute Commands (isolate, kill, shell)", "category": "Active Response"},
+		// Active Response — General
+		{"id": "commands:view", "name": "View Command History", "category": "Active Response"},
+		{"id": "commands:execute", "name": "Execute Commands (generic)", "category": "Active Response"},
+		// Active Response — Granular
+		{"id": "response:isolate", "name": "Isolate Agent (network isolation)", "category": "Response Actions"},
+		{"id": "response:unisolate", "name": "Unisolate Agent", "category": "Response Actions"},
+		{"id": "response:kill_process", "name": "Kill Process", "category": "Response Actions"},
+		{"id": "response:run_command", "name": "Run Remote Command (shell)", "category": "Response Actions"},
+		{"id": "response:browse_files", "name": "Browse Filesystem", "category": "Response Actions"},
+		{"id": "response:download_file", "name": "Download/Collect Files", "category": "Response Actions"},
+		{"id": "response:collect_info", "name": "Collect System Information", "category": "Response Actions"},
+		{"id": "response:uninstall", "name": "Uninstall Agent", "category": "Response Actions"},
+		// Settings
 		{"id": "settings:view", "name": "View Settings", "category": "Settings"},
-		{"id": "settings:manage", "name": "Manage Settings (tokens, sync, macros)", "category": "Settings"},
+		{"id": "settings:manage", "name": "Manage Settings", "category": "Settings"},
+		{"id": "settings:enrollment", "name": "Manage Enrollment Tokens", "category": "Settings"},
+		{"id": "settings:github_sync", "name": "Configure GitHub Rule Sync", "category": "Settings"},
+		{"id": "settings:macros", "name": "Manage Macros", "category": "Settings"},
+		// User Management
 		{"id": "users:manage", "name": "Manage Users", "category": "User Management"},
+		{"id": "users:groups", "name": "Manage User Groups", "category": "User Management"},
+		// Audit
 		{"id": "audit:view", "name": "View Audit Log", "category": "Audit"},
+		// Organizations
 		{"id": "organizations:manage", "name": "Manage Organizations", "category": "Organizations"},
 	}
 
