@@ -99,7 +99,7 @@ const MAX_HISTORY = 10
 // Helpers
 // ═════════════════════════════════════════════════
 
-function summarizeParams(evt: TelemetryEvent): string {
+function _summarizeParams(evt: TelemetryEvent): string {
   const p = evt.params
   if (!p || typeof p !== 'object') return ''
 
