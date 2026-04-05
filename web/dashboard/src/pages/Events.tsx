@@ -449,12 +449,12 @@ export default function Events() {
     <div className="space-y-0">
       {/* ── Page Banner ── */}
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-slate-100">Discover Events</h1>
-        <p className="text-sm text-slate-400 mt-1">Search and investigate endpoint telemetry using the Fibratus Query Language. Use field names like <code className="text-cyan-400">ps.name</code>, <code className="text-cyan-400">kevt.name</code>, <code className="text-cyan-400">net.dip</code> with operators like <code className="text-cyan-400">=</code>, <code className="text-cyan-400">contains</code>, <code className="text-cyan-400">imatches</code>.</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Discover Events</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Search and investigate endpoint telemetry using the Fibratus Query Language. Use field names like <code className="text-cyan-400">ps.name</code>, <code className="text-cyan-400">kevt.name</code>, <code className="text-cyan-400">net.dip</code> with operators like <code className="text-cyan-400">=</code>, <code className="text-cyan-400">contains</code>, <code className="text-cyan-400">imatches</code>.</p>
       </div>
 
       {/* ── Query Bar ── */}
-      <div className="rounded-xl bg-slate-950 dark:bg-black border border-slate-700 p-3 overflow-visible">
+      <div className="rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-slate-700 p-3 overflow-visible">
         <div className="relative">
           <div className="flex items-center gap-2">
             <svg className="w-4 h-4 text-cyan-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -472,7 +472,7 @@ export default function Events() {
                 if (lastToken.length >= 1 && /^[a-z]/.test(lastToken)) setShowAutocomplete(true)
               }}
               placeholder="Type a query... ps.name = 'cmd.exe' and kevt.name = 'CreateProcess'"
-              className="flex-1 bg-transparent text-cyan-400 font-mono text-sm placeholder-slate-600 focus:outline-none caret-cyan-400"
+              className="flex-1 bg-transparent text-cyan-700 dark:text-cyan-400 font-mono text-sm placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none caret-cyan-600 dark:caret-cyan-400"
               spellCheck={false}
               autoComplete="off"
             />
@@ -488,19 +488,19 @@ export default function Events() {
           {showAutocomplete && autocompleteMatches.length > 0 && (
             <div
               ref={autocompleteRef}
-              className="absolute left-6 top-full mt-1 z-50 w-[420px] rounded-lg border border-slate-700 bg-slate-900 shadow-xl overflow-hidden"
+              className="absolute left-6 top-full mt-1 z-50 w-[420px] rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 shadow-xl overflow-hidden"
             >
               {autocompleteMatches.map((s, i) => (
                 <button
                   key={s.field}
                   onMouseDown={(e) => { e.preventDefault(); selectAutocomplete(s.field) }}
                   className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                    i === autocompleteIdx ? 'bg-cyan-900/40 text-cyan-300' : 'text-slate-300 hover:bg-slate-800'
+                    i === autocompleteIdx ? 'bg-cyan-900/40 text-cyan-300' : 'text-slate-300 hover:bg-white dark:bg-slate-800'
                   }`}
                 >
                   <span className="font-mono text-cyan-400 text-xs min-w-[140px]">{s.field}</span>
-                  <span className="text-slate-500 text-xs">{s.desc}</span>
-                  <span className="ml-auto rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">{s.category}</span>
+                  <span className="text-gray-400 dark:text-slate-500 text-xs">{s.desc}</span>
+                  <span className="ml-auto rounded bg-white dark:bg-slate-800 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-slate-500">{s.category}</span>
                 </button>
               ))}
             </div>
@@ -519,7 +519,7 @@ export default function Events() {
       </div>
 
       {/* ── Time Range Bar ── */}
-      <div className="rounded-b-xl bg-slate-900/80 dark:bg-slate-950/80 border-x border-b border-slate-700/50 px-4 py-2 -mt-1">
+      <div className="rounded-b-xl bg-gray-50 dark:bg-slate-900/80 dark:bg-slate-950/80 border-x border-b border-gray-200 dark:border-slate-700/50 px-4 py-2 -mt-1">
         <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {TIME_PRESETS.map(p => (
@@ -529,7 +529,7 @@ export default function Events() {
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 timePreset.label === p.label && !customTimeActive
                   ? 'bg-cyan-600 text-white'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  : 'text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800'
               }`}
             >
               {p.label}
@@ -540,7 +540,7 @@ export default function Events() {
             className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
               customTimeActive
                 ? 'bg-cyan-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                : 'text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800'
             }`}
           >
             Custom
@@ -551,7 +551,7 @@ export default function Events() {
             className={`flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors ${
               liveMode
                 ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                : 'text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800'
             }`}
           >
             {liveMode && <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
@@ -561,7 +561,7 @@ export default function Events() {
 
         <div className="flex items-center gap-3">
           {/* Time range label */}
-          <span className="text-xs text-slate-500">{timeRangeLabel}</span>
+          <span className="text-xs text-gray-400 dark:text-slate-500">{timeRangeLabel}</span>
           {/* Active query tag */}
           {activeQuery && (
             <div className="flex items-center gap-1.5 rounded bg-cyan-900/30 border border-cyan-700/40 px-2.5 py-1">
@@ -574,12 +574,12 @@ export default function Events() {
             </div>
           )}
           {/* Event count */}
-          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400 font-mono">
+          <span className="rounded bg-white dark:bg-slate-800 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400 font-mono">
             {total.toLocaleString()} events
           </span>
           <button
             onClick={() => refetch()}
-            className="rounded border border-slate-700 px-2.5 py-1 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="rounded border border-gray-200 dark:border-slate-700 px-2.5 py-1 text-xs text-gray-500 dark:text-slate-400 hover:text-slate-200 hover:bg-white dark:bg-slate-800 transition-colors"
           >
             Refresh
           </button>
@@ -588,13 +588,13 @@ export default function Events() {
 
         {/* Custom time range inputs */}
         {showCustomTime && (
-          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/50">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">From</span>
-            <input type="datetime-local" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-600" />
-            <span className="text-slate-500 text-xs">to</span>
-            <input type="datetime-local" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-600" />
+          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200 dark:border-slate-700/50">
+            <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wider">From</span>
+            <input type="datetime-local" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="rounded bg-white dark:bg-slate-800 border border-slate-600 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-600" />
+            <span className="text-gray-400 dark:text-slate-500 text-xs">to</span>
+            <input type="datetime-local" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="rounded bg-white dark:bg-slate-800 border border-slate-600 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-600" />
             <button onClick={applyCustomRange} className="rounded bg-cyan-600 hover:bg-cyan-500 px-3 py-1 text-xs text-white transition-colors">Apply</button>
-            <button onClick={() => setShowCustomTime(false)} className="text-xs text-slate-500 hover:text-slate-300">Cancel</button>
+            <button onClick={() => setShowCustomTime(false)} className="text-xs text-gray-400 dark:text-slate-500 hover:text-slate-300">Cancel</button>
           </div>
         )}
       </div>
@@ -606,23 +606,23 @@ export default function Events() {
             {filters.map(f => (
               <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-cyan-900/40 border border-cyan-700/50 px-3 py-1 text-xs text-cyan-300">
                 <span className="text-cyan-500">{f.field}</span>
-                <span className="text-slate-500">{f.operator}</span>
+                <span className="text-gray-400 dark:text-slate-500">{f.operator}</span>
                 <span className="text-cyan-300 font-mono">&quot;{f.value}&quot;</span>
-                <button onClick={() => removeFilter(f.id)} className="ml-1 text-slate-500 hover:text-red-400">&times;</button>
+                <button onClick={() => removeFilter(f.id)} className="ml-1 text-gray-400 dark:text-slate-500 hover:text-red-400">&times;</button>
               </span>
             ))}
             {!showAddFilter && (
               <button onClick={() => setShowAddFilter(true)}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-gray-500 dark:text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
                 + Add filter
               </button>
             )}
           </div>
           {showAddFilter && (
-            <div className="rounded-lg border border-slate-700 bg-slate-800 p-3 flex items-end gap-2">
+            <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 flex items-end gap-2">
               <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Field</label>
-                <select value={newFilterField} onChange={(e) => setNewFilterField(e.target.value)} className="rounded bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
+                <label className="text-[10px] text-gray-400 dark:text-slate-500 block mb-1">Field</label>
+                <select value={newFilterField} onChange={(e) => setNewFilterField(e.target.value)} className="rounded bg-gray-50 dark:bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
                   {Object.entries(fieldsByCategory).map(([cat, fields]) => (
                     <optgroup key={cat} label={cat}>
                       {fields.map(f => <option key={f.field} value={f.field}>{f.field}</option>)}
@@ -631,8 +631,8 @@ export default function Events() {
                 </select>
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Operator</label>
-                <select value={newFilterOperator} onChange={(e) => setNewFilterOperator(e.target.value)} className="rounded bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
+                <label className="text-[10px] text-gray-400 dark:text-slate-500 block mb-1">Operator</label>
+                <select value={newFilterOperator} onChange={(e) => setNewFilterOperator(e.target.value)} className="rounded bg-gray-50 dark:bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-600">
                   <option value="=">=</option>
                   <option value="!=">!=</option>
                   <option value="contains">contains</option>
@@ -650,11 +650,11 @@ export default function Events() {
                 </select>
               </div>
               <div className="flex-1">
-                <label className="text-[10px] text-slate-500 block mb-1">Value</label>
-                <input value={newFilterValue} onChange={(e) => setNewFilterValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addFilter() }} placeholder="Enter value..." className="w-full rounded bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-600" />
+                <label className="text-[10px] text-gray-400 dark:text-slate-500 block mb-1">Value</label>
+                <input value={newFilterValue} onChange={(e) => setNewFilterValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addFilter() }} placeholder="Enter value..." className="w-full rounded bg-gray-50 dark:bg-slate-900 border border-slate-600 px-2 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-600" />
               </div>
               <button onClick={addFilter} className="rounded bg-cyan-600 hover:bg-cyan-500 px-3 py-1.5 text-xs text-white transition-colors">Apply</button>
-              <button onClick={() => setShowAddFilter(false)} className="text-xs text-slate-500 hover:text-slate-300">Cancel</button>
+              <button onClick={() => setShowAddFilter(false)} className="text-xs text-gray-400 dark:text-slate-500 hover:text-slate-300">Cancel</button>
             </div>
           )}
         </div>
@@ -662,7 +662,7 @@ export default function Events() {
       {filters.length === 0 && !showAddFilter && (
         <div className="mt-2">
           <button onClick={() => setShowAddFilter(true)}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-gray-500 dark:text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
             + Add filter
           </button>
         </div>
@@ -672,10 +672,10 @@ export default function Events() {
       <div className="flex gap-4 mt-3">
         {/* Fields sidebar */}
         <div className={`flex-shrink-0 transition-all duration-200 ${showFields ? 'w-56' : 'w-10'}`}>
-          <div className="sticky top-4 rounded-lg border border-slate-700 bg-slate-800/50 overflow-hidden">
-            <div className="px-3 py-2 border-b border-slate-700 flex items-center justify-between">
+          <div className="sticky top-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
               {showFields && <span className="text-xs font-semibold text-slate-300">Available Fields</span>}
-              <button onClick={() => setShowFields(!showFields)} className="text-[10px] text-slate-500 hover:text-slate-300" title={showFields ? 'Collapse sidebar' : 'Expand sidebar'}>
+              <button onClick={() => setShowFields(!showFields)} className="text-[10px] text-gray-400 dark:text-slate-500 hover:text-slate-300" title={showFields ? 'Collapse sidebar' : 'Expand sidebar'}>
                 {showFields ? (
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
                 ) : (
@@ -687,7 +687,7 @@ export default function Events() {
               <div className="max-h-[70vh] overflow-auto p-2 space-y-0.5">
                 {Object.entries(fieldsByCategory).map(([cat, fields]) => (
                   <div key={cat}>
-                    <p className="text-[10px] text-slate-500 uppercase font-semibold px-1 py-1 mt-1">{cat}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-semibold px-1 py-1 mt-1">{cat}</p>
                     {fields.map(f => (
                       <button key={f.field} onClick={() => insertFieldInQuery(f.field)}
                         className="w-full text-left px-2 py-1 rounded text-xs text-slate-300 hover:bg-slate-700 font-mono truncate"
@@ -705,15 +705,15 @@ export default function Events() {
         {/* Main content */}
         <div className="flex-1 min-w-0">
       {/* ── Event Stream Table ── */}
-      <div className="rounded-xl border border-slate-700 bg-slate-800/50 dark:bg-slate-900/50 shadow-sm dark:shadow-slate-900/50 overflow-hidden">
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 dark:bg-gray-50 dark:bg-slate-900/50 shadow-sm dark:shadow-slate-900/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
-            <thead className="border-b border-slate-700 bg-slate-800/80 dark:bg-slate-900/80 sticky top-0 z-10">
+            <thead className="border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80 sticky top-0 z-10">
               <tr>
                 <th className="w-8 px-2 py-2" />
                 <SortableHeader label="Timestamp" sortKey="timestamp" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[155px]" />
                 <SortableHeader label="Type" sortKey="event_name" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[120px]" />
-                <th className="px-3 py-2 font-medium text-slate-400 w-[85px]">Category</th>
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 w-[85px]">Category</th>
                 <SortableHeader label="PID" sortKey="pid" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[60px]" />
                 <SortableHeader label="Process" sortKey="process_name" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[130px]" />
                 <SortableHeader label="Agent" sortKey="agent_hostname" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[110px]" />
@@ -721,9 +721,9 @@ export default function Events() {
             </thead>
             <tbody className="divide-y divide-slate-700/30">
               {isLoading && (
-                <tr><td colSpan={7} className="px-3 py-16 text-center text-slate-500 text-sm font-sans">
+                <tr><td colSpan={7} className="px-3 py-16 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">
                   <div className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4 text-slate-500" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-4 w-4 text-gray-400 dark:text-slate-500" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
@@ -746,7 +746,7 @@ export default function Events() {
               ))}
               {!isLoading && events.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-16 text-center text-slate-500 text-sm font-sans">
+                  <td colSpan={7} className="px-3 py-16 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">
                     {activeQuery
                       ? 'No events match your query.'
                       : 'No telemetry data yet. Agents will start streaming events when connected.'}
@@ -759,8 +759,8 @@ export default function Events() {
 
         {/* Pagination */}
         {total > 100 && (
-          <div className="flex items-center justify-between border-t border-slate-700 px-4 py-2">
-            <span className="text-xs text-slate-400">{total.toLocaleString()} total events</span>
+          <div className="flex items-center justify-between border-t border-gray-200 dark:border-slate-700 px-4 py-2">
+            <span className="text-xs text-gray-500 dark:text-slate-400">{total.toLocaleString()} total events</span>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
@@ -769,7 +769,7 @@ export default function Events() {
               >
                 Prev
               </button>
-              <span className="px-2 py-1 text-xs text-slate-400">Page {page}</span>
+              <span className="px-2 py-1 text-xs text-gray-500 dark:text-slate-400">Page {page}</span>
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={events.length < 100}
@@ -794,37 +794,50 @@ export default function Events() {
 function EventPreviewInline({ evt }: { evt: TelemetryEvent }) {
   const raw = evt.raw_event as Record<string, unknown> | null
   const ps = (raw?.ps || {}) as Record<string, unknown>
+  const parent = (ps?.parent || {}) as Record<string, unknown>
   const params = (evt.params || {}) as Record<string, unknown>
 
-  const chips: { k: string; v: string }[] = []
+  const chips: { k: string; v: string; highlight?: boolean }[] = []
 
-  if (ps.sha256) chips.push({ k: 'sha256', v: String(ps.sha256).slice(0, 12) + '...' })
+  // Process context
+  if (evt.process_cmdline && evt.process_cmdline.length > evt.process_name.length + 5) {
+    const cmd = evt.process_cmdline.length > 80 ? evt.process_cmdline.slice(0, 80) + '...' : evt.process_cmdline
+    chips.push({ k: 'cmdline', v: cmd, highlight: true })
+  }
+  if (parent.name) chips.push({ k: 'parent', v: String(parent.name), highlight: true })
+  if (ps.sha256) chips.push({ k: 'sha256', v: String(ps.sha256).slice(0, 16) + '...' })
 
-  const interesting = ['file_path', 'file_name', 'dip', 'dport', 'key_name', 'name', 'domain', 'cert_subject', 'signature_level']
+  // Signing
+  const isSigned = ps.is_signed === true || ps.is_signed === 'true'
+  if (ps.is_signed !== undefined) chips.push({ k: isSigned ? 'signed' : 'unsigned', v: isSigned ? String(ps.cert_subject || '').split(',')[0] || 'yes' : '', highlight: !isSigned })
+
+  // Event-specific params — show more
+  const interesting = ['file_path', 'file_name', 'dip', 'dport', 'sip', 'sport', 'key_name', 'name', 'domain',
+    'cert_subject', 'signature_level', 'signature_type', 'image_size', 'checksum', 'base_address']
   for (const key of interesting) {
-    if (params[key] !== undefined && params[key] !== '') {
+    if (params[key] !== undefined && params[key] !== '' && chips.length < 8) {
       const val = String(params[key])
-      chips.push({ k: key, v: val.length > 35 ? val.slice(0, 35) + '...' : val })
-      if (chips.length >= 3) break
+      chips.push({ k: key, v: val.length > 45 ? val.slice(0, 45) + '...' : val })
     }
   }
 
+  // Fallback
   if (chips.length === 0) {
-    const entries = Object.entries(params).filter(([, v]) => v !== '' && v !== undefined).slice(0, 2)
+    const entries = Object.entries(params).filter(([, v]) => v !== '' && v !== undefined).slice(0, 3)
     for (const [k, v] of entries) {
-      const val = String(v)
-      chips.push({ k, v: val.length > 30 ? val.slice(0, 30) + '...' : val })
+      chips.push({ k, v: String(v).length > 40 ? String(v).slice(0, 40) + '...' : String(v) })
     }
   }
 
   return (
-    <>
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
       {chips.map((c, i) => (
-        <span key={i} className="truncate max-w-[220px]">
-          <span className="text-slate-600">{c.k}:</span> {c.v}
+        <span key={i} className="truncate max-w-[300px]">
+          <span className={c.highlight ? 'text-cyan-600 dark:text-cyan-500' : 'text-gray-500 dark:text-slate-600'}>{c.k}{c.v ? ':' : ''}</span>{' '}
+          <span className="text-gray-700 dark:text-gray-500 dark:text-slate-400">{c.v}</span>
         </span>
       ))}
-    </>
+    </div>
   )
 }
 
@@ -849,44 +862,44 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
       <tr
         className={`cursor-pointer transition-colors ${
           isExpanded
-            ? 'bg-slate-800/80 dark:bg-slate-900/80'
-            : 'hover:bg-slate-700/20 dark:hover:bg-slate-800/30'
+            ? 'bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80'
+            : 'hover:bg-gray-100 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
         }`}
         onClick={onToggle}
       >
         <td className="px-2 py-1.5 text-center">
           <svg
-            className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+            className={`w-3.5 h-3.5 text-gray-400 dark:text-slate-500 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
             fill="currentColor"
             viewBox="0 0 20 20"
           >
             <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
           </svg>
         </td>
-        <td className="px-3 py-1.5 text-slate-400 whitespace-nowrap">
+        <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 whitespace-nowrap">
           {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
         </td>
-        <td className="px-3 py-1.5 text-slate-100 font-medium">
+        <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100 font-medium">
           <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
             {evt.event_name}
           </span>
         </td>
         <td className="px-3 py-1.5">
-          <span className={'inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-cyan-500/50 transition-all ' + (EVENT_COLORS[evt.event_category] || 'bg-slate-600/30 text-slate-400')} onClick={() => { onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
+          <span className={'inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-cyan-500/50 transition-all ' + (EVENT_COLORS[evt.event_category] || 'bg-slate-600/30 text-gray-500 dark:text-slate-400')} onClick={() => { onAddFilter('kevt.category', evt.event_category) }} title="Click to filter by this category">
             {evt.event_category}
           </span>
         </td>
-        <td className="px-3 py-1.5 text-slate-400">
+        <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400">
           <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('ps.pid', String(evt.pid)) }} title="Click to filter by this PID">
             {evt.pid}
           </span>
         </td>
-        <td className="px-3 py-1.5 text-slate-100 break-all" title={evt.process_exe}>
+        <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100 break-all" title={evt.process_exe}>
           <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('ps.name', evt.process_name) }} title="Click to filter by this process">
             {evt.process_name}
           </span>
         </td>
-        <td className="px-3 py-1.5 text-slate-400">
+        <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400">
           <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
             {evt.agent_hostname}
           </span>
@@ -895,16 +908,16 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
       {/* Preview sub-row */}
       <tr
         className={`cursor-pointer border-b border-slate-800/50 ${
-          isExpanded ? 'bg-slate-800/80 dark:bg-slate-900/80' : 'hover:bg-slate-700/20 dark:hover:bg-slate-800/30'
+          isExpanded ? 'bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80' : 'hover:bg-gray-100 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
         }`}
         onClick={onToggle}
       >
         <td></td>
         <td colSpan={6} className="px-3 pb-2 pt-0">
-          <div className="flex items-center gap-3 text-[10px] font-mono text-slate-500">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono text-gray-500 dark:text-slate-500">
             {evt.process_exe && (
-              <span className="truncate max-w-[250px]" title={evt.process_exe}>
-                <span className="text-slate-600">exe:</span> {evt.process_exe}
+              <span className="truncate max-w-[350px]" title={evt.process_exe}>
+                <span className="text-cyan-600 dark:text-cyan-600">exe:</span> <span className="text-gray-600 dark:text-slate-400">{evt.process_exe}</span>
               </span>
             )}
             <EventPreviewInline evt={evt} />
@@ -957,27 +970,27 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
   return (
     <tr>
       <td colSpan={7} className="p-0">
-        <div className="bg-slate-900/50 dark:bg-black/30 border-t border-b border-slate-700/50 px-4 py-4 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-gray-50 dark:bg-slate-900/50 dark:bg-black/30 border-t border-b border-gray-200 dark:border-slate-700/50 px-4 py-4 space-y-4" onClick={(e) => e.stopPropagation()}>
           {/* ── Top section: 3 cards ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             {/* Process Card */}
-            <div className="rounded-lg border-l-2 border-blue-500 bg-slate-800/60 dark:bg-slate-900/60 border-y border-r border-slate-700/50 p-3 space-y-2">
+            <div className="rounded-lg border-l-2 border-blue-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="rounded bg-blue-500/20 text-blue-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Process</span>
-                <span className="font-medium text-sm text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
+                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
-                <span className="text-slate-500">TID <span className="text-slate-300 font-mono">{evt.tid}</span></span>
+                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
+                <span className="text-gray-400 dark:text-slate-500">TID <span className="text-slate-300 font-mono">{evt.tid}</span></span>
               </div>
               {evt.process_exe && (
                 <div>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider">Executable</span>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wider">Executable</span>
                   <p className="text-xs text-slate-200 font-mono break-all mt-0.5">{evt.process_exe}</p>
                 </div>
               )}
               {evt.process_cmdline && (
-                <div className="rounded bg-black/40 border border-slate-700/50 px-2 py-1.5 text-[11px] text-slate-200 font-mono break-all whitespace-pre-wrap">
+                <div className="rounded bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-slate-200 font-mono break-all whitespace-pre-wrap">
                   {evt.process_cmdline}
                 </div>
               )}
@@ -996,20 +1009,20 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                     {ps.is_trusted ? 'Trusted' : 'Untrusted'}
                   </span>
                 )}
-                {ps.cert_subject && <span className="text-[10px] text-slate-500">{ps.cert_subject}</span>}
+                {ps.cert_subject && <span className="text-[10px] text-gray-400 dark:text-slate-500">{ps.cert_subject}</span>}
               </div>
               {(ps.sha256 || ps.md5) && (
                 <div className="space-y-1 mt-1">
                   {ps.sha256 && (
                     <div>
-                      <span className="text-[10px] text-slate-500">SHA256</span>
-                      <p className="text-[10px] text-slate-400 font-mono break-all">{ps.sha256}</p>
+                      <span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span>
+                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{ps.sha256}</p>
                     </div>
                   )}
                   {ps.md5 && (
                     <div>
-                      <span className="text-[10px] text-slate-500">MD5</span>
-                      <p className="text-[10px] text-slate-400 font-mono break-all">{ps.md5}</p>
+                      <span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span>
+                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{ps.md5}</p>
                     </div>
                   )}
                 </div>
@@ -1017,22 +1030,22 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             </div>
 
             {/* Parent Card */}
-            <div className="rounded-lg border-l-2 border-amber-500 bg-slate-800/60 dark:bg-slate-900/60 border-y border-r border-slate-700/50 p-3 space-y-2">
+            <div className="rounded-lg border-l-2 border-amber-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="rounded bg-amber-500/20 text-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Parent</span>
-                <span className="font-medium text-sm text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
+                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
+                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
               </div>
               {parentExe && (
                 <div>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider">Executable</span>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wider">Executable</span>
                   <p className="text-xs text-slate-200 font-mono break-all mt-0.5">{parentExe}</p>
                 </div>
               )}
               {parentCmdline && (
-                <div className="rounded bg-black/40 border border-slate-700/50 px-2 py-1.5 text-[11px] text-slate-200 font-mono break-all whitespace-pre-wrap">
+                <div className="rounded bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-slate-200 font-mono break-all whitespace-pre-wrap">
                   {parentCmdline}
                 </div>
               )}
@@ -1040,14 +1053,14 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                 <div className="space-y-1 mt-1">
                   {parentRaw.sha256 ? (
                     <div>
-                      <span className="text-[10px] text-slate-500">SHA256</span>
-                      <p className="text-[10px] text-slate-400 font-mono break-all">{String(parentRaw.sha256)}</p>
+                      <span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span>
+                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{String(parentRaw.sha256)}</p>
                     </div>
                   ) : null}
                   {parentRaw.md5 ? (
                     <div>
-                      <span className="text-[10px] text-slate-500">MD5</span>
-                      <p className="text-[10px] text-slate-400 font-mono break-all">{String(parentRaw.md5)}</p>
+                      <span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span>
+                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{String(parentRaw.md5)}</p>
                     </div>
                   ) : null}
                 </div>
@@ -1055,16 +1068,16 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             </div>
 
             {/* Event Params Card */}
-            <div className="rounded-lg border-l-2 border-slate-500 bg-slate-800/60 dark:bg-slate-900/60 border-y border-r border-slate-700/50 p-3 space-y-2">
+            <div className="rounded-lg border-l-2 border-slate-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
-                <span className="rounded bg-slate-600/30 text-slate-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Params</span>
-                <span className="text-xs text-slate-500">{Object.keys(evt.params || {}).length} fields</span>
+                <span className="rounded bg-slate-600/30 text-gray-500 dark:text-slate-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Params</span>
+                <span className="text-xs text-gray-400 dark:text-slate-500">{Object.keys(evt.params || {}).length} fields</span>
               </div>
               {evt.params && Object.keys(evt.params).length > 0 ? (
                 <div className="space-y-0.5 max-h-[200px] overflow-auto">
                   {Object.entries(evt.params).map(([key, value]) => (
                     <div key={key} className="flex gap-2 rounded bg-black/30 px-2 py-1">
-                      <span className="text-[11px] text-slate-500 whitespace-nowrap min-w-[90px]">{key}</span>
+                      <span className="text-[11px] text-gray-400 dark:text-slate-500 whitespace-nowrap min-w-[90px]">{key}</span>
                       <span className="text-[11px] text-slate-300 font-mono break-all">{String(value)}</span>
                     </div>
                   ))}
@@ -1077,7 +1090,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
 
           {/* ── Bottom section: tabs ── */}
           <div>
-            <div className="flex items-center gap-0.5 border-b border-slate-700/50 mb-3">
+            <div className="flex items-center gap-0.5 border-b border-gray-200 dark:border-slate-700/50 mb-3">
               {(['ancestry', 'callstack', 'modules', 'raw'] as const).map(t => (
                 <button
                   key={t}
@@ -1085,7 +1098,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                   className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors capitalize ${
                     tab === t
                       ? 'border-cyan-500 text-cyan-400'
-                      : 'border-transparent text-slate-500 hover:text-slate-300'
+                      : 'border-transparent text-gray-400 dark:text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {t === 'callstack' ? 'Call Stack' : t === 'raw' ? 'Raw JSON' : t}
@@ -1115,9 +1128,9 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             {tab === 'callstack' && (
               <div>
                 {callstack && callstack.length > 0 ? (
-                  <div className="rounded-lg bg-black/50 border border-slate-700/50 p-3 max-h-60 overflow-auto">
+                  <div className="rounded-lg bg-black/50 border border-gray-200 dark:border-slate-700/50 p-3 max-h-60 overflow-auto">
                     {callstack.map((frame, i) => (
-                      <div key={i} className="text-[11px] font-mono text-slate-300 py-0.5 hover:bg-slate-800/50">
+                      <div key={i} className="text-[11px] font-mono text-slate-300 py-0.5 hover:bg-white dark:bg-slate-800/50">
                         <span className="text-slate-600 mr-3 select-none">{String(callstack.length - i).padStart(2, ' ')}</span>
                         {frame}
                       </div>
@@ -1135,7 +1148,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                 {modules.length > 0 ? (
                   <div className="space-y-0.5 max-h-60 overflow-auto">
                     {modules.slice(0, 50).map((m, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded bg-black/30 border border-slate-700/30 px-2 py-1 text-[11px]">
+                      <div key={i} className="flex items-center gap-2 rounded bg-black/30 border border-gray-200 dark:border-slate-700/30 px-2 py-1 text-[11px]">
                         <span className="text-slate-300 font-mono break-all flex-1">{m.name}</span>
                         {m.sha256 && <span className="text-slate-600 font-mono text-[9px]">{m.sha256.slice(0, 16)}...</span>}
                       </div>
@@ -1155,7 +1168,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
               <div>
                 <button
                   onClick={onRawToggle}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 mb-2 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-slate-500 hover:text-slate-300 mb-2 transition-colors"
                 >
                   <svg
                     className={`w-3 h-3 transition-transform ${rawExpanded ? 'rotate-90' : ''}`}
@@ -1167,7 +1180,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                   {rawExpanded ? 'Collapse' : 'Expand'} raw event JSON
                 </button>
                 {rawExpanded && (
-                  <pre className="max-h-80 overflow-auto rounded-lg bg-black/50 border border-slate-700/50 p-3 text-[11px] text-slate-300 font-mono">
+                  <pre className="max-h-80 overflow-auto rounded-lg bg-black/50 border border-gray-200 dark:border-slate-700/50 p-3 text-[11px] text-slate-300 font-mono">
                     {JSON.stringify(evt.raw_event, null, 2)}
                   </pre>
                 )}
