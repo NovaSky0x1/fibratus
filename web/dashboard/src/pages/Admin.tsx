@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Account, type Organization, type User } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
+import Groups from './Groups'
 import { useTableSort } from '../hooks/useTableSort'
 import SortableHeader from '../components/SortableHeader'
 
-type Tab = 'accounts' | 'users' | 'organizations'
+type Tab = 'accounts' | 'users' | 'organizations' | 'groups' | 'system'
 
 const roleBadge: Record<string, string> = {
   root: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -49,6 +50,8 @@ export default function Admin() {
     { key: 'accounts', label: 'Accounts' },
     { key: 'users', label: 'Users' },
     { key: 'organizations', label: 'Organizations' },
+    { key: 'groups', label: 'User Groups' },
+    { key: 'system', label: 'System' },
   ]
 
   return (
@@ -81,6 +84,8 @@ export default function Admin() {
       {tab === 'accounts' && <AccountsTab onAccountClick={handleAccountClick} />}
       {tab === 'users' && <UsersTab />}
       {tab === 'organizations' && <OrganizationsTab filterAccountId={filterAccountId} onClearFilter={() => setFilterAccountId(null)} />}
+      {tab === 'groups' && <GroupsTab />}
+      {tab === 'system' && <SystemTab />}
     </div>
   )
 }
@@ -1325,6 +1330,68 @@ function OrganizationsTab({ filterAccountId, onClearFilter }: { filterAccountId:
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════
+// Groups Tab — Reuse the Groups page component
+// ═══════════════════════════════════════════════════
+
+function GroupsTab() {
+  return <Groups />
+}
+
+// ═══════════════════════════════════════════════════
+// System Tab — Server & database management
+// ═══════════════════════════════════════════════════
+
+function SystemTab() {
+  const [purgeConfirm, setPurgeConfirm] = useState(false)
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 uppercase tracking-wider">Server Information</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div><span className="text-gray-500 dark:text-slate-400">Server URL</span><p className="font-mono text-gray-900 dark:text-slate-100">{window.location.origin}</p></div>
+          <div><span className="text-gray-500 dark:text-slate-400">Dashboard Version</span><p className="font-mono text-gray-900 dark:text-slate-100">Fleet Server v1.0</p></div>
+          <div><span className="text-gray-500 dark:text-slate-400">Environment</span><p className="font-mono text-gray-900 dark:text-slate-100">Production</p></div>
+          <div><span className="text-gray-500 dark:text-slate-400">Data Retention</span><p className="font-mono text-gray-900 dark:text-slate-100">10 minutes (dev mode)</p></div>
+        </div>
+      </div>
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 uppercase tracking-wider">Database</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="rounded-lg border border-gray-200 dark:border-slate-600 p-4">
+            <span className="text-gray-500 dark:text-slate-400 text-xs uppercase">PostgreSQL</span>
+            <p className="text-lg font-bold text-gray-900 dark:text-slate-100 mt-1">Fleet State</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Accounts, users, agents, rules, detections, commands</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 dark:border-slate-600 p-4">
+            <span className="text-gray-500 dark:text-slate-400 text-xs uppercase">ClickHouse</span>
+            <p className="text-lg font-bold text-gray-900 dark:text-slate-100 mt-1">Telemetry</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Kernel events, buffered ingestion, ZSTD compression</p>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-xl border-2 border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-900/10 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-red-700 dark:text-red-400 uppercase tracking-wider">Danger Zone</h3>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Purge Telemetry Data</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Delete all telemetry events. Cannot be undone.</p>
+          </div>
+          {purgeConfirm ? (
+            <div className="flex gap-2">
+              <button onClick={() => setPurgeConfirm(false)} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-700">Confirm</button>
+              <button onClick={() => setPurgeConfirm(false)} className="rounded-lg bg-gray-200 dark:bg-slate-600 px-3 py-1.5 text-xs">Cancel</button>
+            </div>
+          ) : (
+            <button onClick={() => setPurgeConfirm(true)} className="rounded-lg border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Purge All Telemetry</button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
