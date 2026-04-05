@@ -154,6 +154,7 @@ func (s *Server) Run(ctx context.Context) error {
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
 	groupHandler := handler.NewGroupHandler(groupStore)
+	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 

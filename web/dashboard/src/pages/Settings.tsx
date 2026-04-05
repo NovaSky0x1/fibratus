@@ -993,14 +993,14 @@ function GitHubSyncSection() {
       <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Repository API URL</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Repository URL</label>
             <input
               value={form.repo_url}
               onChange={e => setForm({ ...form, repo_url: e.target.value })}
-              placeholder="https://api.github.com/repos/owner/repo"
+              placeholder="https://github.com/owner/repo"
               className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
             />
-            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">GitHub API URL for the repository containing detection rules</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">GitHub repository URL. Supports github.com or api.github.com format. Recursively scans subdirectories for .yml/.yaml rule files.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Branch</label>

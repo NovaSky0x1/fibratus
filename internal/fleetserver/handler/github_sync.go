@@ -20,6 +20,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -101,9 +102,7 @@ func (h *GitHubSyncHandler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 	if cfg.Branch == "" {
 		cfg.Branch = "main"
 	}
-	if cfg.Path == "" {
-		cfg.Path = "rules/"
-	}
+	cfg.Path = strings.TrimSuffix(cfg.Path, "/")
 	if cfg.Interval <= 0 {
 		cfg.Interval = 30
 	}
@@ -249,11 +248,32 @@ func (h *GitHubSyncHandler) fetchGitHubDir(url, token string) ([]githubFile, err
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	// Filter to files only (skip subdirectories for now)
+	// Recursively fetch files from subdirectories too
 	result := make([]githubFile, 0)
 	for _, f := range files {
 		if f.Type == "file" {
 			result = append(result, f)
+		} else if f.Type == "dir" {
+			// Recurse into subdirectories
+			subURL := fmt.Sprintf("%s?ref=%s", f.Path, "main")
+			// Build proper API URL for subdirectory
+			parts := strings.SplitN(url, "/contents/", 2)
+			if len(parts) == 2 {
+				baseURL := parts[0]
+				subDirURL := fmt.Sprintf("%s/contents/%s", baseURL, f.Path)
+				if !strings.Contains(subDirURL, "?ref=") {
+					ref := ""
+					if qIdx := strings.Index(url, "?ref="); qIdx >= 0 {
+						ref = url[qIdx:]
+					}
+					subDirURL += ref
+				}
+				_ = subURL // suppress unused
+				subFiles, err := h.fetchGitHubDir(subDirURL, token)
+				if err == nil {
+					result = append(result, subFiles...)
+				}
+			}
 		}
 	}
 	return result, nil
@@ -274,19 +294,39 @@ func (h *GitHubSyncHandler) fetchGitHubFile(url, token string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// In-memory config store (per-org). In production, this would be in PostgreSQL.
-var githubSyncConfigs = make(map[string]*GitHubSyncConfig)
+// Database-backed config store
+var githubSyncDB *sql.DB
+
+// SetGitHubSyncDB sets the database connection for config persistence.
+func SetGitHubSyncDB(db *sql.DB) {
+	githubSyncDB = db
+}
 
 func loadGitHubSyncConfig(orgID string) *GitHubSyncConfig {
-	cfg, ok := githubSyncConfigs[orgID]
-	if !ok {
-		return &GitHubSyncConfig{Branch: "main", Path: "rules/", Interval: 30}
+	cfg := &GitHubSyncConfig{Branch: "main", Path: "", Interval: 30}
+	if githubSyncDB == nil {
+		return cfg
 	}
+	row := githubSyncDB.QueryRow(
+		`SELECT repo_url, branch, path, token, interval_min, enabled FROM github_sync_configs WHERE org_id = $1`, orgID)
+	var enabled bool
+	if err := row.Scan(&cfg.RepoURL, &cfg.Branch, &cfg.Path, &cfg.Token, &cfg.Interval, &enabled); err != nil {
+		return cfg
+	}
+	cfg.Enabled = enabled
 	return cfg
 }
 
 func saveGitHubSyncConfig(orgID string, cfg *GitHubSyncConfig) {
-	githubSyncConfigs[orgID] = cfg
+	if githubSyncDB == nil {
+		return
+	}
+	githubSyncDB.Exec(
+		`INSERT INTO github_sync_configs (org_id, repo_url, branch, path, token, interval_min, enabled, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+		 ON CONFLICT (org_id) DO UPDATE SET
+			repo_url = $2, branch = $3, path = $4, token = $5, interval_min = $6, enabled = $7, updated_at = NOW()`,
+		orgID, cfg.RepoURL, cfg.Branch, cfg.Path, cfg.Token, cfg.Interval, cfg.Enabled)
 }
 
 // StartPeriodicSync starts background goroutines for each configured org.

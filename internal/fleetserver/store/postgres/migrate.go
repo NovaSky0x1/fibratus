@@ -335,6 +335,17 @@ CREATE TABLE IF NOT EXISTS user_group_members (
 );
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS require_2fa BOOLEAN DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS github_sync_configs (
+    org_id      TEXT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    repo_url    TEXT DEFAULT '',
+    branch      TEXT DEFAULT 'main',
+    path        TEXT DEFAULT '',
+    token       TEXT DEFAULT '',
+    interval_min INT DEFAULT 30,
+    enabled     BOOLEAN DEFAULT FALSE,
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
 `
 
 // Migrate runs the database schema migrations.
