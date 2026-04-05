@@ -10,10 +10,8 @@ export default function CursorGlow() {
     if (!ctx) return
 
     let mx = -1000, my = -1000, raf = 0
-    const GRID = 32
-    const RADIUS = 100     // much tighter
-    const RING_R = 75      // ring at this radius
-    const RING_W = 12      // thin ring
+    const GRID = 140
+    const GLOW_RADIUS = 350
     const isDark = () => document.documentElement.classList.contains('dark')
 
     const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight }
@@ -21,58 +19,48 @@ export default function CursorGlow() {
     window.addEventListener('resize', resize)
 
     const draw = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      if (mx < -500) { raf = requestAnimationFrame(draw); return }
+      const w = canvas.width, h = canvas.height
+      ctx.clearRect(0, 0, w, h)
 
       const dark = isDark()
-      const [cr, cg, cb] = dark ? [96, 206, 253] : [76, 160, 245]
+      const [cr, cg, cb] = dark ? [0, 180, 255] : [60, 130, 220]
+      const baseAlpha = dark ? 0.06 : 0.03     // always-visible grid
+      const glowAlpha = dark ? 0.35 : 0.15     // bright near cursor
 
-      // Draw grid near cursor
-      const ext = RADIUS + GRID
-      const gx0 = Math.floor((mx - ext) / GRID) * GRID
-      const gy0 = Math.floor((my - ext) / GRID) * GRID
-
-      for (let gx = gx0; gx <= mx + ext; gx += GRID) {
-        for (let gy = gy0; gy <= my + ext; gy += GRID) {
-          const dx = gx - mx, dy = gy - my
+      // Draw full-page grid with cursor-based brightness
+      for (let x = 0; x <= w; x += GRID) {
+        for (let y = 0; y <= h; y += GRID) {
+          // Distance from cursor
+          const dx = x - mx, dy = y - my
           const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist > RADIUS) continue
 
-          // Ring-shaped falloff
-          const distFromRing = Math.abs(dist - RING_R)
-          let alpha: number
-          if (distFromRing < RING_W) {
-            alpha = (1 - distFromRing / RING_W) * (dark ? 0.18 : 0.1)
-          } else {
-            alpha = Math.max(0, (1 - dist / RADIUS)) * (dark ? 0.04 : 0.02)
+          // Alpha: base everywhere + glow falloff near cursor
+          let alpha = baseAlpha
+          if (dist < GLOW_RADIUS) {
+            const t = 1 - (dist / GLOW_RADIUS)
+            alpha += t * t * glowAlpha  // quadratic falloff for soft glow
           }
-          if (alpha <= 0.001) continue
 
-          ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha.toFixed(3)})`
-          ctx.lineWidth = 0.5
+          ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha.toFixed(4)})`
+          ctx.lineWidth = 0.8
 
-          ctx.beginPath()
-          ctx.moveTo(gx, gy); ctx.lineTo(gx + GRID, gy)
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + GRID)
-          ctx.stroke()
+          // Horizontal line
+          if (x + GRID <= w) {
+            ctx.beginPath()
+            ctx.moveTo(x, y)
+            ctx.lineTo(x + GRID, y)
+            ctx.stroke()
+          }
+
+          // Vertical line
+          if (y + GRID <= h) {
+            ctx.beginPath()
+            ctx.moveTo(x, y)
+            ctx.lineTo(x, y + GRID)
+            ctx.stroke()
+          }
         }
       }
-
-      // Soft cyan ring glow
-      ctx.beginPath()
-      ctx.arc(mx, my, RING_R, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgba(${cr},${cg},${cb},${dark ? 0.15 : 0.08})`
-      ctx.lineWidth = RING_W * 0.6
-      ctx.stroke()
-
-      // Inner softer glow
-      ctx.beginPath()
-      ctx.arc(mx, my, RING_R, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgba(${cr},${cg},${cb},${dark ? 0.06 : 0.03})`
-      ctx.lineWidth = RING_W * 2
-      ctx.stroke()
 
       raf = requestAnimationFrame(draw)
     }
