@@ -728,22 +728,22 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle }: EventD
                   {parentCmdline}
                 </div>
               )}
-              {(parentRaw.sha256 || parentRaw.md5) && (
+              {(parentRaw.sha256 || parentRaw.md5) ? (
                 <div className="space-y-1 mt-1">
-                  {parentRaw.sha256 && (
+                  {parentRaw.sha256 ? (
                     <div>
                       <span className="text-[10px] text-slate-500">SHA256</span>
                       <p className="text-[10px] text-slate-400 font-mono break-all">{String(parentRaw.sha256)}</p>
                     </div>
-                  )}
-                  {parentRaw.md5 && (
+                  ) : null}
+                  {parentRaw.md5 ? (
                     <div>
                       <span className="text-[10px] text-slate-500">MD5</span>
                       <p className="text-[10px] text-slate-400 font-mono break-all">{String(parentRaw.md5)}</p>
                     </div>
-                  )}
+                  ) : null}
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Event Params Card */}
