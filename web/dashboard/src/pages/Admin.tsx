@@ -554,10 +554,10 @@ function UsersTab() {
                     </td>
                     <td className="px-6 py-3">
                       <span className={'rounded-full px-2 py-0.5 text-[10px] font-medium ' +
-                        (user.locked
+                        (user.is_locked
                           ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                           : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400')}>
-                        {user.locked ? 'Locked' : 'Active'}
+                        {user.is_locked ? 'Locked' : 'Active'}
                       </span>
                     </td>
                     <td className="px-6 py-3 text-gray-500 dark:text-slate-400 whitespace-nowrap">
@@ -624,6 +624,11 @@ function UsersTab() {
 
 function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: string }; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const { data: currentUserData } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: () => api.getCurrentUser(),
+  })
+  const currentUser = currentUserData?.data as User | undefined
   const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none'
   const btnPrimary = 'rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50'
   const sectionHeader = 'text-sm font-semibold text-gray-900 dark:text-slate-100'
@@ -796,7 +801,7 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
           <h3 className={sectionHeader}>Profile</h3>
           <div className="mt-3 space-y-3">
             <div>
-              <label className={labelCls}>Name</label>
+              <label className={labelCls}>Full Name</label>
               <input value={profileName} onChange={e => setProfileName(e.target.value)} className={inputCls} />
             </div>
             <div>
@@ -857,12 +862,11 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
                 onChange={e => setSelectedRole(e.target.value)}
                 className={inputCls}
               >
-                <option value="root">Root</option>
+                {currentUser?.role === 'root' && <option value="root">Root</option>}
                 <option value="admin">Admin</option>
                 <option value="analyst">Analyst</option>
                 <option value="viewer">Viewer</option>
               </select>
-              <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Only root users can assign the root role.</p>
             </div>
             {roleError && <p className="text-xs text-red-600">{roleError}</p>}
             {roleMsg && <p className="text-xs text-emerald-600">{roleMsg}</p>}
@@ -1007,9 +1011,9 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-sm text-gray-600 dark:text-slate-400">Account Status: </span>
-                {user.locked ? (
+                {user.is_locked ? (
                   <span className="inline-flex rounded-full bg-red-50 dark:bg-red-900/30 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
-                    Locked{user.failed_attempts ? ` (${user.failed_attempts} failed attempts)` : ''}
+                    Locked{user.login_attempts ? ` (${user.login_attempts} failed attempts)` : ''}
                   </span>
                 ) : (
                   <span className="inline-flex rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
@@ -1017,7 +1021,7 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
                   </span>
                 )}
               </div>
-              {user.locked && (
+              {user.is_locked && (
                 <button
                   onClick={() => unlockMut.mutate()}
                   disabled={unlockMut.isPending}

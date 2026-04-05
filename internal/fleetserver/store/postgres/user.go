@@ -256,3 +256,10 @@ func (s *UserStore) UpdateRole(ctx context.Context, userID, orgID, role string) 
 		userID, orgID, role)
 	return err
 }
+
+func (s *UserStore) SetRole(ctx context.Context, userID, role string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1`,
+		userID, role)
+	return err
+}

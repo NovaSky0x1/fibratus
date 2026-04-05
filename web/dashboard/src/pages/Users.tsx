@@ -148,6 +148,7 @@ export default function Users() {
                           className={'rounded-full px-2.5 py-0.5 text-xs font-medium border-0 cursor-pointer ' +
                             (roleBadge[user.role] || roleBadge.viewer)}
                         >
+                          {currentUser?.role === 'root' && <option value="root">Root</option>}
                           <option value="admin">Admin</option>
                           <option value="analyst">Analyst</option>
                           <option value="viewer">Viewer</option>
@@ -283,11 +284,12 @@ export default function Users() {
             <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">Add User</h2>
             <form onSubmit={handleCreate} className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Name</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Full Name</label>
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
+                  placeholder="First and last name"
                   required
                 />
               </div>
@@ -542,7 +544,7 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
           <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Profile</h3>
           <div className="mt-3 space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Name</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Full Name</label>
               <input
                 value={profileName}
                 onChange={e => setProfileName(e.target.value)}

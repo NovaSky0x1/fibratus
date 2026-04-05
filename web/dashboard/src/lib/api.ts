@@ -180,8 +180,8 @@ export interface User {
   account_id: string
   role: string
   totp_enabled: boolean
-  locked: boolean
-  failed_attempts: number
+  is_locked: boolean
+  login_attempts: number
   org_restrictions: string | string[] | null
   created_at: string
 }

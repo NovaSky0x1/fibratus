@@ -214,12 +214,29 @@ func (h *AdminHandler) ListAllUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build account name lookup
+	accountNames := make(map[string]string)
+	if accounts, err := h.accounts.ListAll(r.Context()); err == nil {
+		for _, a := range accounts {
+			accountNames[a.ID] = a.Name
+		}
+	}
+
+	type userWithAccount struct {
+		*fleet.User
+		AccountName string `json:"account_name"`
+	}
+	result := make([]userWithAccount, 0, len(users))
 	for _, u := range users {
 		u.Password = ""
 		u.IsLocked = !u.LockedUntil.IsZero() && time.Now().UTC().Before(u.LockedUntil)
+		result = append(result, userWithAccount{
+			User:        u,
+			AccountName: accountNames[u.AccountID],
+		})
 	}
 
-	writeJSON(w, http.StatusOK, fleet.Response{Data: users})
+	writeJSON(w, http.StatusOK, fleet.Response{Data: result})
 }
 
 // UnlockUser handles POST /api/v1/admin/users/{id}/unlock
@@ -278,6 +295,8 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		h.users.UpdateProfile(r.Context(), userID, req.Name, req.Email)
 	}
 	if req.Role != "" && fleetauth.ValidRole(req.Role) {
+		// Update role on the users table
+		h.users.SetRole(r.Context(), userID, req.Role)
 		// Update role in user_orgs for all their org memberships
 		access, _ := h.users.GetOrgAccess(r.Context(), userID)
 		for _, uo := range access {

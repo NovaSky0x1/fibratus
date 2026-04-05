@@ -65,6 +65,7 @@ type UserStore interface {
 	ListByOrg(ctx context.Context, orgID string) ([]*fleet.User, error)
 	Delete(ctx context.Context, id string) error
 	UpdateRole(ctx context.Context, userID, orgID, role string) error
+	SetRole(ctx context.Context, userID, role string) error
 }
 
 // EnrollmentTokenStore manages enrollment token persistence.
