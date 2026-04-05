@@ -115,7 +115,7 @@ var telemetryEventNames = map[string]bool{
 	// Process lifecycle
 	"CreateProcess":    true, // process spawn — core EDR visibility
 	"TerminateProcess": true, // process exit — track process lifetimes
-	"OpenProcess":      true, // process handle open — injection detection
+	"OpenProcess":      true, // process handle open — injection detection (has callstacks)
 
 	// File system
 	"CreateFile":  true, // file creation — malware drops, staging
