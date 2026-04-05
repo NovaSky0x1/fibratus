@@ -655,9 +655,13 @@ export default function Events() {
                   <option value="=">=</option>
                   <option value="!=">!=</option>
                   <option value="contains">contains</option>
+                  <option value="icontains">icontains</option>
+                  <option value="matches">matches</option>
                   <option value="imatches">imatches</option>
                   <option value="startswith">startswith</option>
+                  <option value="istartswith">istartswith</option>
                   <option value="endswith">endswith</option>
+                  <option value="iendswith">iendswith</option>
                   <option value=">">{'>'}</option>
                   <option value="<">{'<'}</option>
                   <option value="in">in</option>
@@ -731,7 +735,7 @@ export default function Events() {
                 <th className="px-3 py-2 font-medium text-slate-400 w-[85px]">Category</th>
                 <SortableHeader label="PID" sortKey="pid" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[60px]" />
                 <SortableHeader label="Process" sortKey="process_name" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[130px]" />
-                <th className="px-3 py-2 font-medium text-slate-400">Details</th>
+                <th className="px-3 py-2 font-medium text-slate-400">Preview</th>
                 <SortableHeader label="Agent" sortKey="agent_hostname" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[110px]" />
               </tr>
             </thead>
@@ -804,6 +808,58 @@ export default function Events() {
 }
 
 // ═════════════════════════════════════════════════
+// Event Preview — compact JSON snippet
+// ═════════════════════════════════════════════════
+
+function EventPreview({ evt }: { evt: TelemetryEvent }) {
+  const raw = evt.raw_event as Record<string, unknown> | null
+  const ps = (raw?.ps || {}) as Record<string, unknown>
+  const params = (evt.params || {}) as Record<string, unknown>
+
+  // Build a compact preview of the most interesting fields
+  const parts: string[] = []
+
+  // Process info
+  if (evt.process_exe) parts.push(`exe: ${String(evt.process_exe).split('\\').pop()}`)
+  if (ps.sha256) parts.push(`sha256: ${String(ps.sha256).slice(0, 12)}...`)
+
+  // Event-specific params (pick the most interesting ones)
+  const interestingKeys = ['file_path', 'file_name', 'dip', 'dport', 'sip', 'sport', 'key_name', 'name', 'domain', 'image_size', 'signature_level', 'cert_subject']
+  for (const key of interestingKeys) {
+    if (params[key] !== undefined && params[key] !== '') {
+      const val = String(params[key])
+      parts.push(`${key}: ${val.length > 40 ? val.slice(0, 40) + '...' : val}`)
+      if (parts.length >= 3) break
+    }
+  }
+
+  if (parts.length === 0) {
+    // Fallback to first few params
+    const entries = Object.entries(params).slice(0, 2)
+    for (const [k, v] of entries) {
+      const val = String(v)
+      parts.push(`${k}: ${val.length > 30 ? val.slice(0, 30) + '...' : val}`)
+    }
+  }
+
+  return (
+    <div className="space-y-0.5 leading-tight">
+      {parts.map((p, i) => {
+        const [key, ...rest] = p.split(': ')
+        const val = rest.join(': ')
+        return (
+          <div key={i} className="truncate">
+            <span className="text-slate-600">{key}:</span>{' '}
+            <span className="text-slate-400">{val}</span>
+          </div>
+        )
+      })}
+      {parts.length === 0 && <span className="text-slate-600 italic">—</span>}
+    </div>
+  )
+}
+
+// ═════════════════════════════════════════════════
 // Event Row (table row + inline expansion)
 // ═════════════════════════════════════════════════
 
@@ -861,8 +917,8 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
             {evt.process_name}
           </span>
         </td>
-        <td className="px-3 py-1.5 text-slate-500 break-all whitespace-pre-wrap" title={JSON.stringify(evt.params)}>
-          {summarizeParams(evt)}
+        <td className="px-3 py-1.5 text-slate-500 font-mono text-[10px] max-w-[320px]">
+          <EventPreview evt={evt} />
         </td>
         <td className="px-3 py-1.5 text-slate-400">
           <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
