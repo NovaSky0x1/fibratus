@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Account, type Organization, type User } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
@@ -420,6 +420,23 @@ function EditAccountModal({ account, onClose }: { account: Account; onClose: () 
 }
 
 // ================================================================
+// Helpers
+// ================================================================
+
+function parseOrgRestrictions(raw: string | string[] | null | undefined): string[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed.filter(Boolean)
+    } catch { /* ignore */ }
+    if (raw.trim()) return [raw]
+  }
+  return []
+}
+
+// ================================================================
 // Users Tab
 // ================================================================
 
@@ -455,21 +472,6 @@ function UsersTab() {
 
   const { sorted: sortedUsers, sort: userSort, toggleSort: toggleUserSort } = useTableSort<User & { account_name?: string }>(filtered, 'name', 'asc')
 
-  const roleMut = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: string }) => api.adminUpdateUser(id, { role }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
-  })
-
-  const unlockMut = useMutation({
-    mutationFn: (id: string) => api.adminUnlockUser(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
-  })
-
-  const disableTotpMut = useMutation({
-    mutationFn: (id: string) => api.adminDisableTOTP(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
-  })
-
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.adminDeleteUser(id),
     onSuccess: () => {
@@ -503,6 +505,7 @@ function UsersTab() {
                 <SortableHeader label="Email" sortKey="email" sort={userSort} onSort={toggleUserSort} />
                 <SortableHeader label="Role" sortKey="role" sort={userSort} onSort={toggleUserSort} />
                 <SortableHeader label="Account" sortKey="account_name" sort={userSort} onSort={toggleUserSort} />
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Org Access</th>
                 <SortableHeader label="2FA" sortKey="totp_enabled" sort={userSort} onSort={toggleUserSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Status</th>
                 <SortableHeader label="Created" sortKey="created_at" sort={userSort} onSort={toggleUserSort} />
@@ -511,46 +514,33 @@ function UsersTab() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && sortedUsers.map(user => {
                 const isSelf = currentUser?.id === user.id
+                const orgRestrictions = parseOrgRestrictions(user.org_restrictions)
                 return (
                   <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                     <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">
                       {user.name}
                       {isSelf && <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">(you)</span>}
-                      {user.locked && (
-                        <span className="ml-2 inline-flex items-center rounded-full bg-red-50 dark:bg-red-900/30 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-400">
-                          <svg className="mr-0.5 h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                          </svg>
-                          locked
-                        </span>
-                      )}
                     </td>
                     <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{user.email}</td>
                     <td className="px-6 py-3">
-                      {!isSelf ? (
-                        <select
-                          value={user.role}
-                          onChange={e => roleMut.mutate({ id: user.id, role: e.target.value })}
-                          className={'rounded-full px-2.5 py-0.5 text-xs font-medium border-0 cursor-pointer ' +
-                            (roleBadge[user.role] || roleBadge.viewer)}
-                        >
-                          <option value="root">Root</option>
-                          <option value="admin">Admin</option>
-                          <option value="analyst">Analyst</option>
-                          <option value="viewer">Viewer</option>
-                        </select>
-                      ) : (
-                        <span className={'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
-                          (roleBadge[user.role] || roleBadge.viewer)}>
-                          {user.role}
-                        </span>
-                      )}
+                      <span className={'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
+                        (roleBadge[user.role] || roleBadge.viewer)}>
+                        {user.role}
+                      </span>
                     </td>
                     <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{user.account_name || '-'}</td>
+                    <td className="px-6 py-3">
+                      <span className={'rounded-full px-2 py-0.5 text-[10px] font-medium ' +
+                        (orgRestrictions.length === 0
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                          : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400')}>
+                        {orgRestrictions.length === 0 ? 'All orgs' : `${orgRestrictions.length} org(s)`}
+                      </span>
+                    </td>
                     <td className="px-6 py-3">
                       <span className={'rounded-full px-2 py-0.5 text-[10px] font-medium ' +
                         (user.totp_enabled ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')}>
@@ -576,24 +566,6 @@ function UsersTab() {
                             className="text-xs text-fibratus-600 hover:underline"
                           >
                             Edit
-                          </button>
-                        )}
-                        {!isSelf && user.locked && (
-                          <button
-                            onClick={() => unlockMut.mutate(user.id)}
-                            disabled={unlockMut.isPending}
-                            className="text-xs text-amber-600 hover:underline"
-                          >
-                            Unlock
-                          </button>
-                        )}
-                        {!isSelf && user.totp_enabled && (
-                          <button
-                            onClick={() => disableTotpMut.mutate(user.id)}
-                            disabled={disableTotpMut.isPending}
-                            className="text-xs text-amber-600 hover:underline"
-                          >
-                            Disable 2FA
                           </button>
                         )}
                         {!isSelf && (
@@ -627,7 +599,7 @@ function UsersTab() {
                 )
               })}
               {!isLoading && filtered.length === 0 && (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No users found.</td></tr>
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No users found.</td></tr>
               )}
             </tbody>
           </table>
@@ -647,26 +619,70 @@ function UsersTab() {
 
 function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: string }; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none'
+  const btnPrimary = 'rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50'
+  const sectionHeader = 'text-sm font-semibold text-gray-900 dark:text-slate-100'
+  const labelCls = 'block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1'
 
-  // Profile
+  // ── Profile ──
   const [profileName, setProfileName] = useState(user.name)
   const [profileEmail, setProfileEmail] = useState(user.email)
   const [profileMsg, setProfileMsg] = useState('')
   const [profileError, setProfileError] = useState('')
 
-  // Password
+  // ── Account ──
+  const [selectedAccountId, setSelectedAccountId] = useState(user.account_id)
+  const [accountMsg, setAccountMsg] = useState('')
+  const [accountError, setAccountError] = useState('')
+
+  // ── Role ──
+  const [selectedRole, setSelectedRole] = useState(user.role)
+  const [roleMsg, setRoleMsg] = useState('')
+  const [roleError, setRoleError] = useState('')
+
+  // ── Org Access ──
+  const currentRestrictions = parseOrgRestrictions(user.org_restrictions)
+  const [allOrgsAccess, setAllOrgsAccess] = useState(currentRestrictions.length === 0)
+  const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>(currentRestrictions)
+  const [orgMsg, setOrgMsg] = useState('')
+  const [orgError, setOrgError] = useState('')
+
+  // ── Password ──
   const [newPassword, setNewPassword] = useState('')
   const [passwordMsg, setPasswordMsg] = useState('')
   const [passwordError, setPasswordError] = useState('')
 
-  // 2FA
+  // ── 2FA ──
   const [totpConfirm, setTotpConfirm] = useState(false)
   const [totpMsg, setTotpMsg] = useState('')
   const [totpError, setTotpError] = useState('')
 
-  // Delete
+  // ── Delete ──
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
+  // ── Data Queries ──
+  const { data: accountsData } = useQuery({
+    queryKey: ['admin-accounts'],
+    queryFn: () => api.adminGetAccounts(),
+  })
+  const accounts = (accountsData?.data || []) as Account[]
+
+  const { data: accountOrgsData } = useQuery({
+    queryKey: ['admin-account-orgs', selectedAccountId],
+    queryFn: () => api.adminGetAccountOrgs(selectedAccountId),
+    enabled: !!selectedAccountId,
+  })
+  const accountOrgs = (accountOrgsData?.data || []) as Organization[]
+
+  // When account changes, reset org selections
+  useEffect(() => {
+    if (selectedAccountId !== user.account_id) {
+      setAllOrgsAccess(true)
+      setSelectedOrgIds([])
+    }
+  }, [selectedAccountId, user.account_id])
+
+  // ── Mutations ──
   const updateProfileMut = useMutation({
     mutationFn: () => api.adminUpdateUser(user.id, { name: profileName, email: profileEmail }),
     onSuccess: (res) => {
@@ -677,6 +693,46 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
       setTimeout(() => setProfileMsg(''), 3000)
     },
     onError: () => setProfileError('Failed to update profile.'),
+  })
+
+  const updateAccountMut = useMutation({
+    mutationFn: () => api.adminUpdateUser(user.id, { account_id: selectedAccountId }),
+    onSuccess: (res) => {
+      if (res.error) { setAccountError(res.error.message); return }
+      setAccountMsg('Account assignment updated.')
+      setAccountError('')
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-accounts'] })
+      setTimeout(() => setAccountMsg(''), 3000)
+    },
+    onError: () => setAccountError('Failed to update account assignment.'),
+  })
+
+  const updateRoleMut = useMutation({
+    mutationFn: () => api.adminUpdateUser(user.id, { role: selectedRole }),
+    onSuccess: (res) => {
+      if (res.error) { setRoleError(res.error.message); return }
+      setRoleMsg('Role updated.')
+      setRoleError('')
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      setTimeout(() => setRoleMsg(''), 3000)
+    },
+    onError: () => setRoleError('Failed to update role.'),
+  })
+
+  const updateOrgAccessMut = useMutation({
+    mutationFn: () => api.adminUpdateUser(user.id, {
+      org_restrictions: allOrgsAccess ? [] : selectedOrgIds,
+      set_org_restrictions: true,
+    }),
+    onSuccess: (res) => {
+      if (res.error) { setOrgError(res.error.message); return }
+      setOrgMsg('Organization access updated.')
+      setOrgError('')
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      setTimeout(() => setOrgMsg(''), 3000)
+    },
+    onError: () => setOrgError('Failed to update organization access.'),
   })
 
   const resetPasswordMut = useMutation({
@@ -706,9 +762,7 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
 
   const unlockMut = useMutation({
     mutationFn: () => api.adminUnlockUser(user.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
   })
 
   const deleteMut = useMutation({
@@ -722,168 +776,293 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
 
   const allPasswordRulesPass = passwordRules.every(r => r.test(newPassword))
 
+  const toggleOrgId = (orgId: string) => {
+    setSelectedOrgIds(prev =>
+      prev.includes(orgId) ? prev.filter(id => id !== orgId) : [...prev, orgId]
+    )
+  }
+
   return (
-    <SlidePanel open={true} title={`${user.name || user.email} ${user.account_name ? `(${user.account_name})` : ''}`} onClose={onClose}>
-      <div className="space-y-8">
-        {/* Profile Section */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Profile</h3>
+    <SlidePanel open={true} title={`${user.name || user.email}`} onClose={onClose}>
+      <div className="space-y-6">
+
+        {/* ── 1. Profile ── */}
+        <section className="rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+          <h3 className={sectionHeader}>Profile</h3>
           <div className="mt-3 space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Name</label>
-              <input
-                value={profileName}
-                onChange={e => setProfileName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
-              />
+              <label className={labelCls}>Name</label>
+              <input value={profileName} onChange={e => setProfileName(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Email</label>
-              <input
-                type="email"
-                value={profileEmail}
-                onChange={e => setProfileEmail(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Role</label>
-              <select
-                value={user.role}
-                disabled
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:outline-none cursor-not-allowed"
-              >
-                <option>{user.role}</option>
-              </select>
-              <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Change role via the inline dropdown in the users table.</p>
+              <label className={labelCls}>Email</label>
+              <input type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} className={inputCls} />
             </div>
             {profileError && <p className="text-xs text-red-600">{profileError}</p>}
             {profileMsg && <p className="text-xs text-emerald-600">{profileMsg}</p>}
             <button
               onClick={() => { setProfileError(''); updateProfileMut.mutate() }}
               disabled={updateProfileMut.isPending || (!profileName.trim() && !profileEmail.trim())}
-              className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+              className={btnPrimary}
             >
               {updateProfileMut.isPending ? 'Saving...' : 'Save Profile'}
             </button>
           </div>
-        </div>
+        </section>
 
-        <hr className="border-gray-200 dark:border-slate-700" />
-
-        {/* Locked status */}
-        {user.locked && (
-          <>
-            <div>
-              <h3 className="text-sm font-semibold text-amber-600">Account Locked</h3>
-              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">This user's account is locked, likely due to too many failed login attempts.</p>
-              <div className="mt-3">
-                <button
-                  onClick={() => unlockMut.mutate()}
-                  disabled={unlockMut.isPending}
-                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                >
-                  {unlockMut.isPending ? 'Unlocking...' : 'Unlock Account'}
-                </button>
-              </div>
-            </div>
-            <hr className="border-gray-200 dark:border-slate-700" />
-          </>
-        )}
-
-        {/* Password Section */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Reset Password</h3>
-          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Set a new password for this user. They will need to use the new password on next login.</p>
+        {/* ── 2. Account Assignment ── */}
+        <section className="rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+          <h3 className={sectionHeader}>Account Assignment</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            Current account: <span className="font-medium text-gray-700 dark:text-slate-300">{user.account_name || 'Unknown'}</span>
+          </p>
           <div className="mt-3 space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">New Password</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
-                placeholder="Enter new password"
-                minLength={12}
-              />
-              <div className="mt-2 space-y-1">
-                {passwordRules.map(rule => (
-                  <p key={rule.label} className={'text-[10px] ' + (rule.test(newPassword) ? 'text-emerald-600' : 'text-gray-400')}>
-                    {rule.test(newPassword) ? '\u2713' : '\u2022'} {rule.label}
-                  </p>
+              <label className={labelCls}>Account</label>
+              <select
+                value={selectedAccountId}
+                onChange={e => setSelectedAccountId(e.target.value)}
+                className={inputCls}
+              >
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.plan})</option>
                 ))}
-              </div>
+              </select>
             </div>
-            {passwordError && <p className="text-xs text-red-600">{passwordError}</p>}
-            {passwordMsg && <p className="text-xs text-emerald-600">{passwordMsg}</p>}
+            {accountError && <p className="text-xs text-red-600">{accountError}</p>}
+            {accountMsg && <p className="text-xs text-emerald-600">{accountMsg}</p>}
             <button
-              onClick={() => { setPasswordError(''); resetPasswordMut.mutate() }}
-              disabled={!allPasswordRulesPass || resetPasswordMut.isPending}
-              className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+              onClick={() => { setAccountError(''); updateAccountMut.mutate() }}
+              disabled={updateAccountMut.isPending || selectedAccountId === user.account_id}
+              className={btnPrimary}
             >
-              {resetPasswordMut.isPending ? 'Resetting...' : 'Reset Password'}
+              {updateAccountMut.isPending ? 'Saving...' : 'Save Account'}
             </button>
           </div>
-        </div>
+        </section>
 
-        <hr className="border-gray-200 dark:border-slate-700" />
-
-        {/* 2FA Section */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Two-Factor Authentication</h3>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="text-sm text-gray-600 dark:text-slate-400">Status:</span>
-            <span className={'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
-              (user.totp_enabled ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')}>
-              {user.totp_enabled ? 'Enabled' : 'Disabled'}
-            </span>
+        {/* ── 3. Role Assignment ── */}
+        <section className="rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+          <h3 className={sectionHeader}>Role Assignment</h3>
+          <div className="mt-3 space-y-3">
+            <div>
+              <label className={labelCls}>Role</label>
+              <select
+                value={selectedRole}
+                onChange={e => setSelectedRole(e.target.value)}
+                className={inputCls}
+              >
+                <option value="root">Root</option>
+                <option value="admin">Admin</option>
+                <option value="analyst">Analyst</option>
+                <option value="viewer">Viewer</option>
+              </select>
+              <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Only root users can assign the root role.</p>
+            </div>
+            {roleError && <p className="text-xs text-red-600">{roleError}</p>}
+            {roleMsg && <p className="text-xs text-emerald-600">{roleMsg}</p>}
+            <button
+              onClick={() => { setRoleError(''); updateRoleMut.mutate() }}
+              disabled={updateRoleMut.isPending || selectedRole === user.role}
+              className={btnPrimary}
+            >
+              {updateRoleMut.isPending ? 'Saving...' : 'Save Role'}
+            </button>
           </div>
-          {user.totp_enabled && (
-            <div className="mt-3">
-              {!totpConfirm ? (
+        </section>
+
+        {/* ── 4. Organization Access ── */}
+        <section className="rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+          <h3 className={sectionHeader}>Organization Access</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            Controls which organizations this user can view data for within their account.
+          </p>
+          <div className="mt-3 space-y-3">
+            {/* All orgs toggle */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <button
+                type="button"
+                onClick={() => setAllOrgsAccess(!allOrgsAccess)}
+                className={
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ' +
+                  (allOrgsAccess ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-slate-600')
+                }
+                role="switch"
+                aria-checked={allOrgsAccess}
+              >
+                <span className={
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
+                  (allOrgsAccess ? 'translate-x-4' : 'translate-x-0')
+                } />
+              </button>
+              <span className="text-sm text-gray-700 dark:text-slate-300">All organizations</span>
+            </label>
+
+            {/* Org checkboxes (shown when not "all orgs") */}
+            {!allOrgsAccess && (
+              <div className="rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50 p-3 max-h-48 overflow-y-auto space-y-2">
+                {accountOrgs.length === 0 && (
+                  <p className="text-xs text-gray-400 dark:text-slate-500">No organizations found in this account.</p>
+                )}
+                {accountOrgs.map(org => (
+                  <label key={org.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedOrgIds.includes(org.id)}
+                      onChange={() => toggleOrgId(org.id)}
+                      className="h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-fibratus-600 focus:ring-fibratus-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-slate-300">{org.name}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-slate-500">({org.agent_count} agents)</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* Current restrictions display */}
+            {currentRestrictions.length > 0 && (
+              <div className="text-xs text-gray-500 dark:text-slate-400">
+                Currently restricted to {currentRestrictions.length} org(s):
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {currentRestrictions.map(id => {
+                    const org = accountOrgs.find(o => o.id === id)
+                    return (
+                      <span key={id} className="inline-flex rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-[10px] text-gray-600 dark:text-slate-400">
+                        {org ? org.name : id.slice(0, 8) + '...'}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {orgError && <p className="text-xs text-red-600">{orgError}</p>}
+            {orgMsg && <p className="text-xs text-emerald-600">{orgMsg}</p>}
+            <button
+              onClick={() => { setOrgError(''); updateOrgAccessMut.mutate() }}
+              disabled={updateOrgAccessMut.isPending}
+              className={btnPrimary}
+            >
+              {updateOrgAccessMut.isPending ? 'Saving...' : 'Save Org Access'}
+            </button>
+          </div>
+        </section>
+
+        {/* ── 5. Security ── */}
+        <section className="rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+          <h3 className={sectionHeader}>Security</h3>
+          <div className="mt-3 space-y-4">
+
+            {/* 2FA Status */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600 dark:text-slate-400">2FA Status:</span>
+                <span className={'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
+                  (user.totp_enabled ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')}>
+                  {user.totp_enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              {user.totp_enabled && !totpConfirm && (
                 <button
                   onClick={() => setTotpConfirm(true)}
-                  className="rounded-lg border border-red-300 dark:border-red-800 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  className="rounded-lg border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >
                   Disable 2FA
                 </button>
-              ) : (
-                <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 space-y-3">
-                  <p className="text-sm text-red-800 dark:text-red-300">
-                    Are you sure you want to disable 2FA for this user? This will remove their TOTP configuration.
-                  </p>
-                  {totpError && <p className="text-xs text-red-600">{totpError}</p>}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { setTotpError(''); disableTotpMut.mutate() }}
-                      disabled={disableTotpMut.isPending}
-                      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {disableTotpMut.isPending ? 'Disabling...' : 'Yes, Disable 2FA'}
-                    </button>
-                    <button
-                      onClick={() => setTotpConfirm(false)}
-                      className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
               )}
-              {totpMsg && <p className="mt-2 text-xs text-emerald-600">{totpMsg}</p>}
             </div>
-          )}
-          {!user.totp_enabled && (
-            <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">This user has not enabled two-factor authentication.</p>
-          )}
-        </div>
+            {user.totp_enabled && totpConfirm && (
+              <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 space-y-2">
+                <p className="text-xs text-red-800 dark:text-red-300">
+                  This will remove the user's TOTP configuration. They will need to re-enroll.
+                </p>
+                {totpError && <p className="text-xs text-red-600">{totpError}</p>}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setTotpError(''); disableTotpMut.mutate() }}
+                    disabled={disableTotpMut.isPending}
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {disableTotpMut.isPending ? 'Disabling...' : 'Confirm Disable'}
+                  </button>
+                  <button
+                    onClick={() => setTotpConfirm(false)}
+                    className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {totpMsg && <p className="text-xs text-emerald-600">{totpMsg}</p>}
 
-        <hr className="border-gray-200 dark:border-slate-700" />
+            <hr className="border-gray-200 dark:border-slate-700" />
 
-        {/* Danger Zone */}
-        <div>
+            {/* Lock Status */}
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm text-gray-600 dark:text-slate-400">Account Status: </span>
+                {user.locked ? (
+                  <span className="inline-flex rounded-full bg-red-50 dark:bg-red-900/30 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+                    Locked{user.failed_attempts ? ` (${user.failed_attempts} failed attempts)` : ''}
+                  </span>
+                ) : (
+                  <span className="inline-flex rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    Active
+                  </span>
+                )}
+              </div>
+              {user.locked && (
+                <button
+                  onClick={() => unlockMut.mutate()}
+                  disabled={unlockMut.isPending}
+                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {unlockMut.isPending ? 'Unlocking...' : 'Unlock Account'}
+                </button>
+              )}
+            </div>
+
+            <hr className="border-gray-200 dark:border-slate-700" />
+
+            {/* Password Reset */}
+            <div>
+              <h4 className="text-xs font-semibold text-gray-700 dark:text-slate-300">Reset Password</h4>
+              <p className="mt-1 text-[10px] text-gray-500 dark:text-slate-400">User will need the new password on next login.</p>
+              <div className="mt-2 space-y-2">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className={inputCls}
+                  placeholder="Enter new password"
+                  minLength={12}
+                />
+                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                  {passwordRules.map(rule => (
+                    <p key={rule.label} className={'text-[10px] ' + (rule.test(newPassword) ? 'text-emerald-600' : 'text-gray-400')}>
+                      {rule.test(newPassword) ? '\u2713' : '\u2022'} {rule.label}
+                    </p>
+                  ))}
+                </div>
+                {passwordError && <p className="text-xs text-red-600">{passwordError}</p>}
+                {passwordMsg && <p className="text-xs text-emerald-600">{passwordMsg}</p>}
+                <button
+                  onClick={() => { setPasswordError(''); resetPasswordMut.mutate() }}
+                  disabled={!allPasswordRulesPass || resetPasswordMut.isPending}
+                  className={btnPrimary}
+                >
+                  {resetPasswordMut.isPending ? 'Resetting...' : 'Reset Password'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 6. Danger Zone ── */}
+        <section className="rounded-lg border border-red-200 dark:border-red-900/50 p-4">
           <h3 className="text-sm font-semibold text-red-600">Danger Zone</h3>
-          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Permanently delete this user account. This action cannot be undone.</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Permanently delete this user. This action cannot be undone.</p>
           <div className="mt-3">
             {!deleteConfirm ? (
               <button
@@ -893,9 +1072,9 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
                 Delete User
               </button>
             ) : (
-              <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 space-y-3">
+              <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 space-y-2">
                 <p className="text-sm text-red-800 dark:text-red-300">
-                  Are you sure you want to permanently delete <strong>{user.name || user.email}</strong>?
+                  Permanently delete <strong>{user.name || user.email}</strong>?
                 </p>
                 <div className="flex items-center gap-2">
                   <button
@@ -903,7 +1082,7 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
                     disabled={deleteMut.isPending}
                     className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                   >
-                    {deleteMut.isPending ? 'Deleting...' : 'Yes, Delete User'}
+                    {deleteMut.isPending ? 'Deleting...' : 'Yes, Delete'}
                   </button>
                   <button
                     onClick={() => setDeleteConfirm(false)}
@@ -915,7 +1094,8 @@ function AdminUserEditPanel({ user, onClose }: { user: User & { account_name?: s
               </div>
             )}
           </div>
-        </div>
+        </section>
+
       </div>
     </SlidePanel>
   )

@@ -181,6 +181,8 @@ export interface User {
   role: string
   totp_enabled: boolean
   locked: boolean
+  failed_attempts: number
+  org_restrictions: string | string[] | null
   created_at: string
 }
 
@@ -377,7 +379,8 @@ export const api = {
     fetchApi<Account>(`/admin/accounts/${accountId}`, { method: 'PUT', body: JSON.stringify(data) }),
   adminSwitchAccount: (accountId: string) =>
     fetchApi<{ account_id: string; account_name: string }>('/admin/switch-account', { method: 'POST', body: JSON.stringify({ account_id: accountId }) }),
-  adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string }) =>
+  adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),
+  adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string; account_id?: string; org_restrictions?: string[]; set_org_restrictions?: boolean }) =>
     fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   adminDeleteUser: (id: string) =>
     fetchApi<void>(`/admin/users/${id}`, { method: 'DELETE' }),
