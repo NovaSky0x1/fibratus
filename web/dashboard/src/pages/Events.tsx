@@ -481,7 +481,7 @@ export default function Events() {
                 if (lastToken.length >= 1 && /^[a-z]/.test(lastToken)) setShowAutocomplete(true)
               }}
               placeholder="Type a query... ps.name = 'cmd.exe' and kevt.name = 'CreateProcess'"
-              className="flex-1 bg-transparent text-cyan-700 dark:text-cyan-400 font-mono text-sm placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none caret-cyan-600 dark:caret-cyan-400"
+              className="flex-1 bg-transparent text-blue-800 dark:text-cyan-400 font-mono text-sm placeholder-gray-400 dark:placeholder-slate-600 focus:outline-none caret-blue-700 dark:caret-cyan-400"
               spellCheck={false}
               autoComplete="off"
             />
@@ -573,9 +573,9 @@ export default function Events() {
           <span className="text-xs text-gray-400 dark:text-slate-500">{timeRangeLabel}</span>
           {/* Active query tag */}
           {activeQuery && (
-            <div className="flex items-center gap-1.5 rounded bg-cyan-900/30 border border-cyan-700/40 px-2.5 py-1">
-              <span className="text-xs font-mono text-cyan-400 max-w-[300px] truncate">{activeQuery}</span>
-              <button onClick={clearQuery} className="text-cyan-600 hover:text-cyan-400">
+            <div className="flex items-center gap-1.5 rounded bg-blue-50 dark:bg-cyan-900/30 border border-blue-200 dark:border-cyan-700/40 px-2.5 py-1">
+              <span className="text-xs font-mono text-blue-700 dark:text-cyan-400 max-w-[300px] truncate">{activeQuery}</span>
+              <button onClick={clearQuery} className="text-blue-500 dark:text-cyan-600 hover:text-blue-700 dark:hover:text-cyan-400">
                 <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
@@ -613,16 +613,16 @@ export default function Events() {
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             {filters.map(f => (
-              <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-cyan-900/40 border border-cyan-700/50 px-3 py-1 text-xs text-cyan-300">
-                <span className="text-cyan-500">{f.field}</span>
+              <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-cyan-900/40 border border-blue-200 dark:border-cyan-700/50 px-3 py-1 text-xs text-blue-700 dark:text-cyan-300">
+                <span className="text-blue-600 dark:text-cyan-500">{f.field}</span>
                 <span className="text-gray-400 dark:text-slate-500">{f.operator}</span>
-                <span className="text-cyan-300 font-mono">&quot;{f.value}&quot;</span>
+                <span className="text-blue-800 dark:text-cyan-300 font-mono">&quot;{f.value}&quot;</span>
                 <button onClick={() => removeFilter(f.id)} className="ml-1 text-gray-400 dark:text-slate-500 hover:text-red-400">&times;</button>
               </span>
             ))}
             {!showAddFilter && (
               <button onClick={() => setShowAddFilter(true)}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-gray-500 dark:text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 dark:border-slate-600 px-3 py-1 text-xs text-gray-500 dark:text-slate-400 hover:border-blue-500 dark:hover:border-cyan-600 hover:text-blue-700 dark:hover:text-cyan-400 transition-colors">
                 + Add filter
               </button>
             )}
@@ -671,7 +671,7 @@ export default function Events() {
       {filters.length === 0 && !showAddFilter && (
         <div className="mt-2">
           <button onClick={() => setShowAddFilter(true)}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-600 px-3 py-1 text-xs text-gray-500 dark:text-slate-400 hover:border-cyan-600 hover:text-cyan-400 transition-colors">
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 dark:border-slate-600 px-3 py-1 text-xs text-gray-500 dark:text-slate-400 hover:border-blue-500 dark:hover:border-cyan-600 hover:text-blue-700 dark:hover:text-cyan-400 transition-colors">
             + Add filter
           </button>
         </div>
@@ -697,7 +697,7 @@ export default function Events() {
                 {/* Dynamic values from actual data */}
                 {dynamicFields?.event_types && dynamicFields.event_types.length > 0 && (
                   <div>
-                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Event Types</p>
+                    <p className="text-[10px] text-blue-700 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Event Types</p>
                     {dynamicFields.event_types.map(t => (
                       <button key={t} onClick={() => addQuickFilter('kevt.name', t)}
                         className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate"
@@ -709,7 +709,7 @@ export default function Events() {
                 )}
                 {dynamicFields?.event_categories && dynamicFields.event_categories.length > 0 && (
                   <div>
-                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Categories</p>
+                    <p className="text-[10px] text-blue-700 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Categories</p>
                     {dynamicFields.event_categories.map(c => (
                       <button key={c} onClick={() => addQuickFilter('kevt.category', c)}
                         className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate">
@@ -720,7 +720,7 @@ export default function Events() {
                 )}
                 {dynamicFields?.process_names && dynamicFields.process_names.length > 0 && (
                   <div>
-                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Top Processes</p>
+                    <p className="text-[10px] text-blue-700 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Top Processes</p>
                     {dynamicFields.process_names.slice(0, 20).map(p => (
                       <button key={p} onClick={() => addQuickFilter('ps.name', p)}
                         className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate">
@@ -731,7 +731,7 @@ export default function Events() {
                 )}
                 {dynamicFields?.agents && dynamicFields.agents.length > 0 && (
                   <div>
-                    <p className="text-[10px] text-cyan-600 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Agents</p>
+                    <p className="text-[10px] text-blue-700 dark:text-cyan-500 uppercase font-semibold px-1 py-1 mt-1">Agents</p>
                     {dynamicFields.agents.map(a => (
                       <button key={a} onClick={() => addQuickFilter('agent.hostname', a)}
                         className="w-full text-left px-2 py-0.5 rounded text-[11px] text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 font-mono truncate">
@@ -893,7 +893,7 @@ function EventPreviewInline({ evt }: { evt: TelemetryEvent }) {
     <div className="flex flex-wrap gap-x-3 gap-y-0.5">
       {chips.map((c, i) => (
         <span key={i} className="truncate max-w-[300px]">
-          <span className={c.highlight ? 'text-cyan-600 dark:text-cyan-500' : 'text-gray-500 dark:text-slate-600'}>{c.k}{c.v ? ':' : ''}</span>{' '}
+          <span className={c.highlight ? 'text-blue-700 dark:text-cyan-500' : 'text-gray-500 dark:text-slate-600'}>{c.k}{c.v ? ':' : ''}</span>{' '}
           <span className="text-gray-700 dark:text-gray-500 dark:text-slate-400">{c.v}</span>
         </span>
       ))}
@@ -923,7 +923,7 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
         className={`cursor-pointer transition-colors ${
           isExpanded
             ? 'bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80'
-            : 'hover:bg-gray-100 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
+            : 'hover:bg-blue-50/70 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
         }`}
         onClick={onToggle}
       >
@@ -940,7 +940,7 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
           {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
         </td>
         <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100 font-medium">
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
+          <span className="cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('kevt.name', evt.event_name) }} title="Click to filter by this event type">
             {evt.event_name}
           </span>
         </td>
@@ -950,17 +950,17 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
           </span>
         </td>
         <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400">
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('ps.pid', String(evt.pid)) }} title="Click to filter by this PID">
+          <span className="cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('ps.pid', String(evt.pid)) }} title="Click to filter by this PID">
             {evt.pid}
           </span>
         </td>
-        <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100 break-all" title={evt.process_exe}>
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('ps.name', evt.process_name) }} title="Click to filter by this process">
+        <td className="px-3 py-1.5 break-all" title={evt.process_exe}>
+          <span className="cursor-pointer font-semibold text-blue-700 dark:text-cyan-400 hover:text-blue-900 dark:hover:text-cyan-300 transition-colors" onClick={() => { onAddFilter('ps.name', evt.process_name) }} title="Click to filter by this process">
             {evt.process_name}
           </span>
         </td>
         <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400">
-          <span className="cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
+          <span className="cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
             {evt.agent_hostname}
           </span>
         </td>
@@ -968,7 +968,7 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
       {/* Preview sub-row */}
       <tr
         className={`cursor-pointer border-b border-slate-800/50 ${
-          isExpanded ? 'bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80' : 'hover:bg-gray-100 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
+          isExpanded ? 'bg-white dark:bg-slate-800/80 dark:bg-gray-50 dark:bg-slate-900/80' : 'hover:bg-blue-50/70 dark:hover:bg-slate-700/20 dark:hover:bg-white dark:bg-slate-800/30'
         }`}
         onClick={onToggle}
       >
@@ -977,7 +977,7 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono text-gray-500 dark:text-slate-500">
             {evt.process_exe && (
               <span className="truncate max-w-[350px]" title={evt.process_exe}>
-                <span className="text-cyan-600 dark:text-cyan-600">exe:</span> <span className="text-gray-600 dark:text-slate-400">{evt.process_exe}</span>
+                <span className="text-blue-600 dark:text-cyan-600">exe:</span> <span className="text-gray-600 dark:text-slate-400">{evt.process_exe}</span>
               </span>
             )}
             <EventPreviewInline evt={evt} />
@@ -1037,10 +1037,10 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             <div className="rounded-lg border-l-2 border-blue-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="rounded bg-blue-500/20 text-blue-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Process</span>
-                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
+                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
+                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
                 <span className="text-gray-400 dark:text-slate-500">TID <span className="text-slate-300 font-mono">{evt.tid}</span></span>
               </div>
               {evt.process_exe && (
@@ -1093,10 +1093,10 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             <div className="rounded-lg border-l-2 border-amber-500 bg-white dark:bg-slate-800/60 dark:bg-gray-50 dark:bg-slate-900/60 border-y border-r border-gray-200 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="rounded bg-amber-500/20 text-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">Parent</span>
-                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
+                <span className="font-medium text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
+                <span className="text-gray-400 dark:text-slate-500">PID <span className="text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
               </div>
               {parentExe && (
                 <div>
