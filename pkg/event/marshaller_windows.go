@@ -821,6 +821,24 @@ func (e *Event) MarshalJSON() []byte {
 		js.writeObjectEnd()
 	}
 
+	// Callstack
+	if len(e.Callstack) > 0 {
+		js.writeMore()
+		js.writeObjectField("callstack")
+		js.writeArrayStart()
+		for i, frame := range e.Callstack {
+			frameStr := frame.Addr.String() + " " + frame.Module + "!" + frame.Symbol
+			if frame.Offset > 0 {
+				frameStr += "+" + fmt.Sprintf("0x%x", frame.Offset)
+			}
+			js.writeEscapeString(frameStr)
+			if js.shouldWriteMore(i, len(e.Callstack)) {
+				js.writeMore()
+			}
+		}
+		js.writeArrayEnd()
+	}
+
 	// end of JSON
 	js.writeObjectEnd()
 
