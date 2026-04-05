@@ -292,7 +292,13 @@ export default function Events() {
         limit: '100',
         offset: String((page - 1) * 100),
       }
-      if (activeQuery) params.query = activeQuery
+      if (activeQuery) {
+        params.query = activeQuery
+        // Also send as legacy search for basic text filtering fallback
+        if (!activeQuery.includes('=') && !activeQuery.includes('contains') && !activeQuery.includes('matches')) {
+          params.search = activeQuery
+        }
+      }
       if (customTimeActive && customFrom && customTo) {
         params.from = new Date(customFrom).toISOString()
         params.to = new Date(customTo).toISOString()
