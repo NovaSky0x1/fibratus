@@ -256,6 +256,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 
 	// Extract the triggering PID(s) and the known ancestry from detection events.
 	triggerPIDs, ancestryPIDs := extractDetectionPIDs(det.Events)
+	log.Infof("fleet: process tree for detection %s: triggerPIDs=%v ancestryPIDs=%v events_raw_len=%d", det.ID, triggerPIDs, ancestryPIDs, len(det.Events))
 
 	// Query telemetry within ±1 hour of detection for process tree context.
 	from := det.Timestamp.Add(-1 * time.Hour)
@@ -350,6 +351,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 			filtered = append(filtered, evt)
 		}
 	}
+	log.Infof("fleet: process tree: %d total events, %d relevant PIDs, %d filtered events", len(allEvents), len(relevant), len(filtered))
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{

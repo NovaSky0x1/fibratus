@@ -74,7 +74,7 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
   return (
     <div className={`rounded-lg border-2 px-3 py-2 shadow-sm ${bg} ${d.selected ? 'ring-2 ring-fibratus-200' : ''}`}
       style={{ borderColor: border, width: 270 }}>
-      <Handle type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!bg-gray-300 !w-2 !h-2" />
       <div className="flex items-center gap-2">
         <div className={'flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold flex-shrink-0 ' +
           (d.isFocus ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')}>{d.pid}</div>
@@ -107,7 +107,7 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
           </button>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-300 !w-2 !h-2" />
+      <Handle type="source" position={Position.Right} className="!bg-gray-300 !w-2 !h-2" />
     </div>
   )
 }
@@ -124,7 +124,7 @@ function EventGroupNode({ data }: { data: Record<string, unknown> }) {
   return (
     <div className={'rounded-md border px-2.5 py-1.5 shadow-sm bg-white dark:bg-slate-800 ' + (d.selected ? 'ring-2 ring-fibratus-200' : '')}
       style={{ borderColor: color + '60', width: 240 }}>
-      <Handle type="target" position={Position.Top} style={{ background: color }} className="!w-2 !h-2" />
+      <Handle type="target" position={Position.Left} style={{ background: color }} className="!w-2 !h-2" />
       <div className="flex items-center gap-2">
         <span className="rounded px-1.5 py-0.5 text-[10px] font-bold"
           style={{ backgroundColor: color + '20', color }}>{catLabel(d.category)}</span>
@@ -337,47 +337,45 @@ export default function DetectionProcessGraph({ detection, focusPid }: Props) {
     }
     for (const root of roots) addVisible(root)
 
-    // Layout: two-pass — processes first, then event groups below them
-    const positions = new Map<string, { x: number; y: number }>() // node id -> position
-    let xOffset = 0
+    // Layout: horizontal left-to-right — parent on left, children to the right
+    // Event groups appear below each process node.
+    const positions = new Map<string, { x: number; y: number }>()
+    let yOffset = 0
 
-    // Count event group rows for a PID (adds vertical space below the process)
     const evtGroupHeight = (pid: number): number => {
       if (!eventsExpanded.has(pid)) return 0
       const proc = byPid.get(pid)
       if (!proc) return 0
       const cats = Object.keys(proc.eventsByCategory)
       if (cats.length === 0) return 0
-      return EVT_H + 30 // space for one row of event groups
+      return EVT_H + 30
     }
 
-    const layoutTree = (pid: number, depth: number, xStart: number, yBase: number): number => {
-      if (!visible.has(pid)) return xStart
+    const layoutTree = (pid: number, depth: number, xBase: number, yStart: number): number => {
+      if (!visible.has(pid)) return yStart
       const nodeId = `p-${pid}`
       const extraY = evtGroupHeight(pid)
 
       const kids = (childrenMap.get(pid) || []).filter(k => visible.has(k))
       if (kids.length === 0 || !childrenExpanded.has(pid)) {
-        positions.set(nodeId, { x: xStart, y: yBase })
-        // Layout event groups horizontally below this process
-        if (eventsExpanded.has(pid)) layoutEventGroups(pid, xStart, yBase + PROC_H - 40)
-        return xStart + PROC_W
+        positions.set(nodeId, { x: xBase, y: yStart })
+        if (eventsExpanded.has(pid)) layoutEventGroups(pid, xBase, yStart + PROC_H - 40)
+        return yStart + PROC_H + extraY
       }
-      const childY = yBase + PROC_H + extraY
-      let x = xStart
-      for (const kid of kids) x = layoutTree(kid, depth + 1, x, childY)
-      const center = (xStart + x - PROC_W) / 2
-      positions.set(nodeId, { x: center, y: yBase })
-      if (eventsExpanded.has(pid)) layoutEventGroups(pid, center, yBase + PROC_H - 40)
-      return x
+      const childX = xBase + PROC_W + 80
+      let y = yStart
+      for (const kid of kids) y = layoutTree(kid, depth + 1, childX, y)
+      const center = (yStart + y - PROC_H) / 2
+      positions.set(nodeId, { x: xBase, y: center })
+      if (eventsExpanded.has(pid)) layoutEventGroups(pid, xBase, center + PROC_H - 40)
+      return y
     }
 
-    const layoutEventGroups = (pid: number, xCenter: number, y: number) => {
+    const layoutEventGroups = (pid: number, xBase: number, y: number) => {
       const proc = byPid.get(pid)
       if (!proc) return
       const cats = Object.keys(proc.eventsByCategory)
-      const totalWidth = cats.length * EVT_W
-      let x = xCenter + (PROC_W - totalWidth) / 2
+      let x = xBase
       for (const cat of cats) {
         positions.set(`e-${pid}-${cat}`, { x, y })
         x += EVT_W
@@ -386,8 +384,8 @@ export default function DetectionProcessGraph({ detection, focusPid }: Props) {
 
     for (const root of roots) {
       if (visible.has(root)) {
-        xOffset = layoutTree(root, 0, xOffset, 0)
-        xOffset += PROC_W / 3
+        yOffset = layoutTree(root, 0, 0, yOffset)
+        yOffset += 40
       }
     }
 
