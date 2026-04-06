@@ -243,6 +243,7 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 
 		// Run condition validation using the real QL parser with macros
 		macros := h.loadMacros(ctx, orgID)
+		log.Infof("fleet: GitHub sync: validating %q with %d macros (org=%s)", rule.Name, len(macros), orgID)
 		condResult := validator.ValidateConditionWithMacros(rule.Condition, macros)
 		if condResult.Valid {
 			rule.ValidationStatus = "valid"
