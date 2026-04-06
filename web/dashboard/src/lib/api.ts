@@ -336,6 +336,11 @@ export const api = {
       orgPath('/rules/validate-condition'),
       { method: 'POST', body: JSON.stringify({ condition }) },
     ),
+  validateAllRules: () =>
+    fetchApi<{ validated: number; invalid: number; valid: number }>(
+      orgPath('/rules/validate-all'),
+      { method: 'POST' },
+    ),
 
   // Telemetry (live events)
   getOrgTelemetry: (params?: Record<string, string>) => {

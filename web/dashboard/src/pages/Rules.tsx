@@ -184,12 +184,26 @@ export default function Rules() {
             )}
           </p>
         </div>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"
-        >
-          {showUpload ? 'Cancel' : 'Upload Rule'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={async () => {
+              const res = await api.validateAllRules()
+              if (res.data) {
+                queryClient.invalidateQueries({ queryKey: ['rules'] })
+                alert(`Validated ${res.data.validated} rules: ${res.data.valid} valid, ${res.data.invalid} invalid`)
+              }
+            }}
+            className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
+          >
+            Validate All
+          </button>
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"
+          >
+            {showUpload ? 'Cancel' : 'Upload Rule'}
+          </button>
+        </div>
       </div>
 
       {/* Upload panel */}
