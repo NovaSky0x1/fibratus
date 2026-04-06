@@ -140,22 +140,15 @@ func stripStringLiterals(s string) string {
 // ═══════════════════════════════════════════════════════════════
 
 func checkStringLiterals(condition string, result *ConditionValidationResult) {
-	depth := 0
+	// Check for unterminated strings. We do NOT check escape sequences here
+	// because the condition column stores YAML-unquoted text where backslashes
+	// are literal characters, not QL escape sequences. The agent reads from
+	// raw_yaml which gets re-parsed by YAML first.
 	inString := false
 	for i := 0; i < len(condition); i++ {
 		if inString {
 			if condition[i] == '\\' && i+1 < len(condition) {
-				next := condition[i+1]
-				if next != '\\' && next != 'n' && next != '\'' && next != '"' {
-					result.Errors = append(result.Errors, ConditionError{
-						Type:       "syntax",
-						Message:    fmt.Sprintf("invalid escape sequence '\\%c' at position %d", next, i),
-						Suggestion: fmt.Sprintf("only \\\\, \\n, \\', and \\\" are valid escape sequences — use \\\\\\\\ for a literal backslash"),
-						Position:   i,
-					})
-					result.Valid = false
-				}
-				i++
+				i++ // skip escaped char
 				continue
 			}
 			if condition[i] == '\'' {
@@ -163,10 +156,8 @@ func checkStringLiterals(condition string, result *ConditionValidationResult) {
 			}
 			continue
 		}
-		switch condition[i] {
-		case '\'':
+		if condition[i] == '\'' {
 			inString = true
-			depth++
 		}
 	}
 	if inString {
@@ -177,7 +168,6 @@ func checkStringLiterals(condition string, result *ConditionValidationResult) {
 		})
 		result.Valid = false
 	}
-	_ = depth
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -186,25 +176,11 @@ func checkStringLiterals(condition string, result *ConditionValidationResult) {
 
 func checkBalancedDelimiters(condition string, result *ConditionValidationResult) {
 	stripped := stripStringLiterals(condition)
-	parenDepth := 0
 	bracketDepth := 0
 	pipeCount := 0
 
 	for i, ch := range stripped {
 		switch ch {
-		case '(':
-			parenDepth++
-		case ')':
-			parenDepth--
-			if parenDepth < 0 {
-				result.Errors = append(result.Errors, ConditionError{
-					Type:     "syntax",
-					Message:  fmt.Sprintf("unexpected ')' at position %d", i),
-					Position: i,
-				})
-				result.Valid = false
-				return
-			}
 		case '[':
 			bracketDepth++
 		case ']':
@@ -222,14 +198,9 @@ func checkBalancedDelimiters(condition string, result *ConditionValidationResult
 			pipeCount++
 		}
 	}
-	if parenDepth != 0 {
-		result.Errors = append(result.Errors, ConditionError{
-			Type:       "syntax",
-			Message:    fmt.Sprintf("unbalanced parentheses (%d unclosed)", parenDepth),
-			Suggestion: "check for missing closing ')' in the condition",
-		})
-		result.Valid = false
-	}
+	// Note: parenthesis balance is NOT checked here because macro references
+	// (e.g., spawn_process, direct_syscall) expand into expressions that may
+	// contain additional parentheses, making raw-condition paren counting unreliable.
 	if bracketDepth != 0 {
 		result.Errors = append(result.Errors, ConditionError{
 			Type:       "syntax",
@@ -483,12 +454,15 @@ func checkEventCategories(condition string, result *ConditionValidationResult) {
 // ═══════════════════════════════════════════════════════════════
 
 func checkEscaping(condition string, result *ConditionValidationResult) {
-	// Detect quadruple+ backslash patterns that indicate DB round-trip corruption
-	if strings.Contains(condition, `\\\\`) {
+	// In QL, \\\\ (4 backslashes) is valid — it represents 2 literal backslashes
+	// (common in Windows UNC paths like \\\\server\\share).
+	// Only flag 8+ consecutive backslashes (\\\\\\\\) which indicates DB round-trip
+	// corruption where each \\ was doubled to \\\\.
+	if strings.Contains(condition, `\\\\\\\\`) {
 		result.Errors = append(result.Errors, ConditionError{
 			Type:       "escape",
-			Message:    "condition contains over-escaped backslashes (\\\\\\\\) — likely corrupted during database storage",
-			Suggestion: "replace \\\\\\\\\\\\\\\\ with \\\\ for Windows paths",
+			Message:    "condition contains over-escaped backslashes (8+ consecutive) — likely corrupted during database storage",
+			Suggestion: "replace quadruple-escaped backslashes with double-escaped (\\\\) for Windows paths",
 		})
 		result.Valid = false
 	}
