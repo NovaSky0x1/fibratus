@@ -20,6 +20,14 @@ export default function Rules() {
   const [editError, setEditError] = useState('')
   const [search, setSearch] = useState('')
 
+  // Editor validation state
+  const [editorValidated, setEditorValidated] = useState(false)
+  const [editorValidationResult, setEditorValidationResult] = useState<{
+    valid: boolean
+    errors?: ValidationError[]
+    warnings?: string[]
+  } | null>(null)
+
   const { data, isLoading } = useQuery({
     queryKey: ['rules'],
     queryFn: () => api.getRules(),
@@ -65,6 +73,8 @@ export default function Rules() {
       setEditRule(null)
       setEditYaml('')
       setEditError('')
+      setEditorValidated(false)
+      setEditorValidationResult(null)
       queryClient.invalidateQueries({ queryKey: ['rules'] })
     },
   })
@@ -96,7 +106,64 @@ export default function Rules() {
     setEditRule(rule)
     setEditYaml(rule.raw_yaml || buildYamlFromRule(rule))
     setEditError('')
+    setEditorValidated(false)
+    setEditorValidationResult(null)
   }
+
+  // Reset validation when YAML is edited
+  const handleYamlChange = (value: string) => {
+    setEditYaml(value)
+    if (editorValidated) {
+      setEditorValidated(false)
+      setEditorValidationResult(null)
+    }
+  }
+
+  // Extract condition from YAML for validation
+  const extractCondition = (yaml: string): string => {
+    const lines = yaml.split('\n')
+    let condition = ''
+    let inCondition = false
+    for (const line of lines) {
+      if (/^condition:\s*[>|]?\s*$/.test(line)) {
+        inCondition = true
+        continue
+      }
+      if (/^condition:\s+\S/.test(line)) {
+        condition = line.replace(/^condition:\s+/, '').trim()
+        inCondition = true
+        continue
+      }
+      if (inCondition) {
+        if (/^\S/.test(line) && !line.startsWith(' ') && !line.startsWith('\t')) {
+          break
+        }
+        condition += (condition ? '\n' : '') + line.replace(/^\s{2}/, '')
+      }
+    }
+    return condition.trim()
+  }
+
+  const handleValidate = async () => {
+    const condition = extractCondition(editYaml)
+    if (!condition) {
+      setEditorValidationResult({ valid: false, errors: [{ type: 'syntax', message: 'No condition found in YAML' }] })
+      setEditorValidated(true)
+      return
+    }
+    try {
+      const res = await api.validateRuleCondition(condition)
+      const result = res.data as { valid: boolean; errors?: ValidationError[]; warnings?: string[] }
+      setEditorValidationResult(result)
+      setEditorValidated(true)
+    } catch {
+      setEditorValidationResult({ valid: false, errors: [{ type: 'syntax', message: 'Validation request failed' }] })
+      setEditorValidated(true)
+    }
+  }
+
+  const invalidCount = allRules.filter(r => r.validation_status === 'invalid').length
+  const validCount = allRules.filter(r => r.validation_status === 'valid').length
 
   return (
     <div>
@@ -105,9 +172,14 @@ export default function Rules() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Rules</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             {total} rule(s) managed by fleet server
-            {allRules.filter(r => r.validation_status === 'invalid').length > 0 && (
+            {validCount > 0 && (
+              <span className="ml-2 text-emerald-600 dark:text-emerald-400">
+                {validCount} valid
+              </span>
+            )}
+            {invalidCount > 0 && (
               <span className="ml-2 text-red-600 dark:text-red-400 font-medium">
-                ({allRules.filter(r => r.validation_status === 'invalid').length} invalid)
+                {invalidCount} invalid
               </span>
             )}
           </p>
@@ -236,6 +308,11 @@ export default function Rules() {
                         >
                           {rule.enabled ? 'Active' : 'Disabled'}
                         </span>
+                        {rule.validation_status === 'valid' && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            Valid
+                          </span>
+                        )}
                         {rule.validation_status === 'invalid' && (
                           <span
                             className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 cursor-pointer"
@@ -323,7 +400,8 @@ export default function Rules() {
               </div>
             )}
 
-            {editRule.validation_status === 'invalid' && editRule.validation_errors && editRule.validation_errors.length > 0 && (
+            {/* Show stored validation errors for invalid rules (before any edit) */}
+            {!editorValidated && editRule.validation_status === 'invalid' && editRule.validation_errors && editRule.validation_errors.length > 0 && (
               <div className="mb-4 rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-3">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400">
@@ -333,30 +411,59 @@ export default function Rules() {
                     This rule will not be synced to agents until errors are fixed
                   </span>
                 </div>
-                <div className="space-y-2">
-                  {(editRule.validation_errors as ValidationError[]).map((err, i) => (
-                    <div key={i} className="text-sm">
-                      <div className="flex items-start gap-2">
-                        <span className="shrink-0 rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-xs font-mono text-red-700 dark:text-red-400">
-                          {err.type}
-                        </span>
-                        <span className="text-red-700 dark:text-red-300">{err.message}</span>
-                      </div>
-                      {err.suggestion && (
-                        <div className="ml-16 mt-1 text-xs text-red-600 dark:text-red-400 italic">
-                          Fix: {err.suggestion}
-                        </div>
-                      )}
+                <ValidationErrorList errors={editRule.validation_errors as ValidationError[]} />
+              </div>
+            )}
+
+            {/* Show live validation result */}
+            {editorValidated && editorValidationResult && (
+              <div className={
+                'mb-4 rounded-lg border px-4 py-3 ' +
+                (editorValidationResult.valid
+                  ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20'
+                  : 'border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20')
+              }>
+                {editorValidationResult.valid ? (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400">
+                      Validation Passed
+                    </span>
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                      Rule is valid and ready to save
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400">
+                        Validation Failed
+                      </span>
+                      <span className="text-xs text-red-600 dark:text-red-400">
+                        Fix the errors below before saving
+                      </span>
                     </div>
-                  ))}
-                </div>
+                    {editorValidationResult.errors && (
+                      <ValidationErrorList errors={editorValidationResult.errors} />
+                    )}
+                  </>
+                )}
+                {editorValidationResult.warnings && editorValidationResult.warnings.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {editorValidationResult.warnings.map((w, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                        <span className="shrink-0 rounded bg-yellow-100 dark:bg-yellow-900/40 px-1.5 py-0.5 font-mono">warn</span>
+                        <span>{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             <div className="flex-1 min-h-0">
               <textarea
                 value={editYaml}
-                onChange={(e) => setEditYaml(e.target.value)}
+                onChange={(e) => handleYamlChange(e.target.value)}
                 className="w-full h-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-3 font-mono text-sm text-gray-900 dark:text-slate-100 leading-relaxed focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500 resize-none"
                 style={{ minHeight: 'calc(100vh - 300px)', tabSize: 2 }}
                 spellCheck={false}
@@ -364,13 +471,36 @@ export default function Rules() {
             </div>
 
             <div className="mt-4 flex items-center gap-3">
-              <button
-                onClick={() => editMutation.mutate({ id: editRule.id, yaml: editYaml })}
-                disabled={editMutation.isPending || !editYaml.trim()}
-                className="rounded-lg bg-fibratus-600 px-5 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
-              >
-                {editMutation.isPending ? 'Saving...' : 'Save Rule'}
-              </button>
+              {/* Step 1: Validate button (always available when YAML changed) */}
+              {!editorValidated && (
+                <button
+                  onClick={handleValidate}
+                  disabled={!editYaml.trim()}
+                  className="rounded-lg bg-fibratus-600 px-5 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+                >
+                  Validate
+                </button>
+              )}
+              {/* Step 2: Save button (only after successful validation) */}
+              {editorValidated && editorValidationResult?.valid && (
+                <button
+                  onClick={() => editMutation.mutate({ id: editRule.id, yaml: editYaml })}
+                  disabled={editMutation.isPending}
+                  className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {editMutation.isPending ? 'Saving...' : 'Save Rule'}
+                </button>
+              )}
+              {/* Re-validate if validation failed */}
+              {editorValidated && !editorValidationResult?.valid && (
+                <button
+                  onClick={handleValidate}
+                  disabled={!editYaml.trim()}
+                  className="rounded-lg bg-fibratus-600 px-5 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+                >
+                  Re-validate
+                </button>
+              )}
               <button
                 onClick={() => setEditRule(null)}
                 className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
@@ -385,7 +515,7 @@ export default function Rules() {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
-                    if (file) file.text().then(setEditYaml)
+                    if (file) file.text().then(handleYamlChange)
                   }}
                 />
               </label>
@@ -409,6 +539,29 @@ export default function Rules() {
         }}
         onCancel={() => setDeleteTarget(null)}
       />
+    </div>
+  )
+}
+
+/** Renders a list of validation errors with type badges and fix suggestions */
+function ValidationErrorList({ errors }: { errors: ValidationError[] }) {
+  return (
+    <div className="space-y-2">
+      {errors.map((err, i) => (
+        <div key={i} className="text-sm">
+          <div className="flex items-start gap-2">
+            <span className="shrink-0 rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-xs font-mono text-red-700 dark:text-red-400">
+              {err.type}
+            </span>
+            <span className="text-red-700 dark:text-red-300">{err.message}</span>
+          </div>
+          {err.suggestion && (
+            <div className="ml-16 mt-1 text-xs text-red-600 dark:text-red-400 italic">
+              Fix: {err.suggestion}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

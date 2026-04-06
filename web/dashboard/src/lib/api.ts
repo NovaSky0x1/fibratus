@@ -331,6 +331,11 @@ export const api = {
     }).then(r => r.json()) as Promise<ApiResponse<Rule>>
   },
   deleteRule: (id: string) => fetchApi<void>(orgPath(`/rules/${id}`), { method: 'DELETE' }),
+  validateRuleCondition: (condition: string) =>
+    fetchApi<{ valid: boolean; errors?: ValidationError[]; warnings?: string[] }>(
+      orgPath('/rules/validate-condition'),
+      { method: 'POST', body: JSON.stringify({ condition }) },
+    ),
 
   // Telemetry (live events)
   getOrgTelemetry: (params?: Record<string, string>) => {
