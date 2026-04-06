@@ -5,7 +5,7 @@
 
   <Package Name="Fibratus"
       Version="$(var.VERSION)"
-      Manufacturer="NovaSky Security &lt;https://novasky.io&gt;"
+      Manufacturer="Nedim Sabic Sabic &lt;https://www.fibratus.io&gt;"
       UpgradeCode="E81B8794-3277-47F9-BE58-2EF2D20930EC"
       InstallerVersion="200"
       Compressed="yes"
