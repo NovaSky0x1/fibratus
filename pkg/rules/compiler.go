@@ -83,16 +83,19 @@ func (c *compiler) compile() (map[*config.FilterConfig]filter.Filter, *config.Ru
 		fltr := filter.New(f.Condition, c.config, filter.WithPSnapshotter(c.psnap))
 		err := fltr.Compile()
 		if err != nil {
-			return nil, nil, ErrInvalidFilter(f.Name, err)
+			log.Warnf("skipping rule %q: %v", f.Name, ErrInvalidFilter(f.Name, err))
+			continue
 		}
 		// check version requirements
 		if !version.IsDev() {
 			minEngineVer, err := semver.NewSemver(f.MinEngineVersion)
 			if err != nil {
-				return nil, nil, ErrMalformedMinEngineVer(f.Name, f.MinEngineVersion, err)
+				log.Warnf("skipping rule %q: %v", f.Name, ErrMalformedMinEngineVer(f.Name, f.MinEngineVersion, err))
+				continue
 			}
 			if minEngineVer.GreaterThan(version.Sem()) {
-				return nil, nil, ErrIncompatibleFilter(f.Name, f.MinEngineVersion)
+				log.Warnf("skipping rule %q: %v", f.Name, ErrIncompatibleFilter(f.Name, f.MinEngineVersion))
+				continue
 			}
 		}
 
@@ -109,19 +112,25 @@ func (c *compiler) compile() (map[*config.FilterConfig]filter.Filter, *config.Ru
 		}
 
 		// validate the value of the event/category fields
+		skipRule := false
 		for field, values := range fltr.GetStringFields() {
 			for _, v := range values {
 				switch field {
 				case fields.EvtName, fields.KevtName:
 					if !event.IsKnown(v) {
-						return nil, nil, ErrUnknownEventName(f.Name, v)
+						log.Warnf("skipping rule %q: %v", f.Name, ErrUnknownEventName(f.Name, v))
+						skipRule = true
 					}
 				case fields.EvtCategory, fields.KevtCategory:
 					if !event.IsCategoryKnown(v) {
-						return nil, nil, ErrUnknownCategoryName(f.Name, v)
+						log.Warnf("skipping rule %q: %v", f.Name, ErrUnknownCategoryName(f.Name, v))
+						skipRule = true
 					}
 				}
 			}
+		}
+		if skipRule {
+			continue
 		}
 
 		filters[f] = fltr
