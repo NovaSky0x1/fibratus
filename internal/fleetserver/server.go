@@ -188,6 +188,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Agent deployment (public — token is the auth)
 	mux.HandleFunc("/install/", installHandler.Script)
 	mux.HandleFunc("/api/v1/agent/binary", installHandler.Binary)
+	mux.HandleFunc("/api/v1/agent/msi", installHandler.MSI)
 	mux.HandleFunc("/api/v1/agent/config", installHandler.Config)
 
 	// Agent registration (public — new agents don't have credentials yet)
@@ -468,6 +469,7 @@ func (s *Server) Run(ctx context.Context) error {
 	})
 	rootMux.HandleFunc("/install/", mux.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/agent/binary", mux.ServeHTTP)
+	rootMux.HandleFunc("/api/v1/agent/msi", mux.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/agent/config", mux.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/totp/", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/me", dashAuthenticated.ServeHTTP)
@@ -484,7 +486,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 
 		// Public agent endpoints (no auth — served by install handler)
-		if path == "/api/v1/agent/binary" || path == "/api/v1/agent/config" {
+		if path == "/api/v1/agent/binary" || path == "/api/v1/agent/msi" || path == "/api/v1/agent/config" {
 			mux.ServeHTTP(w, r)
 			return
 		}

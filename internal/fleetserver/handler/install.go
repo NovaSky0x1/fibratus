@@ -57,16 +57,12 @@ func (h *InstallHandler) Script(w http.ResponseWriter, r *http.Request) {
 # Run this script in an elevated PowerShell session.
 
 $ErrorActionPreference = "Stop"
-$installDir = "%s"
-$binDir = "$installDir\Bin"
-$dataDir = "$installDir\data"
-$configDir = "$installDir\Config"
 $serverURL = "%s"
 $enrollToken = "%s"
+$tempMSI = "$env:TEMP\fibratus.msi"
 
 Write-Host "=== Fibratus EDR Agent Installer ===" -ForegroundColor Cyan
-Write-Host "Server:  $serverURL"
-Write-Host "Install: $installDir"
+Write-Host "Server: $serverURL"
 Write-Host ""
 
 # Check admin
@@ -76,76 +72,47 @@ if (-not $isAdmin) {
     exit 1
 }
 
-# Create directories
-Write-Host "[1/5] Creating directories..." -ForegroundColor Yellow
-New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
-New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-
-# Download agent binary
-Write-Host "[2/5] Downloading agent binary..." -ForegroundColor Yellow
-$binURL = "$serverURL/api/v1/agent/binary"
+# Download MSI
+Write-Host "[1/3] Downloading MSI installer..." -ForegroundColor Yellow
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $binURL -OutFile "$binDir\fibratus.exe" -UseBasicParsing
-    Write-Host "  Downloaded fibratus.exe" -ForegroundColor Green
+    Invoke-WebRequest -Uri "$serverURL/api/v1/agent/msi" -OutFile $tempMSI -UseBasicParsing
+    Write-Host "  Downloaded fibratus.msi ($([math]::Round((Get-Item $tempMSI).Length / 1MB, 1)) MB)" -ForegroundColor Green
 } catch {
-    Write-Host "ERROR: Failed to download agent binary: $_" -ForegroundColor Red
+    Write-Host "ERROR: Failed to download MSI: $_" -ForegroundColor Red
     exit 1
 }
 
-# Download default config if not present
-if (-not (Test-Path "$configDir\fibratus.yml")) {
-    Write-Host "  Downloading default config..." -ForegroundColor Yellow
-    try {
-        Invoke-WebRequest -Uri "$serverURL/api/v1/agent/config" -OutFile "$configDir\fibratus.yml" -UseBasicParsing
-    } catch {
-        Write-Host "  Warning: Could not download config, using defaults." -ForegroundColor Yellow
-    }
-}
-
-# Enroll agent
-Write-Host "[3/5] Enrolling agent..." -ForegroundColor Yellow
-try {
-    & "$binDir\fibratus.exe" enroll --token $enrollToken --server $serverURL 2>&1
-    Write-Host "  Enrollment successful" -ForegroundColor Green
-} catch {
-    Write-Host "ERROR: Enrollment failed: $_" -ForegroundColor Red
+# Install MSI with enrollment parameters
+Write-Host "[2/3] Installing Fibratus (this may take a moment)..." -ForegroundColor Yellow
+$msiArgs = "/i `"$tempMSI`" /qn ENROLLMENT_TOKEN=$enrollToken SERVER_URL=$serverURL /l*! `"$env:TEMP\fibratus-install.log`""
+$proc = Start-Process msiexec -ArgumentList $msiArgs -Wait -PassThru
+if ($proc.ExitCode -ne 0) {
+    Write-Host "MSI install exited with code $($proc.ExitCode). Check $env:TEMP\fibratus-install.log" -ForegroundColor Red
     exit 1
 }
+Write-Host "  MSI installation complete" -ForegroundColor Green
 
-# Install Windows service
-Write-Host "[4/5] Installing Windows service..." -ForegroundColor Yellow
-try {
-    & "$binDir\fibratus.exe" service install 2>&1
-    Write-Host "  Service installed" -ForegroundColor Green
-} catch {
-    Write-Host "  Service may already exist, continuing..." -ForegroundColor Yellow
+# Verify
+Write-Host "[3/3] Verifying..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
+$svc = Get-Service fibratus -ErrorAction SilentlyContinue
+if ($svc) {
+    Write-Host "  Service status: $($svc.Status)" -ForegroundColor Green
+} else {
+    Write-Host "  Warning: Service not found" -ForegroundColor Yellow
 }
 
-# Start service
-Write-Host "[5/5] Starting service..." -ForegroundColor Yellow
-try {
-    Start-Service fibratus -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    $svc = Get-Service fibratus -ErrorAction SilentlyContinue
-    if ($svc.Status -eq "Running") {
-        Write-Host "  Service running (PID: $((Get-Process fibratus -ErrorAction SilentlyContinue).Id))" -ForegroundColor Green
-    } else {
-        Write-Host "  Service status: $($svc.Status)" -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host "  Warning: Could not start service: $_" -ForegroundColor Yellow
-}
+# Cleanup
+Remove-Item $tempMSI -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
-Write-Host "Agent installed at: $installDir"
 Write-Host "Server: $serverURL"
 Write-Host ""
 Write-Host "To check status:  sc.exe query fibratus"
-Write-Host "To view logs:     Get-Content '$installDir\Logs\fibratus.log' -Tail 20"
-`, token.OrgName, tokenID, installDir, serverURL, tokenID)
+Write-Host "To check enrollment: type `"C:\Program Files\Fibratus\data\agent-id`""
+`, token.OrgName, tokenID, serverURL, tokenID)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", "inline")
@@ -178,6 +145,28 @@ func (h *InstallHandler) Binary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment; filename=fibratus.exe")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", stat.Size()))
 	http.ServeContent(w, r, "fibratus.exe", stat.ModTime(), f)
+}
+
+// MSI handles GET /api/v1/agent/msi — serves the agent MSI installer.
+func (h *InstallHandler) MSI(w http.ResponseWriter, r *http.Request) {
+	paths := []string{
+		"/opt/fibratus-fleet/downloads/fibratus-1.0.0-slim-amd64.msi",
+		"build/msi/fibratus-1.0.0-slim-amd64.msi",
+	}
+	for _, p := range paths {
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+		stat, _ := f.Stat()
+		w.Header().Set("Content-Type", "application/x-msi")
+		w.Header().Set("Content-Disposition", "attachment; filename=fibratus.msi")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", stat.Size()))
+		http.ServeContent(w, r, "fibratus.msi", stat.ModTime(), f)
+		return
+	}
+	writeError(w, http.StatusNotFound, "agent MSI not available")
 }
 
 // Config handles GET /api/v1/agent/config — serves the default agent config.
