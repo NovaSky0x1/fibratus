@@ -263,11 +263,20 @@ export default function Detections() {
             )}
 
             {detailView === 'tree' && (
-              <DetectionProcessGraph
-                detection={selectedDet}
-                focusPid={focusProc?.pid}
-                focusProcessName={focusProc?.name}
-              />
+              <div>
+                <div className="flex justify-end mb-2">
+                  <a href={`/process-tree?detection=${selectedDet.id}${focusProc?.pid ? `&pid=${focusProc.pid}` : ''}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                    Full Screen
+                  </a>
+                </div>
+                <DetectionProcessGraph
+                  detection={selectedDet}
+                  focusPid={focusProc?.pid}
+                  focusProcessName={focusProc?.name}
+                />
+              </div>
             )}
           </div>
         )}

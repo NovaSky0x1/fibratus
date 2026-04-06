@@ -1308,7 +1308,16 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
 
             {/* Process Tree tab */}
             {tab === 'process_tree' && (
-              <ProcessTreeTab agentId={evt.agent_id} pid={evt.pid} timestamp={evt.timestamp} />
+              <div className="py-4 text-center">
+                <a href={`/process-tree?agent=${evt.agent_id}&pid=${evt.pid}&ts=${encodeURIComponent(evt.timestamp)}`}
+                  className="inline-flex items-center gap-2 rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                  Open Process Tree
+                </a>
+                <p className="mt-2 text-xs text-gray-400 dark:text-slate-500">
+                  View the full interactive process tree for PID {evt.pid} ({evt.process_name})
+                </p>
+              </div>
             )}
 
             {/* Raw JSON tab */}
@@ -1341,68 +1350,3 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
   )
 }
 
-// Simple process tree visualization for an event's PID
-function ProcessTreeTab({ agentId, pid, timestamp }: { agentId: string; pid: number; timestamp: string }) {
-  const [events, setEvents] = useState<TelemetryEvent[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    api.getTelemetryProcessTree(agentId, pid, timestamp).then(res => {
-      const data = res.data as { events?: TelemetryEvent[] } | undefined
-      setEvents((data?.events || []) as TelemetryEvent[])
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [agentId, pid, timestamp])
-
-  if (loading) return <div className="py-4 text-center text-sm text-gray-400">Loading process tree...</div>
-
-  // Build tree from process events
-  const procEvents = events.filter(e => e.event_name === 'CreateProcess' || e.event_category === 'process')
-  const byPid = new Map<number, TelemetryEvent>()
-  for (const e of procEvents) {
-    if (!byPid.has(e.pid) || e.event_name === 'CreateProcess') {
-      byPid.set(e.pid, e)
-    }
-  }
-
-  if (byPid.size === 0) {
-    return <div className="py-4 text-center text-sm text-gray-400">No process events in time window. Process tree requires CreateProcess telemetry events nearby.</div>
-  }
-
-  // Build parent→children map
-  const children = new Map<number, number[]>()
-  const roots: number[] = []
-  for (const [p, e] of byPid) {
-    const ppid = e.parent_pid
-    if (!byPid.has(ppid)) {
-      roots.push(p)
-    } else {
-      if (!children.has(ppid)) children.set(ppid, [])
-      children.get(ppid)!.push(p)
-    }
-  }
-
-  const renderNode = (p: number, depth: number): JSX.Element | null => {
-    const e = byPid.get(p)
-    if (!e) return null
-    const isFocus = p === pid
-    return (
-      <div key={p}>
-        <div className={'flex items-center gap-2 py-1 px-2 rounded text-xs font-mono ' + (isFocus ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 font-bold' : 'text-gray-700 dark:text-slate-300')}
-          style={{ marginLeft: depth * 20 }}>
-          <span className="text-gray-400 dark:text-slate-500 w-12 text-right shrink-0">{p}</span>
-          <span className={isFocus ? 'text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'}>{e.process_name}</span>
-          <span className="text-gray-400 dark:text-slate-600 truncate max-w-[500px]">{e.process_cmdline || e.process_exe}</span>
-        </div>
-        {(children.get(p) || []).map(c => renderNode(c, depth + 1))}
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-0.5 max-h-80 overflow-auto">
-      {roots.map(r => renderNode(r, 0))}
-    </div>
-  )
-}

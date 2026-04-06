@@ -13,6 +13,7 @@ import AuditLog from './pages/AuditLog'
 import Settings from './pages/Settings'
 import Management from './pages/Management'
 import Admin from './pages/Admin'
+import ProcessTreePage from './pages/ProcessTreePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -42,6 +43,7 @@ export default function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/management" element={<Management />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/process-tree" element={<ProcessTreePage />} />
               </Routes>
             </Layout>
           </ProtectedRoute>
