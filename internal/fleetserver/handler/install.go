@@ -85,10 +85,10 @@ try {
 
 # Install MSI with enrollment parameters
 Write-Host "[2/3] Installing Fibratus (this may take a moment)..." -ForegroundColor Yellow
-$msiArgs = "/i `"$tempMSI`" /qn ENROLLMENT_TOKEN=$enrollToken SERVER_URL=$serverURL /l*! `"$env:TEMP\fibratus-install.log`""
+$msiArgs = "/i ""$tempMSI"" /qn ENROLLMENT_TOKEN=$enrollToken SERVER_URL=$serverURL /l*! ""$env:TEMP\fibratus-install.log"""
 $proc = Start-Process msiexec -ArgumentList $msiArgs -Wait -PassThru
 if ($proc.ExitCode -ne 0) {
-    Write-Host "MSI install exited with code $($proc.ExitCode). Check $env:TEMP\fibratus-install.log" -ForegroundColor Red
+    Write-Host "MSI install failed (exit $($proc.ExitCode)). Log: $env:TEMP\fibratus-install.log" -ForegroundColor Red
     exit 1
 }
 Write-Host "  MSI installation complete" -ForegroundColor Green
@@ -111,7 +111,7 @@ Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
 Write-Host "Server: $serverURL"
 Write-Host ""
 Write-Host "To check status:  sc.exe query fibratus"
-Write-Host "To check enrollment: type `"C:\Program Files\Fibratus\data\agent-id`""
+Write-Host "To check enrollment: type 'C:\Program Files\Fibratus\data\agent-id'"
 `, token.OrgName, tokenID, serverURL, tokenID)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
