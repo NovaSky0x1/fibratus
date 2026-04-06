@@ -19,6 +19,7 @@ export default function Rules() {
   const [editYaml, setEditYaml] = useState('')
   const [editError, setEditError] = useState('')
   const [search, setSearch] = useState('')
+  const [validateAllPending, setValidateAllPending] = useState(false)
 
   // Editor validation state
   const [editorValidated, setEditorValidated] = useState(false)
@@ -187,15 +188,18 @@ export default function Rules() {
         <div className="flex gap-3">
           <button
             onClick={async () => {
-              const res = await api.validateAllRules()
-              if (res.data) {
+              setValidateAllPending(true)
+              try {
+                await api.validateAllRules()
                 queryClient.invalidateQueries({ queryKey: ['rules'] })
-                alert(`Validated ${res.data.validated} rules: ${res.data.valid} valid, ${res.data.invalid} invalid`)
+              } finally {
+                setValidateAllPending(false)
               }
             }}
-            className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
+            disabled={validateAllPending}
+            className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
           >
-            Validate All
+            {validateAllPending ? 'Validating...' : 'Validate All'}
           </button>
           <button
             onClick={() => setShowUpload(!showUpload)}
