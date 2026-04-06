@@ -188,21 +188,23 @@ type Detection struct {
 
 // Rule represents a detection rule managed by the fleet server.
 type Rule struct {
-	ID          string            `json:"id"`
-	OrgID       string            `json:"org_id,omitempty"`
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Description string            `json:"description,omitempty"`
-	Condition   string            `json:"condition"`
-	Output      string            `json:"output,omitempty"`
-	Severity    string            `json:"severity"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Tags        []string          `json:"tags,omitempty"`
-	References  []string          `json:"references,omitempty"`
-	RawYAML     string            `json:"raw_yaml"`
-	Enabled     bool              `json:"enabled"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ID               string            `json:"id"`
+	OrgID            string            `json:"org_id,omitempty"`
+	Name             string            `json:"name"`
+	Version          string            `json:"version"`
+	Description      string            `json:"description,omitempty"`
+	Condition        string            `json:"condition"`
+	Output           string            `json:"output,omitempty"`
+	Severity         string            `json:"severity"`
+	Labels           map[string]string `json:"labels,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	References       []string          `json:"references,omitempty"`
+	RawYAML          string            `json:"raw_yaml"`
+	Enabled          bool              `json:"enabled"`
+	ValidationStatus string            `json:"validation_status"` // "valid", "invalid", "pending"
+	ValidationErrors json.RawMessage   `json:"validation_errors,omitempty"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
 // AgentGroup represents a logical grouping of agents for rule assignment.

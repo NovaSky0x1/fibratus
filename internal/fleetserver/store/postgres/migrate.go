@@ -351,6 +351,9 @@ CREATE TABLE IF NOT EXISTS github_sync_configs (
     scope       TEXT DEFAULT 'account',
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_errors JSONB DEFAULT '[]';
 `
 
 // Migrate runs the database schema migrations.

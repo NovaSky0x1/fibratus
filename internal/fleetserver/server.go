@@ -268,6 +268,12 @@ func (s *Server) Run(ctx context.Context) error {
 			ruleHandler.List(w, r)
 		case subpath == "/rules" && r.Method == http.MethodPost:
 			requirePermission(fleetauth.PermManageRules, ruleHandler.Create)(w, r)
+		case subpath == "/rules/validate-condition" && r.Method == http.MethodPost:
+			ruleHandler.ValidateCondition(w, r)
+		case subpath == "/rules/validate-all" && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageRules, ruleHandler.ValidateAll)(w, r)
+		case strings.HasSuffix(subpath, "/validate") && strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageRules, ruleHandler.Validate)(w, r)
 		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodGet:
 			ruleHandler.Get(w, r)
 		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodPut:

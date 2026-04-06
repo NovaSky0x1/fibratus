@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { api, type Rule, type ApiResponse } from '../lib/api'
+import { api, type Rule, type ValidationError, type ApiResponse } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -105,6 +105,11 @@ export default function Rules() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Rules</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
             {total} rule(s) managed by fleet server
+            {allRules.filter(r => r.validation_status === 'invalid').length > 0 && (
+              <span className="ml-2 text-red-600 dark:text-red-400 font-medium">
+                ({allRules.filter(r => r.validation_status === 'invalid').length} invalid)
+              </span>
+            )}
           </p>
         </div>
         <button
@@ -220,16 +225,32 @@ export default function Rules() {
                       {rule.version}
                     </td>
                     <td className="px-6 py-3">
-                      <span
-                        className={
-                          'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
-                          (rule.enabled
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                            : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
-                        }
-                      >
-                        {rule.enabled ? 'Active' : 'Disabled'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={
+                            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+                            (rule.enabled
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+                          }
+                        >
+                          {rule.enabled ? 'Active' : 'Disabled'}
+                        </span>
+                        {rule.validation_status === 'invalid' && (
+                          <span
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 cursor-pointer"
+                            title="Click to see validation errors"
+                            onClick={(e) => { e.stopPropagation(); openEditor(rule) }}
+                          >
+                            Invalid
+                          </span>
+                        )}
+                        {rule.validation_status === 'pending' && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                            Pending
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-3">
@@ -240,15 +261,25 @@ export default function Rules() {
                           Edit
                         </button>
                         <button
-                          onClick={() =>
+                          onClick={() => {
+                            if (!rule.enabled && rule.validation_status === 'invalid') {
+                              openEditor(rule)
+                              return
+                            }
                             toggleMutation.mutate({
                               id: rule.id,
                               enabled: !rule.enabled,
                             })
+                          }}
+                          className={
+                            'text-xs font-medium ' +
+                            (rule.validation_status === 'invalid' && !rule.enabled
+                              ? 'text-red-500 hover:text-red-700 cursor-not-allowed'
+                              : 'text-gray-600 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200')
                           }
-                          className="text-xs font-medium text-gray-600 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200"
+                          title={rule.validation_status === 'invalid' && !rule.enabled ? 'Fix validation errors before enabling' : ''}
                         >
-                          {rule.enabled ? 'Disable' : 'Enable'}
+                          {rule.enabled ? 'Disable' : rule.validation_status === 'invalid' ? 'Fix Errors' : 'Enable'}
                         </button>
                         <button
                           onClick={() => setDeleteTarget(rule)}
@@ -289,6 +320,36 @@ export default function Rules() {
             {editError && (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
                 {editError}
+              </div>
+            )}
+
+            {editRule.validation_status === 'invalid' && editRule.validation_errors && editRule.validation_errors.length > 0 && (
+              <div className="mb-4 rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400">
+                    Validation Failed
+                  </span>
+                  <span className="text-xs text-red-600 dark:text-red-400">
+                    This rule will not be synced to agents until errors are fixed
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {(editRule.validation_errors as ValidationError[]).map((err, i) => (
+                    <div key={i} className="text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="shrink-0 rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-xs font-mono text-red-700 dark:text-red-400">
+                          {err.type}
+                        </span>
+                        <span className="text-red-700 dark:text-red-300">{err.message}</span>
+                      </div>
+                      {err.suggestion && (
+                        <div className="ml-16 mt-1 text-xs text-red-600 dark:text-red-400 italic">
+                          Fix: {err.suggestion}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

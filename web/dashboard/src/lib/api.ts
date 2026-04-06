@@ -93,6 +93,13 @@ export interface Organization {
   agent_count: number
 }
 
+export interface ValidationError {
+  type: string
+  message: string
+  suggestion?: string
+  position?: number
+}
+
 export interface Rule {
   id: string
   org_id: string
@@ -106,6 +113,8 @@ export interface Rule {
   tags: string[]
   raw_yaml: string
   enabled: boolean
+  validation_status: 'valid' | 'invalid' | 'pending'
+  validation_errors?: ValidationError[]
   created_at: string
   updated_at: string
 }

@@ -32,6 +32,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// validateAndSetStatus runs condition validation on a rule and sets its validation fields.
+func validateAndSetStatus(rule *fleet.Rule) {
+	result := validator.ValidateCondition(rule.Condition)
+	if result.Valid {
+		rule.ValidationStatus = "valid"
+		rule.ValidationErrors = json.RawMessage(`[]`)
+	} else {
+		rule.ValidationStatus = "invalid"
+		errJSON, _ := json.Marshal(result.Errors)
+		rule.ValidationErrors = errJSON
+	}
+}
+
 // RuleHandler handles rule management API requests.
 type RuleHandler struct {
 	rules  store.RuleStore
@@ -124,7 +137,14 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if rule.Severity == "" {
 		rule.Severity = "medium"
 	}
-	rule.Enabled = true
+
+	// Run condition validation
+	validateAndSetStatus(&rule)
+	if rule.ValidationStatus == "invalid" {
+		rule.Enabled = false // invalid rules cannot be enabled
+	} else {
+		rule.Enabled = true
+	}
 
 	if err := h.rules.Create(r.Context(), &rule); err != nil {
 		log.Errorf("fleet: create rule error: %v", err)
@@ -227,6 +247,12 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if rule.References == nil { rule.References = existing.References }
 	}
 
+	// Re-validate condition
+	validateAndSetStatus(&rule)
+	if rule.ValidationStatus == "invalid" {
+		rule.Enabled = false // invalid rules cannot be enabled
+	}
+
 	if err := h.rules.Update(r.Context(), &rule); err != nil {
 		log.Errorf("fleet: update rule error: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to update rule")
@@ -262,6 +288,95 @@ func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	logAudit(r, h.audit, h.users, userID, orgID, "delete", "rule", ruleID, name, nil)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Validate handles POST /api/v1/orgs/{org_id}/rules/{id}/validate
+// Re-validates a rule's condition and updates its validation status.
+func (h *RuleHandler) Validate(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	// Extract rule ID from path: .../rules/{id}/validate
+	path := r.URL.Path
+	parts := strings.Split(path, "/rules/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "rule ID required")
+		return
+	}
+	ruleID := strings.TrimSuffix(strings.TrimSuffix(parts[1], "/validate"), "/")
+
+	existing, err := h.rules.Get(r.Context(), orgID, ruleID)
+	if err != nil || existing == nil {
+		writeError(w, http.StatusNotFound, "rule not found")
+		return
+	}
+
+	// Run validation
+	condResult := validator.ValidateCondition(existing.Condition)
+	if condResult.Valid {
+		existing.ValidationStatus = "valid"
+		existing.ValidationErrors = json.RawMessage(`[]`)
+	} else {
+		existing.ValidationStatus = "invalid"
+		errJSON, _ := json.Marshal(condResult.Errors)
+		existing.ValidationErrors = errJSON
+		existing.Enabled = false // disable invalid rules
+	}
+
+	if err := h.rules.Update(r.Context(), existing); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update rule")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"rule_id":           ruleID,
+		"validation_status": existing.ValidationStatus,
+		"validation_errors": condResult.Errors,
+		"warnings":          condResult.Warnings,
+	}})
+}
+
+// ValidateCondition handles POST /api/v1/orgs/{org_id}/rules/validate-condition
+// Validates a condition string without creating a rule. Used for live editor feedback.
+func (h *RuleHandler) ValidateCondition(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Condition string `json:"condition"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	result := validator.ValidateCondition(req.Condition)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: result})
+}
+
+// ValidateAll handles POST /api/v1/orgs/{org_id}/rules/validate-all
+// Re-validates all rules for the org. Useful after migration or bulk import.
+func (h *RuleHandler) ValidateAll(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	rules, _, err := h.rules.List(r.Context(), orgID, fleet.ListOptions{Page: 1, PerPage: 10000})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list rules")
+		return
+	}
+
+	validated := 0
+	invalid := 0
+	for _, rule := range rules {
+		validateAndSetStatus(rule)
+		if rule.ValidationStatus == "invalid" {
+			rule.Enabled = false
+			invalid++
+		}
+		if err := h.rules.Update(r.Context(), rule); err != nil {
+			log.Warnf("fleet: failed to update rule %s validation: %v", rule.ID, err)
+		}
+		validated++
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"validated": validated,
+		"invalid":   invalid,
+		"valid":     validated - invalid,
+	}})
 }
 
 // GetForAgent handles GET /api/v1/agent/rules

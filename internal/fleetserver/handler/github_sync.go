@@ -142,11 +142,21 @@ func (h *GitHubSyncHandler) TriggerSync(w http.ResponseWriter, r *http.Request) 
 
 // SyncResult contains the outcome of a GitHub sync operation.
 type SyncResult struct {
-	Created  int      `json:"created"`
-	Updated  int      `json:"updated"`
-	Skipped  int      `json:"skipped"`
-	Errors   []string `json:"errors,omitempty"`
-	Duration string   `json:"duration"`
+	Created          int              `json:"created"`
+	Updated          int              `json:"updated"`
+	Skipped          int              `json:"skipped"`
+	Invalid          int              `json:"invalid"`
+	Errors           []string         `json:"errors,omitempty"`
+	ValidationErrors []RuleSyncError  `json:"validation_errors,omitempty"`
+	Duration         string           `json:"duration"`
+}
+
+// RuleSyncError describes a validation failure for a specific rule during sync.
+type RuleSyncError struct {
+	RuleName   string `json:"rule_name"`
+	FileName   string `json:"file_name"`
+	Error      string `json:"error"`
+	Suggestion string `json:"suggestion,omitempty"`
 }
 
 func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cfg *GitHubSyncConfig) (*SyncResult, error) {
@@ -211,7 +221,35 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 		if rule.Severity == "" {
 			rule.Severity = "medium"
 		}
-		rule.Enabled = true
+
+		// Run condition validation before storing
+		condResult := validator.ValidateCondition(rule.Condition)
+		if condResult.Valid {
+			rule.ValidationStatus = "valid"
+			rule.ValidationErrors = json.RawMessage(`[]`)
+			rule.Enabled = true
+		} else {
+			rule.ValidationStatus = "invalid"
+			errJSON, _ := json.Marshal(condResult.Errors)
+			rule.ValidationErrors = errJSON
+			rule.Enabled = false // invalid rules are never enabled
+			result.Invalid++
+			for _, e := range condResult.Errors {
+				syncErr := RuleSyncError{
+					RuleName:   rule.Name,
+					FileName:   file.Name,
+					Error:      e.Message,
+					Suggestion: e.Suggestion,
+				}
+				result.ValidationErrors = append(result.ValidationErrors, syncErr)
+			}
+			log.Warnf("fleet: GitHub sync: rule %q failed validation: %d errors", rule.Name, len(condResult.Errors))
+		}
+		if len(condResult.Warnings) > 0 {
+			for _, w := range condResult.Warnings {
+				log.Infof("fleet: GitHub sync: rule %q warning: %s", rule.Name, w)
+			}
+		}
 
 		// Apply to each target org
 		for _, targetOrg := range targetOrgIDs {
@@ -240,8 +278,8 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 	if scope == "" {
 		scope = "org"
 	}
-	log.Infof("fleet: GitHub sync completed (scope=%s, orgs=%d): %d created, %d updated, %d skipped, %d errors",
-		scope, len(targetOrgIDs), result.Created, result.Updated, result.Skipped, len(result.Errors))
+	log.Infof("fleet: GitHub sync completed (scope=%s, orgs=%d): %d created, %d updated, %d skipped, %d invalid, %d errors",
+		scope, len(targetOrgIDs), result.Created, result.Updated, result.Skipped, result.Invalid, len(result.Errors))
 
 	return result, nil
 }
