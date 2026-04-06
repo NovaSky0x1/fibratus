@@ -1363,6 +1363,8 @@ function SystemTab() {
   const [editSaving, setEditSaving] = useState(false)
   const [browseView, setBrowseView] = useState<'tables' | 'browse' | 'query'>('tables')
   const [browseOffset, setBrowseOffset] = useState(0)
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const [deleting, setDeleting] = useState(false)
   const browseLimit = 50
 
   const { data: pgTables } = useQuery({ queryKey: ['pg-tables'], queryFn: () => api.dbTablesPostgres(), staleTime: 30000 })
@@ -1388,6 +1390,7 @@ function SystemTab() {
     setBrowseOffset(0)
     setTableLoading(true)
     setEditCell(null)
+    setSelectedRows(new Set())
     try {
       // Fetch columns/schema
       const schemaQuery = dbType === 'postgres'
@@ -1411,6 +1414,7 @@ function SystemTab() {
     setTableLoading(true)
     setBrowseOffset(offset)
     setEditCell(null)
+    setSelectedRows(new Set())
     try {
       const q = dbType === 'postgres'
         ? `SELECT * FROM "${activeTable}" LIMIT ${browseLimit} OFFSET ${offset}`
@@ -1442,6 +1446,38 @@ function SystemTab() {
       }
     } catch { /* ignore */ }
     setEditSaving(false)
+  }
+
+  const deleteSelected = async () => {
+    if (!activeTable || !tableData || selectedRows.size === 0 || dbType !== 'postgres') return
+    const pkCol = tableData.columns[0]
+    const ids = Array.from(selectedRows).map(ri => {
+      const val = String(tableData.rows[ri][0]).replace(/'/g, "''")
+      return `'${val}'`
+    })
+    setDeleting(true)
+    try {
+      await api.dbQueryPostgres(`DELETE FROM "${activeTable}" WHERE "${pkCol}" IN (${ids.join(',')})`)
+      setSelectedRows(new Set())
+      await openTable(activeTable)
+    } catch { /* ignore */ }
+    setDeleting(false)
+  }
+
+  const deleteAllRows = async () => {
+    if (!activeTable) return
+    if (!confirm(`Delete ALL rows from "${activeTable}"? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const q = dbType === 'postgres'
+        ? `DELETE FROM "${activeTable}"`
+        : `TRUNCATE TABLE ${activeTable}`
+      const fn = dbType === 'postgres' ? api.dbQueryPostgres : api.dbQueryClickhouse
+      await fn(q)
+      setSelectedRows(new Set())
+      await openTable(activeTable)
+    } catch { /* ignore */ }
+    setDeleting(false)
   }
 
   const tables = dbType === 'postgres' ? pgTables?.data : chTables?.data
@@ -1571,11 +1607,25 @@ function SystemTab() {
           ) : tableData && tableData.columns && tableData.columns.length > 0 ? (
             <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
               <div className="px-4 py-2 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
-                  Rows {browseOffset + 1}–{browseOffset + (tableData.rows?.length || 0)}
-                  {dbType === 'postgres' && <span className="ml-1 text-[10px] text-gray-400 dark:text-slate-500">(click cell to edit)</span>}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+                    Rows {browseOffset + 1}–{browseOffset + (tableData.rows?.length || 0)}
+                    {dbType === 'postgres' && <span className="ml-1 text-[10px] text-gray-400 dark:text-slate-500">(click cell to edit)</span>}
+                  </span>
+                  {selectedRows.size > 0 && dbType === 'postgres' && (
+                    <button onClick={deleteSelected} disabled={deleting}
+                      className="rounded bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                      {deleting ? 'Deleting...' : `Delete ${selectedRows.size} selected`}
+                    </button>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
+                  {dbType === 'postgres' && (
+                    <button onClick={deleteAllRows} disabled={deleting}
+                      className="rounded border border-red-300 dark:border-red-700 px-2 py-0.5 text-[10px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-30">
+                      Delete All
+                    </button>
+                  )}
                   <button disabled={browseOffset === 0} onClick={() => loadPage(Math.max(0, browseOffset - browseLimit))}
                     className="rounded border border-gray-300 dark:border-slate-600 px-2 py-0.5 text-[10px] text-gray-600 dark:text-slate-400 disabled:opacity-30 hover:bg-gray-50 dark:hover:bg-slate-700">Prev</button>
                   <button disabled={(tableData.rows?.length || 0) < browseLimit} onClick={() => loadPage(browseOffset + browseLimit)}
@@ -1586,6 +1636,17 @@ function SystemTab() {
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 dark:bg-slate-900/50 sticky top-0 z-10">
                     <tr>
+                      {dbType === 'postgres' && (
+                        <th className="px-2 py-2 w-8">
+                          <input type="checkbox"
+                            checked={tableData.rows?.length > 0 && selectedRows.size === tableData.rows.length}
+                            onChange={e => {
+                              if (e.target.checked) setSelectedRows(new Set(tableData.rows.map((_, i) => i)))
+                              else setSelectedRows(new Set())
+                            }}
+                            className="rounded border-gray-300 dark:border-slate-600 text-red-600 focus:ring-red-500" />
+                        </th>
+                      )}
                       <th className="px-2 py-2 text-left font-medium text-gray-400 dark:text-slate-500 w-8">#</th>
                       {tableData.columns.map(c => (
                         <th key={c} className="px-3 py-2 text-left font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{c}</th>
@@ -1594,7 +1655,18 @@ function SystemTab() {
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-700/50">
                     {tableData.rows?.map((row, ri) => (
-                      <tr key={ri} className="hover:bg-blue-50/30 dark:hover:bg-slate-800/20 group">
+                      <tr key={ri} className={'hover:bg-blue-50/30 dark:hover:bg-slate-800/20 group' + (selectedRows.has(ri) ? ' bg-red-50/50 dark:bg-red-900/10' : '')}>
+                        {dbType === 'postgres' && (
+                          <td className="px-2 py-1">
+                            <input type="checkbox" checked={selectedRows.has(ri)}
+                              onChange={e => {
+                                const next = new Set(selectedRows)
+                                if (e.target.checked) next.add(ri); else next.delete(ri)
+                                setSelectedRows(next)
+                              }}
+                              className="rounded border-gray-300 dark:border-slate-600 text-red-600 focus:ring-red-500" />
+                          </td>
+                        )}
                         <td className="px-2 py-1 text-[10px] text-gray-300 dark:text-slate-600 tabular-nums">{browseOffset + ri + 1}</td>
                         {(row as unknown[]).map((cell, ci) => {
                           const isEditing = editCell?.row === ri && editCell?.col === ci
