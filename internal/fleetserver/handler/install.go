@@ -92,14 +92,34 @@ if ($proc.ExitCode -ne 0) {
 }
 Write-Host "  MSI installation complete" -ForegroundColor Green
 
-# Verify
-Write-Host "[3/3] Verifying..." -ForegroundColor Yellow
+# Enroll agent
+Write-Host "[3/5] Enrolling agent..." -ForegroundColor Yellow
+try {
+    Stop-Service fibratus -ErrorAction SilentlyContinue
+    & "C:\Program Files\Fibratus\Bin\fibratus.exe" enroll --token $enrollToken --server $serverURL --insecure 2>&1 | Out-Host
+    Write-Host "  Enrollment complete" -ForegroundColor Green
+} catch {
+    Write-Host "  Enrollment failed: $_" -ForegroundColor Red
+}
+
+# Start service
+Write-Host "[4/5] Starting service..." -ForegroundColor Yellow
+Start-Service fibratus -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 3
+
+# Verify
+Write-Host "[5/5] Verifying..." -ForegroundColor Yellow
 $svc = Get-Service fibratus -ErrorAction SilentlyContinue
-if ($svc) {
-    Write-Host "  Service status: $($svc.Status)" -ForegroundColor Green
+if ($svc -and $svc.Status -eq "Running") {
+    Write-Host "  Service RUNNING" -ForegroundColor Green
+} elseif ($svc) {
+    Write-Host "  Service status: $($svc.Status)" -ForegroundColor Yellow
 } else {
     Write-Host "  Warning: Service not found" -ForegroundColor Yellow
+}
+
+if (Test-Path "C:\Program Files\Fibratus\data\agent-id") {
+    Write-Host "  Agent ID: $(Get-Content 'C:\Program Files\Fibratus\data\agent-id')" -ForegroundColor Green
 }
 
 # Cleanup
@@ -110,7 +130,6 @@ Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
 Write-Host "Server: $serverURL"
 Write-Host ""
 Write-Host "To check status:  sc.exe query fibratus"
-Write-Host "To check enrollment: type 'C:\Program Files\Fibratus\data\agent-id'"
 `, token.OrgName, tokenID, serverURL, tokenID)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
