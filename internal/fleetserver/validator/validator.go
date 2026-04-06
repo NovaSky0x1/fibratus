@@ -78,12 +78,7 @@ func ValidateRuleYAML(ruleYAML []byte) error {
 		return fmt.Errorf("rule condition is empty")
 	}
 
-	// Validate condition with the real QL parser
-	condResult := ValidateCondition(rule.Condition)
-	if !condResult.Valid && len(condResult.Errors) > 0 {
-		return fmt.Errorf("condition syntax error: %s", condResult.Errors[0].Message)
-	}
-
+	// Condition syntax is validated separately with macros by the caller.
 	return nil
 }
 
@@ -105,10 +100,7 @@ func ValidateRuleFields(name, condition, severity string) error {
 	if severity != "" && !validSeverities[severity] {
 		return fmt.Errorf("invalid severity %q — must be low, medium, high, or critical", severity)
 	}
-	condResult := ValidateCondition(condition)
-	if !condResult.Valid && len(condResult.Errors) > 0 {
-		return fmt.Errorf("condition syntax error: %s", condResult.Errors[0].Message)
-	}
+	// Condition syntax is validated separately with macros by the caller.
 	return nil
 }
 
