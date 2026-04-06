@@ -1034,7 +1034,7 @@ function GitHubSyncSection() {
                   </span>
                   <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{cfg.name as string || 'Unnamed'}</span>
                   <span className="text-xs font-mono text-gray-400 dark:text-slate-500">{cfg.branch as string}</span>
-                  {cfg.path && <span className="text-xs font-mono text-gray-400 dark:text-slate-500">/{cfg.path as string}</span>}
+                  {(cfg.path as string) ? <span className="text-xs font-mono text-gray-400 dark:text-slate-500">/{cfg.path as string}</span> : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => syncOneMutation.mutate(cfg.id as string)} disabled={syncOneMutation.isPending}
