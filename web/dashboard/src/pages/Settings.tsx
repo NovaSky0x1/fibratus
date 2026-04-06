@@ -944,7 +944,7 @@ function SecuritySection() {
 function GitHubSyncSection() {
   const queryClient = useQueryClient()
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true })
+  const [form, setForm] = useState({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true, scope: 'account' })
   const [editId, setEditId] = useState<string | null>(null)
   const [syncResult, setSyncResult] = useState<Record<string, unknown> | null>(null)
 
@@ -955,12 +955,12 @@ function GitHubSyncSection() {
   const configs = (data?.data || []) as Record<string, unknown>[]
 
   const saveMutation = useMutation({
-    mutationFn: () => api.saveGitHubSyncConfig({ ...form, id: editId || undefined, scope: 'account' }),
+    mutationFn: () => api.saveGitHubSyncConfig({ ...form, id: editId || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['github-sync-configs'] })
       setShowAdd(false)
       setEditId(null)
-      setForm({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true })
+      setForm({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true, scope: 'account' })
     },
   })
 
@@ -995,6 +995,7 @@ function GitHubSyncSection() {
       token: '',
       interval: (cfg.interval as number) || 30,
       enabled: (cfg.enabled as boolean) || false,
+      scope: (cfg.scope as string) || 'account',
     })
     setShowAdd(true)
   }
@@ -1015,7 +1016,7 @@ function GitHubSyncSection() {
               {syncAllMutation.isPending ? 'Syncing...' : 'Sync All'}
             </button>
           )}
-          <button onClick={() => { setShowAdd(true); setEditId(null); setForm({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true }) }}
+          <button onClick={() => { setShowAdd(true); setEditId(null); setForm({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true, scope: 'account' }) }}
             className="rounded-lg bg-fibratus-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-fibratus-700">
             Add Source
           </button>
@@ -1033,6 +1034,9 @@ function GitHubSyncSection() {
                     {(cfg.enabled as boolean) ? 'Active' : 'Disabled'}
                   </span>
                   <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{cfg.name as string || 'Unnamed'}</span>
+                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                    {(cfg.scope as string) === 'org' ? 'org' : 'account'}
+                  </span>
                   <span className="text-xs font-mono text-gray-400 dark:text-slate-500">{cfg.branch as string}</span>
                   {(cfg.path as string) ? <span className="text-xs font-mono text-gray-400 dark:text-slate-500">/{cfg.path as string}</span> : null}
                 </div>
@@ -1088,12 +1092,20 @@ function GitHubSyncSection() {
               <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">GitHub Token (PAT)</label>
               <input type="password" value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} placeholder={editId ? '(unchanged)' : 'ghp_...'} className={inputCls + ' font-mono'} />
             </div>
-            <div className="flex items-end gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-end gap-4 flex-wrap">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Scope</label>
+                <select value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value })}
+                  className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-2 py-2 text-xs">
+                  <option value="account">Account-wide (all orgs)</option>
+                  <option value="org">This org only</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer pb-1">
                 <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} className="rounded" />
                 <span className="text-sm text-gray-700 dark:text-slate-300">Auto-sync</span>
               </label>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 pb-1">
                 <span className="text-xs text-gray-500">every</span>
                 <input type="number" value={form.interval} onChange={e => setForm({ ...form, interval: Number(e.target.value) })} min={5}
                   className="w-14 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-1.5 py-1 text-xs text-center" />
