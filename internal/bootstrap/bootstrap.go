@@ -580,23 +580,14 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	}
 	client.StartHeartbeat(collector)
 
-	// Start rule sync — when rules change, recompile the engine
-	if f.engine != nil {
-		client.StartRuleSync(func(rulesDir string) error {
-			log.Info("fleet: rules updated from server, recompiling...")
-			rs, err := f.engine.Compile()
-			if err != nil {
-				return err
-			}
-			if rs != nil {
-				log.Infof("fleet: rules recompile summary: %s", rs)
-				log.Infof("fleet: %d active rules after recompile", f.engine.ActiveRules())
-			} else {
-				log.Warn("fleet: recompile produced 0 rules — check rule files in data/rules/")
-			}
-			return nil
-		})
-	}
+	// Start rule sync — when rules change, restart the service to load new rules.
+	// Hot-reloading via engine.Compile() hangs on sequence rules when the process
+	// snapshotter is attached, so a clean service restart is the reliable path.
+	client.StartRuleSync(func(rulesDir string) error {
+		log.Info("fleet: rules updated from server, restarting service to load new rules...")
+		restartService()
+		return nil
+	})
 
 	// Start command polling — agent checks for pending commands every 5 seconds
 	executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL)
