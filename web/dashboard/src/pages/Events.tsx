@@ -169,7 +169,7 @@ export default function Events() {
 
   // Table state
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
-  const [detailTab, setDetailTab] = useState<'ancestry' | 'callstack' | 'modules' | 'raw'>('ancestry')
+  const [detailTab, setDetailTab] = useState<'ancestry' | 'callstack' | 'modules' | 'process_tree' | 'raw'>('ancestry')
   const [page, setPage] = useState(1)
   const [rawExpanded, setRawExpanded] = useState(false)
 
@@ -992,8 +992,8 @@ interface EventRowProps {
   evt: TelemetryEvent
   isExpanded: boolean
   onToggle: () => void
-  detailTab: 'ancestry' | 'callstack' | 'modules' | 'raw'
-  onTabChange: (tab: 'ancestry' | 'callstack' | 'modules' | 'raw') => void
+  detailTab: 'ancestry' | 'callstack' | 'modules' | 'process_tree' | 'raw'
+  onTabChange: (tab: 'ancestry' | 'callstack' | 'modules' | 'process_tree' | 'raw') => void
   rawExpanded: boolean
   onRawToggle: () => void
   onAddFilter: (field: string, value: string) => void
@@ -1080,8 +1080,8 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
 
 interface EventDetailProps {
   evt: TelemetryEvent
-  tab: 'ancestry' | 'callstack' | 'modules' | 'raw'
-  onTabChange: (tab: 'ancestry' | 'callstack' | 'modules' | 'raw') => void
+  tab: 'ancestry' | 'callstack' | 'modules' | 'process_tree' | 'raw'
+  onTabChange: (tab: 'ancestry' | 'callstack' | 'modules' | 'process_tree' | 'raw') => void
   rawExpanded: boolean
   onRawToggle: () => void
   onAddFilter: (field: string, value: string) => void
@@ -1234,7 +1234,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
           {/* ── Bottom section: tabs ── */}
           <div>
             <div className="flex items-center gap-0.5 border-b border-gray-200 dark:border-slate-700/50 mb-3">
-              {(['ancestry', 'callstack', 'modules', 'raw'] as const).map(t => (
+              {(['ancestry', 'callstack', 'modules', 'process_tree', 'raw'] as const).map(t => (
                 <button
                   key={t}
                   onClick={() => onTabChange(t)}
@@ -1306,6 +1306,11 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
               </div>
             )}
 
+            {/* Process Tree tab */}
+            {tab === 'process_tree' && (
+              <ProcessTreeTab agentId={evt.agent_id} pid={evt.pid} timestamp={evt.timestamp} />
+            )}
+
             {/* Raw JSON tab */}
             {tab === 'raw' && (
               <div>
@@ -1333,5 +1338,71 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
         </div>
       </td>
     </tr>
+  )
+}
+
+// Simple process tree visualization for an event's PID
+function ProcessTreeTab({ agentId, pid, timestamp }: { agentId: string; pid: number; timestamp: string }) {
+  const [events, setEvents] = useState<TelemetryEvent[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    api.getTelemetryProcessTree(agentId, pid, timestamp).then(res => {
+      const data = res.data as { events?: TelemetryEvent[] } | undefined
+      setEvents((data?.events || []) as TelemetryEvent[])
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [agentId, pid, timestamp])
+
+  if (loading) return <div className="py-4 text-center text-sm text-gray-400">Loading process tree...</div>
+
+  // Build tree from process events
+  const procEvents = events.filter(e => e.event_name === 'CreateProcess' || e.event_category === 'process')
+  const byPid = new Map<number, TelemetryEvent>()
+  for (const e of procEvents) {
+    if (!byPid.has(e.pid) || e.event_name === 'CreateProcess') {
+      byPid.set(e.pid, e)
+    }
+  }
+
+  if (byPid.size === 0) {
+    return <div className="py-4 text-center text-sm text-gray-400">No process events in time window. Process tree requires CreateProcess telemetry events nearby.</div>
+  }
+
+  // Build parent→children map
+  const children = new Map<number, number[]>()
+  const roots: number[] = []
+  for (const [p, e] of byPid) {
+    const ppid = e.parent_pid
+    if (!byPid.has(ppid)) {
+      roots.push(p)
+    } else {
+      if (!children.has(ppid)) children.set(ppid, [])
+      children.get(ppid)!.push(p)
+    }
+  }
+
+  const renderNode = (p: number, depth: number): JSX.Element | null => {
+    const e = byPid.get(p)
+    if (!e) return null
+    const isFocus = p === pid
+    return (
+      <div key={p}>
+        <div className={'flex items-center gap-2 py-1 px-2 rounded text-xs font-mono ' + (isFocus ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 font-bold' : 'text-gray-700 dark:text-slate-300')}
+          style={{ marginLeft: depth * 20 }}>
+          <span className="text-gray-400 dark:text-slate-500 w-12 text-right shrink-0">{p}</span>
+          <span className={isFocus ? 'text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'}>{e.process_name}</span>
+          <span className="text-gray-400 dark:text-slate-600 truncate max-w-[500px]">{e.process_cmdline || e.process_exe}</span>
+        </div>
+        {(children.get(p) || []).map(c => renderNode(c, depth + 1))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-0.5 max-h-80 overflow-auto">
+      {roots.map(r => renderNode(r, 0))}
+    </div>
   )
 }

@@ -349,6 +349,8 @@ export const api = {
   },
   getTelemetryFields: () =>
     fetchApi<{ event_types: string[]; event_categories: string[]; process_names: string[]; agents: string[] }>(orgPath('/telemetry/fields')),
+  getTelemetryProcessTree: (agentId: string, pid: number, timestamp: string) =>
+    fetchApi<{ events: unknown[]; focus_pid: string }>(orgPath(`/telemetry/process-tree?agent_id=${agentId}&pid=${pid}&timestamp=${timestamp}`)),
   getAgentEvents: (agentId: string, limit?: number) =>
     fetchApi<unknown[]>(orgPath(`/agents/${agentId}/events?limit=${limit || 100}`)),
 

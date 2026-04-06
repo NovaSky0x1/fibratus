@@ -198,3 +198,48 @@ func (h *TelemetryHandler) GetLiveEvents(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: events})
 }
+
+// ProcessTree handles GET /api/v1/orgs/{org_id}/telemetry/process-tree?agent_id=X&pid=Y&timestamp=Z
+// Returns process events around a specific PID for process tree visualization.
+func (h *TelemetryHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	agentID := r.URL.Query().Get("agent_id")
+	pidStr := r.URL.Query().Get("pid")
+	tsStr := r.URL.Query().Get("timestamp")
+
+	if agentID == "" || pidStr == "" {
+		writeError(w, http.StatusBadRequest, "agent_id and pid required")
+		return
+	}
+
+	// Parse timestamp or use now
+	var ts time.Time
+	if tsStr != "" {
+		var err error
+		ts, err = time.Parse(time.RFC3339Nano, tsStr)
+		if err != nil {
+			ts = time.Now().UTC()
+		}
+	} else {
+		ts = time.Now().UTC()
+	}
+
+	from := ts.Add(-1 * time.Hour)
+	to := ts.Add(1 * time.Hour)
+
+	events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+		AgentID: agentID,
+		From:    from,
+		To:      to,
+		Limit:   5000,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to query telemetry")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"events":    events,
+		"focus_pid": pidStr,
+	}})
+}

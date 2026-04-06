@@ -309,6 +309,8 @@ func (s *Server) Run(ctx context.Context) error {
 			telemetryHandler.Search(w, r)
 		case subpath == "/telemetry/fields" && r.Method == http.MethodGet:
 			telemetryHandler.GetFieldValues(w, r)
+		case subpath == "/telemetry/process-tree" && r.Method == http.MethodGet:
+			telemetryHandler.ProcessTree(w, r)
 
 		// Macros
 		case subpath == "/macros" && r.Method == http.MethodGet:
