@@ -357,6 +357,7 @@ ALTER TABLE github_sync_configs ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'acc
 
 ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_errors JSONB DEFAULT '[]';
+ALTER TABLE rules ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
 `
 
 // Migrate runs the database schema migrations.

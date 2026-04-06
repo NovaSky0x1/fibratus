@@ -65,10 +65,11 @@ func ValidateRuleYAML(ruleYAML []byte) error {
 
 	// Additional checks beyond schema
 	var rule struct {
-		Name      string `yaml:"name"`
-		ID        string `yaml:"id"`
-		Condition string `yaml:"condition"`
-		Severity  string `yaml:"severity"`
+		Name             string `yaml:"name"`
+		ID               string `yaml:"id"`
+		Condition        string `yaml:"condition"`
+		Severity         string `yaml:"severity"`
+		MinEngineVersion string `yaml:"min-engine-version"`
 	}
 	if err := yaml.Unmarshal(ruleYAML, &rule); err != nil {
 		return fmt.Errorf("rule decode error: %w", err)
@@ -76,6 +77,11 @@ func ValidateRuleYAML(ruleYAML []byte) error {
 
 	if rule.Condition == "" {
 		return fmt.Errorf("rule condition is empty")
+	}
+
+	// Check min-engine-version compatibility (agent is v3.0.0)
+	if rule.MinEngineVersion != "" && rule.MinEngineVersion > "3.0.0" {
+		return fmt.Errorf("rule requires engine version %s but fleet agent is 3.0.0", rule.MinEngineVersion)
 	}
 
 	// Condition syntax is validated separately with macros by the caller.

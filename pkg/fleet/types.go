@@ -201,6 +201,7 @@ type Rule struct {
 	References       []string          `json:"references,omitempty"`
 	RawYAML          string            `json:"raw_yaml"`
 	Enabled          bool              `json:"enabled"`
+	Source           string            `json:"source,omitempty"`  // "manual", "github:<repo>" — tracks where the rule came from
 	ValidationStatus string            `json:"validation_status"` // "valid", "invalid", "pending"
 	ValidationErrors json.RawMessage   `json:"validation_errors,omitempty"`
 	CreatedAt        time.Time         `json:"created_at"`

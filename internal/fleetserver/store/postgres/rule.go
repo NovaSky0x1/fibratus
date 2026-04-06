@@ -49,14 +49,17 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 	if rule.ValidationStatus == "" {
 		rule.ValidationStatus = "pending"
 	}
+	if rule.Source == "" {
+		rule.Source = "manual"
+	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO rules (id, org_id, name, version, description, condition, output_template,
-			severity, labels, tags, "references", raw_yaml, enabled, validation_status, validation_errors, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())`,
+			severity, labels, tags, "references", raw_yaml, enabled, source, validation_status, validation_errors, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
 		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
-		rule.ValidationStatus, validationErrors,
+		rule.Source, rule.ValidationStatus, validationErrors,
 	)
 	return err
 }
