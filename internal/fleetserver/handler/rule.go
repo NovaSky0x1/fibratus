@@ -33,8 +33,16 @@ import (
 )
 
 // validateAndSetStatus runs condition validation on a rule and sets its validation fields.
+// It validates the condition as extracted from the raw YAML (which preserves original
+// escaping) rather than the Go-parsed condition, since the agent re-parses from raw YAML.
 func validateAndSetStatus(rule *fleet.Rule) {
-	result := validator.ValidateCondition(rule.Condition)
+	condition := rule.Condition
+	if rule.RawYAML != "" {
+		if raw := validator.ExtractConditionFromRawYAML(rule.RawYAML); raw != "" {
+			condition = raw
+		}
+	}
+	result := validator.ValidateCondition(condition)
 	if result.Valid {
 		rule.ValidationStatus = "valid"
 		rule.ValidationErrors = json.RawMessage(`[]`)

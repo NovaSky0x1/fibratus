@@ -222,8 +222,10 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 			rule.Severity = "medium"
 		}
 
-		// Run condition validation before storing
-		condResult := validator.ValidateCondition(rule.Condition)
+		// Run condition validation on the raw YAML condition (not the Go-parsed one)
+		// to catch escape issues the agent's QL parser would hit.
+		rawCondition := validator.ExtractConditionFromRawYAML(rule.RawYAML)
+		condResult := validator.ValidateCondition(rawCondition)
 		if condResult.Valid {
 			rule.ValidationStatus = "valid"
 			rule.ValidationErrors = json.RawMessage(`[]`)

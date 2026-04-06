@@ -63,6 +63,7 @@ func ValidateCondition(condition string) *ConditionValidationResult {
 
 	// Run all validation checks
 	checkStringLiterals(condition, result)
+	checkQLEscapeSequences(condition, result)
 	checkBalancedDelimiters(condition, result)
 	checkOperators(condition, result)
 	checkFields(condition, result)
@@ -76,6 +77,71 @@ func ValidateCondition(condition string) *ConditionValidationResult {
 	}
 
 	return result
+}
+
+// ExtractConditionFromRawYAML extracts the condition string from raw YAML,
+// preserving the original escaping exactly as the agent's YAML parser would see it.
+// This is critical because Go's yaml.Unmarshal may alter backslash sequences.
+func ExtractConditionFromRawYAML(rawYAML string) string {
+	lines := strings.Split(rawYAML, "\n")
+	var condition strings.Builder
+	inCondition := false
+	isFolded := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if !inCondition {
+			// Look for "condition:" line
+			if strings.HasPrefix(trimmed, "condition:") {
+				rest := strings.TrimPrefix(trimmed, "condition:")
+				rest = strings.TrimSpace(rest)
+				if rest == ">" || rest == "|" {
+					isFolded = true
+					inCondition = true
+					continue
+				}
+				if rest != "" {
+					// Inline condition
+					return rest
+				}
+				inCondition = true
+				continue
+			}
+			continue
+		}
+
+		// We're inside the condition block
+		// A non-indented line (not starting with space/tab) ends the condition block
+		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+			break
+		}
+
+		// Dedent: remove the leading whitespace (typically 2 spaces from YAML)
+		dedented := line
+		if len(dedented) > 0 && dedented[0] == ' ' {
+			// Find the indentation level
+			indent := 0
+			for indent < len(dedented) && dedented[indent] == ' ' {
+				indent++
+			}
+			// Remove up to 2 spaces of YAML indentation
+			if indent >= 2 {
+				dedented = dedented[2:]
+			}
+		}
+
+		if condition.Len() > 0 {
+			if isFolded {
+				condition.WriteString(" ")
+			} else {
+				condition.WriteString("\n")
+			}
+		}
+		condition.WriteString(dedented)
+	}
+
+	return strings.TrimSpace(condition.String())
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -140,10 +206,7 @@ func stripStringLiterals(s string) string {
 // ═══════════════════════════════════════════════════════════════
 
 func checkStringLiterals(condition string, result *ConditionValidationResult) {
-	// Check for unterminated strings. We do NOT check escape sequences here
-	// because the condition column stores YAML-unquoted text where backslashes
-	// are literal characters, not QL escape sequences. The agent reads from
-	// raw_yaml which gets re-parsed by YAML first.
+	// Check for unterminated strings.
 	inString := false
 	for i := 0; i < len(condition); i++ {
 		if inString {
@@ -167,6 +230,58 @@ func checkStringLiterals(condition string, result *ConditionValidationResult) {
 			Suggestion: "ensure all strings are properly closed with a matching single quote (')",
 		})
 		result.Valid = false
+	}
+}
+
+// checkQLEscapeSequences validates backslash sequences inside single-quoted
+// strings exactly as the QL lexer does. Valid escapes: \\, \n, \', \".
+// Anything else (e.g., \W, \P, \T) is a bad escape that will cause
+// the agent's filter compiler to fail.
+func checkQLEscapeSequences(condition string, result *ConditionValidationResult) {
+	inString := false
+	for i := 0; i < len(condition); i++ {
+		if inString {
+			if condition[i] == '\'' {
+				inString = false
+				continue
+			}
+			if condition[i] == '\\' && i+1 < len(condition) {
+				next := condition[i+1]
+				if next != '\\' && next != 'n' && next != '\'' && next != '"' {
+					// Show context around the bad escape
+					start := i - 10
+					if start < 0 {
+						start = 0
+					}
+					end := i + 12
+					if end > len(condition) {
+						end = len(condition)
+					}
+					context := condition[start:end]
+
+					result.Errors = append(result.Errors, ConditionError{
+						Type:    "escape",
+						Message: fmt.Sprintf("invalid escape sequence '\\%c' at position %d — the QL parser only allows \\\\, \\n, \\', \\\" inside strings — near: ...%s...", next, i, context),
+						Suggestion: func() string {
+							if next == 'W' || next == 'P' || next == 'S' || next == 'T' ||
+								next == 'U' || next == 'C' || next == 'M' || next == 'D' ||
+								next == 'A' || next == 'R' || next == 'F' || next == 'E' {
+								return fmt.Sprintf("for a literal backslash before '%c', use double backslash: \\\\%c (e.g., '?:\\\\Windows\\\\...')", next, next)
+							}
+							return "use \\\\ for a literal backslash in paths"
+						}(),
+						Position: i,
+					})
+					result.Valid = false
+				}
+				i++ // skip the escaped char
+				continue
+			}
+			continue
+		}
+		if condition[i] == '\'' {
+			inString = true
+		}
 	}
 }
 
