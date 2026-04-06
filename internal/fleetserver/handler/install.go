@@ -50,7 +50,6 @@ func (h *InstallHandler) Script(w http.ResponseWriter, r *http.Request) {
 	}
 
 	serverURL := h.serverURL
-	installDir := h.installDir
 
 	script := fmt.Sprintf(`# Fibratus EDR Agent Installer
 # Organization: %s | Token: %s
