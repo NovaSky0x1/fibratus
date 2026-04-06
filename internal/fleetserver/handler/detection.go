@@ -257,9 +257,9 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	// Extract the triggering PID(s) and the known ancestry from detection events.
 	triggerPIDs, ancestryPIDs := extractDetectionPIDs(det.Events)
 
-	// Query telemetry within ±10 minutes of detection.
-	from := det.Timestamp.Add(-10 * time.Minute)
-	to := det.Timestamp.Add(10 * time.Minute)
+	// Query telemetry within ±1 hour of detection for process tree context.
+	from := det.Timestamp.Add(-1 * time.Hour)
+	to := det.Timestamp.Add(1 * time.Hour)
 
 	allEvents, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
 		AgentID: det.AgentID,
@@ -430,8 +430,8 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	from := det.Timestamp.Add(-10 * time.Minute)
-	to := det.Timestamp.Add(10 * time.Minute)
+	from := det.Timestamp.Add(-1 * time.Hour)
+	to := det.Timestamp.Add(1 * time.Hour)
 
 	allEvents, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
 		AgentID: det.AgentID,

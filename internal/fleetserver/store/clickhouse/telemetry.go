@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (org_id, agent_id, timestamp, pid)
-TTL toDateTime(timestamp) + INTERVAL 10 MINUTE DELETE
+TTL toDateTime(timestamp) + INTERVAL 7 DAY DELETE
 SETTINGS index_granularity = 8192,
          min_bytes_for_wide_part = 10485760,
          merge_with_ttl_timeout = 86400
@@ -78,8 +78,12 @@ func NewTelemetryStore(db *sql.DB) *TelemetryStore {
 
 // Migrate creates the telemetry table if it doesn't exist.
 func (s *TelemetryStore) Migrate(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, Schema)
-	return err
+	if _, err := s.db.ExecContext(ctx, Schema); err != nil {
+		return err
+	}
+	// Update TTL on existing table (safe to run repeatedly)
+	s.db.ExecContext(ctx, `ALTER TABLE telemetry_events MODIFY TTL toDateTime(timestamp) + INTERVAL 7 DAY DELETE`)
+	return nil
 }
 
 // BulkIngest inserts a batch of events using a single prepared statement
