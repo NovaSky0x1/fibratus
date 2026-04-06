@@ -42,9 +42,10 @@ type ConditionError struct {
 }
 
 // ValidateCondition performs comprehensive server-side validation of a filter
-// condition string. It checks operators, field names, function names, string
-// literals, sequence syntax, event names, and common formatting issues that
-// would cause the agent's rule compiler to fail.
+// condition string using the actual Fibratus QL parser. This catches all
+// syntax errors, unknown fields, unknown functions, invalid operators,
+// bad escape sequences, malformed sequences, and more — exactly the same
+// validation the agent's rule compiler performs.
 func ValidateCondition(condition string) *ConditionValidationResult {
 	result := &ConditionValidationResult{Valid: true}
 	condition = strings.TrimSpace(condition)
@@ -57,6 +58,9 @@ func ValidateCondition(condition string) *ConditionValidationResult {
 		})
 		return result
 	}
+
+	// Detect sequence rules
+	result.IsSequence = isSequenceCondition(condition)
 
 	// Detect sequence rules
 	result.IsSequence = isSequenceCondition(condition)
@@ -76,7 +80,54 @@ func ValidateCondition(condition string) *ConditionValidationResult {
 		checkSequenceSyntax(condition, result)
 	}
 
+	// Add deprecation warnings
+	checkDeprecatedFields(condition, result)
+
 	return result
+}
+
+// suggestFixForParseError provides human-readable fix suggestions for
+// common parser error patterns.
+func suggestFixForParseError(errMsg string) string {
+	lower := strings.ToLower(errMsg)
+
+	if strings.Contains(lower, "bad escape") || strings.Contains(lower, "badescape") {
+		return "only \\\\, \\n, \\', \\\" are valid escape sequences in strings — use \\\\ for a literal backslash in Windows paths"
+	}
+	if strings.Contains(lower, "bad string") || strings.Contains(lower, "badstring") {
+		return "check for unterminated string literals — make sure all single quotes are properly closed"
+	}
+	if strings.Contains(lower, "undefined") && strings.Contains(lower, "function") {
+		return "check function name spelling — available functions: cidr_contains, md5, regex, base, dir, ext, length, concat, lower, upper, foreach, entropy, yara, etc."
+	}
+	if strings.Contains(lower, "expected") && strings.Contains(lower, "field") {
+		return "check field name spelling — fields use dot notation like ps.name, evt.name, file.path, registry.path, net.dip, etc."
+	}
+	if strings.Contains(lower, "expected") && strings.Contains(lower, "operator") {
+		return "valid operators: =, !=, ~=, <, <=, >, >=, contains, icontains, in, iin, startswith, endswith, matches, imatches, fuzzy, intersects, and, or, not"
+	}
+	if strings.Contains(lower, "sequences require at least") {
+		return "add at least 2 pipe-delimited expressions: sequence |expr1| |expr2|"
+	}
+	if strings.Contains(lower, "maximum span") {
+		return "reduce maxspan to 4h or less"
+	}
+	if strings.Contains(lower, "maximum number of expressions") {
+		return "sequences support a maximum of 5 expressions — split into multiple rules"
+	}
+	return ""
+}
+
+// checkDeprecatedFields warns about deprecated fields (non-fatal).
+func checkDeprecatedFields(condition string, result *ConditionValidationResult) {
+	stripped := stripStringLiterals(condition)
+	tokens := tokenizeCondition(stripped)
+	for _, tok := range tokens {
+		if dep, ok := deprecatedFields[tok.value]; ok {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("'%s' is deprecated since %s — use %s instead", tok.value, dep.since, dep.replacement))
+		}
+	}
 }
 
 // ExtractConditionFromRawYAML extracts the condition string from raw YAML,
