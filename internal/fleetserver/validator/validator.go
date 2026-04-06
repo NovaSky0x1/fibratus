@@ -78,9 +78,10 @@ func ValidateRuleYAML(ruleYAML []byte) error {
 		return fmt.Errorf("rule condition is empty")
 	}
 
-	// Basic condition syntax check — validate balanced parentheses
-	if err := checkBalancedParens(rule.Condition); err != nil {
-		return fmt.Errorf("condition syntax error: %w", err)
+	// Validate condition with the real QL parser
+	condResult := ValidateCondition(rule.Condition)
+	if !condResult.Valid && len(condResult.Errors) > 0 {
+		return fmt.Errorf("condition syntax error: %s", condResult.Errors[0].Message)
 	}
 
 	return nil
@@ -104,40 +105,9 @@ func ValidateRuleFields(name, condition, severity string) error {
 	if severity != "" && !validSeverities[severity] {
 		return fmt.Errorf("invalid severity %q — must be low, medium, high, or critical", severity)
 	}
-	if err := checkBalancedParens(condition); err != nil {
-		return fmt.Errorf("condition syntax error: %w", err)
-	}
-	return nil
-}
-
-func checkBalancedParens(s string) error {
-	depth := 0
-	inString := false
-	var stringChar byte
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if inString {
-			if c == stringChar {
-				inString = false
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			inString = true
-			stringChar = c
-			continue
-		}
-		if c == '(' {
-			depth++
-		} else if c == ')' {
-			depth--
-			if depth < 0 {
-				return fmt.Errorf("unexpected ')' at position %d", i)
-			}
-		}
-	}
-	if depth != 0 {
-		return fmt.Errorf("unclosed parenthesis (%d open)", depth)
+	condResult := ValidateCondition(condition)
+	if !condResult.Valid && len(condResult.Errors) > 0 {
+		return fmt.Errorf("condition syntax error: %s", condResult.Errors[0].Message)
 	}
 	return nil
 }

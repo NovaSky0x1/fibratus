@@ -153,10 +153,9 @@ type SyncResult struct {
 
 // RuleSyncError describes a validation failure for a specific rule during sync.
 type RuleSyncError struct {
-	RuleName   string `json:"rule_name"`
-	FileName   string `json:"file_name"`
-	Error      string `json:"error"`
-	Suggestion string `json:"suggestion,omitempty"`
+	RuleName string `json:"rule_name"`
+	FileName string `json:"file_name"`
+	Error    string `json:"error"`
 }
 
 func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cfg *GitHubSyncConfig) (*SyncResult, error) {
@@ -222,10 +221,8 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 			rule.Severity = "medium"
 		}
 
-		// Run condition validation on the raw YAML condition (not the Go-parsed one)
-		// to catch escape issues the agent's QL parser would hit.
-		rawCondition := validator.ExtractConditionFromRawYAML(rule.RawYAML)
-		condResult := validator.ValidateCondition(rawCondition)
+		// Run condition validation using the real QL parser
+		condResult := validator.ValidateCondition(rule.Condition)
 		if condResult.Valid {
 			rule.ValidationStatus = "valid"
 			rule.ValidationErrors = json.RawMessage(`[]`)
@@ -234,23 +231,17 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 			rule.ValidationStatus = "invalid"
 			errJSON, _ := json.Marshal(condResult.Errors)
 			rule.ValidationErrors = errJSON
-			rule.Enabled = false // invalid rules are never enabled
+			rule.Enabled = false
 			result.Invalid++
 			for _, e := range condResult.Errors {
 				syncErr := RuleSyncError{
-					RuleName:   rule.Name,
-					FileName:   file.Name,
-					Error:      e.Message,
-					Suggestion: e.Suggestion,
+					RuleName: rule.Name,
+					FileName: file.Name,
+					Error:    e.Message,
 				}
 				result.ValidationErrors = append(result.ValidationErrors, syncErr)
 			}
 			log.Warnf("fleet: GitHub sync: rule %q failed validation: %d errors", rule.Name, len(condResult.Errors))
-		}
-		if len(condResult.Warnings) > 0 {
-			for _, w := range condResult.Warnings {
-				log.Infof("fleet: GitHub sync: rule %q warning: %s", rule.Name, w)
-			}
 		}
 
 		// Apply to each target org
