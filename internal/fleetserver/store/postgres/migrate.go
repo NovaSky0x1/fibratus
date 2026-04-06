@@ -352,6 +352,9 @@ CREATE TABLE IF NOT EXISTS github_sync_configs (
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE github_sync_configs ADD COLUMN IF NOT EXISTS account_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE github_sync_configs ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'account';
+
 ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_errors JSONB DEFAULT '[]';
 `
