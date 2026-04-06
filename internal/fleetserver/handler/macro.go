@@ -20,6 +20,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -183,6 +184,31 @@ func (h *MacroHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	logAudit(r, h.audit, h.users, userID, orgID, "delete", "macro", macroID, name, nil)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Upload handles POST /api/v1/orgs/{org_id}/macros/upload
+// Accepts a raw YAML macro file (same format as rules/macros/macros.yml)
+// and imports all macros, replacing existing ones with the same name.
+func (h *MacroHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	userID := ctxutil.UserIDFromContext(r.Context())
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 5<<20)) // 5MB max
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to read body")
+		return
+	}
+
+	imported, err := h.macros.ImportFromYAML(r.Context(), orgID, body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to parse macros: "+err.Error())
+		return
+	}
+
+	logAudit(r, h.audit, h.users, userID, orgID, "upload", "macros", "", fmt.Sprintf("Uploaded %d macros", imported), nil)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"imported": imported,
+	}})
 }
 
 func parseMacroYAML(data []byte, macro *fleet.Macro) error {

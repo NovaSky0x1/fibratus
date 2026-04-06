@@ -313,6 +313,8 @@ func (s *Server) Run(ctx context.Context) error {
 		// Macros
 		case subpath == "/macros" && r.Method == http.MethodGet:
 			macroHandler.List(w, r)
+		case subpath == "/macros/upload" && r.Method == http.MethodPost:
+			macroHandler.Upload(w, r)
 		case subpath == "/macros" && r.Method == http.MethodPost:
 			macroHandler.Create(w, r)
 		case strings.HasPrefix(subpath, "/macros/") && r.Method == http.MethodPut:

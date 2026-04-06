@@ -69,7 +69,7 @@ func (s *RuleStore) Get(ctx context.Context, orgID, id string) (*fleet.Rule, err
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
-			created_at, updated_at
+			COALESCE(source, 'manual'), created_at, updated_at
 		 FROM rules WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanRule(row)
 }
@@ -96,7 +96,7 @@ func (s *RuleStore) List(ctx context.Context, orgID string, opts fleet.ListOptio
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
-			created_at, updated_at
+			COALESCE(source, 'manual'), created_at, updated_at
 		 FROM rules WHERE org_id = $1
 		 ORDER BY name ASC
 		 LIMIT $2 OFFSET $3`,
@@ -127,15 +127,18 @@ func (s *RuleStore) Update(ctx context.Context, rule *fleet.Rule) error {
 	if rule.ValidationStatus == "" {
 		rule.ValidationStatus = "pending"
 	}
+	if rule.Source == "" {
+		rule.Source = "manual"
+	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE rules SET name=$3, version=$4, description=$5, condition=$6,
 			output_template=$7, severity=$8, labels=$9, tags=$10, "references"=$11,
-			raw_yaml=$12, enabled=$13, validation_status=$14, validation_errors=$15, updated_at=NOW()
+			raw_yaml=$12, enabled=$13, source=$14, validation_status=$15, validation_errors=$16, updated_at=NOW()
 		 WHERE id=$1 AND org_id=$2`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
 		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
-		rule.ValidationStatus, validationErrors,
+		rule.Source, rule.ValidationStatus, validationErrors,
 	)
 	return err
 }
@@ -143,6 +146,28 @@ func (s *RuleStore) Update(ctx context.Context, rule *fleet.Rule) error {
 func (s *RuleStore) Delete(ctx context.Context, orgID, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM rules WHERE id=$1 AND org_id=$2`, id, orgID)
 	return err
+}
+
+// DeleteBySourceExcept deletes all rules for an org with the given source
+// EXCEPT those whose IDs are in the keep set. Used for clean sync.
+func (s *RuleStore) DeleteBySourceExcept(ctx context.Context, orgID, source string, keepIDs []string) (int, error) {
+	if len(keepIDs) == 0 {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM rules WHERE org_id = $1 AND source = $2`, orgID, source)
+		if err != nil {
+			return 0, err
+		}
+		n, _ := res.RowsAffected()
+		return int(n), nil
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM rules WHERE org_id = $1 AND source = $2 AND id != ALL($3)`,
+		orgID, source, pq.Array(keepIDs))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // GetForAgent returns all enabled rules for an agent's organization and
@@ -153,7 +178,7 @@ func (s *RuleStore) GetForAgent(ctx context.Context, orgID, agentID string) ([]*
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
-			created_at, updated_at
+			COALESCE(source, 'manual'), created_at, updated_at
 		 FROM rules
 		 WHERE org_id = $1 AND enabled = true AND COALESCE(validation_status, 'pending') = 'valid'
 		 ORDER BY name ASC`,
@@ -204,7 +229,7 @@ func scanRule(row *sql.Row) (*fleet.Rule, error) {
 		&r.Condition, &r.Output, &r.Severity, &labelsJSON,
 		pq.Array(&r.Tags), pq.Array(&r.References), &r.RawYAML, &r.Enabled,
 		&r.ValidationStatus, &validationErrorsJSON,
-		&r.CreatedAt, &r.UpdatedAt,
+		&r.Source, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -226,7 +251,7 @@ func scanRuleRows(rows *sql.Rows) (*fleet.Rule, error) {
 		&r.Condition, &r.Output, &r.Severity, &labelsJSON,
 		pq.Array(&r.Tags), pq.Array(&r.References), &r.RawYAML, &r.Enabled,
 		&r.ValidationStatus, &validationErrorsJSON,
-		&r.CreatedAt, &r.UpdatedAt,
+		&r.Source, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

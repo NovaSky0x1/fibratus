@@ -164,6 +164,7 @@ func (h *GitHubSyncHandler) TriggerSync(w http.ResponseWriter, r *http.Request) 
 type SyncResult struct {
 	Created          int              `json:"created"`
 	Updated          int              `json:"updated"`
+	Deleted          int              `json:"deleted"`
 	Skipped          int              `json:"skipped"`
 	Invalid          int              `json:"invalid"`
 	Errors           []string         `json:"errors,omitempty"`
@@ -181,6 +182,8 @@ type RuleSyncError struct {
 func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cfg *GitHubSyncConfig) (*SyncResult, error) {
 	start := time.Now()
 	result := &SyncResult{}
+	source := "github:" + cfg.RepoURL
+	syncedIDs := make(map[string][]string) // orgID -> rule IDs synced
 
 	// Fetch file list from GitHub API
 	apiURL := fmt.Sprintf("%s/contents/%s?ref=%s", cfg.RepoURL, cfg.Path, cfg.Branch)
@@ -267,8 +270,10 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 		}
 
 		// Apply to each target org
+		rule.Source = source
 		for _, targetOrg := range targetOrgIDs {
 			rule.OrgID = targetOrg
+			syncedIDs[targetOrg] = append(syncedIDs[targetOrg], rule.ID)
 			existing, _ := h.rules.Get(ctx, targetOrg, rule.ID)
 			if existing != nil {
 				if err := h.rules.Update(ctx, &rule); err != nil {
@@ -285,6 +290,17 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 					result.Created++
 				}
 			}
+		}
+	}
+
+	// Clean sync: remove rules from this source that weren't in the current sync
+	for _, targetOrg := range targetOrgIDs {
+		deleted, err := h.rules.DeleteBySourceExcept(ctx, targetOrg, source, syncedIDs[targetOrg])
+		if err != nil {
+			log.Warnf("fleet: clean sync delete error for org %s: %v", targetOrg, err)
+		} else if deleted > 0 {
+			result.Deleted += deleted
+			log.Infof("fleet: clean sync removed %d stale rules from org %s", deleted, targetOrg)
 		}
 	}
 

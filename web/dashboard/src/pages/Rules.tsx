@@ -201,6 +201,19 @@ export default function Rules() {
           >
             {validateAllPending ? 'Validating...' : 'Validate All'}
           </button>
+          <label className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer">
+            Upload Macros
+            <input type="file" accept=".yml,.yaml" className="hidden" onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              const text = await file.text()
+              const res = await api.uploadMacros(text)
+              if (res.data) {
+                queryClient.invalidateQueries({ queryKey: ['rules'] })
+              }
+              e.target.value = ''
+            }} />
+          </label>
           <button
             onClick={() => setShowUpload(!showUpload)}
             className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"

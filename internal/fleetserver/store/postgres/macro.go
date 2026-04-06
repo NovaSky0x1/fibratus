@@ -186,8 +186,10 @@ func (s *MacroStore) ImportFromYAML(ctx context.Context, orgID string, data []by
 			List:        cleanList,
 			Description: m.Description,
 		}
+		// Upsert: delete existing macro with same name, then create
+		s.db.ExecContext(ctx, `DELETE FROM macros WHERE org_id = $1 AND name = $2`, orgID, m.Name)
 		if err := s.Create(ctx, macro); err != nil {
-			continue // skip duplicates
+			continue
 		}
 		imported++
 	}

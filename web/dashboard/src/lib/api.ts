@@ -368,6 +368,8 @@ export const api = {
   updateMacro: (id: string, data: Partial<Macro>) =>
     fetchApi<Macro>(orgPath(`/macros/${id}`), { method: 'PUT', body: JSON.stringify(data) }),
   deleteMacro: (id: string) => fetchApi<void>(orgPath(`/macros/${id}`), { method: 'DELETE' }),
+  uploadMacros: (yamlContent: string) =>
+    fetchApi<{ imported: number }>(orgPath('/macros/upload'), { method: 'POST', body: yamlContent }),
 
   // Audit Log
   getAuditLog: (params?: Record<string, string>) => {

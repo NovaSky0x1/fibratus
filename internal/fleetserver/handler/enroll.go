@@ -96,7 +96,13 @@ func (h *EnrollHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Create agent record
+	// 3. Remove existing agent with same hostname+org (re-enrollment)
+	if existing, _ := h.agents.GetByHostname(ctx, token.OrgID, req.Hostname); existing != nil {
+		log.Infof("fleet: removing previous agent %s for re-enrolling host %s", existing.ID, req.Hostname)
+		_ = h.agents.Delete(ctx, token.OrgID, existing.ID)
+	}
+
+	// 4. Create agent record
 	agentID := GenerateID()
 	now := time.Now().UTC()
 
@@ -117,7 +123,7 @@ func (h *EnrollHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Sign CSR
+	// 5. Sign CSR
 	signedCert, err := h.ca.SignCSR(orgCA, []byte(req.CSR), agentID, token.OrgID, token.AccountID)
 	if err != nil {
 		log.Errorf("fleet: enroll sign CSR error: %v", err)
@@ -125,7 +131,7 @@ func (h *EnrollHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Increment token usage
+	// 6. Increment token usage
 	if err := h.tokens.IncrementUses(ctx, token.ID); err != nil {
 		log.Warnf("fleet: enroll token increment error: %v", err)
 	}

@@ -97,6 +97,7 @@ type RuleStore interface {
 	List(ctx context.Context, orgID string, opts fleet.ListOptions) ([]*fleet.Rule, int, error)
 	Update(ctx context.Context, rule *fleet.Rule) error
 	Delete(ctx context.Context, orgID, id string) error
+	DeleteBySourceExcept(ctx context.Context, orgID, source string, keepIDs []string) (int, error)
 	GetForAgent(ctx context.Context, orgID, agentID string) ([]*fleet.Rule, string, error)
 }
 
@@ -150,6 +151,7 @@ type MacroStore interface {
 	List(ctx context.Context, orgID string) ([]*fleet.Macro, error)
 	Update(ctx context.Context, macro *fleet.Macro) error
 	Delete(ctx context.Context, orgID, id string) error
+	ImportFromYAML(ctx context.Context, orgID string, data []byte) (int, error)
 	GetAllForOrg(ctx context.Context, orgID string) (string, error) // returns combined YAML for agent sync
 }
 
