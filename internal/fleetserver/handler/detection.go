@@ -258,100 +258,50 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	triggerPIDs, ancestryPIDs := extractDetectionPIDs(det.Events)
 	log.Infof("fleet: process tree for detection %s: triggerPIDs=%v ancestryPIDs=%v events_raw_len=%d", det.ID, triggerPIDs, ancestryPIDs, len(det.Events))
 
-	// Query telemetry within ±1 hour of detection for process tree context.
+	// Query telemetry directly for the known PIDs from the detection.
+	// This avoids the 5000-event limit issue where relevant PIDs get lost.
 	from := det.Timestamp.Add(-1 * time.Hour)
 	to := det.Timestamp.Add(1 * time.Hour)
 
-	allEvents, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-		AgentID: det.AgentID,
-		From:    from,
-		To:      to,
-		Limit:   5000,
-	})
-	if err != nil {
-		log.Errorf("fleet: detection process tree error: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+	// Collect all known PIDs from the detection
+	pids := make([]int, 0, len(ancestryPIDs))
+	for pid := range ancestryPIDs {
+		pids = append(pids, pid)
 	}
 
-	// Build process map: PID -> parentPID + children.
-	type procInfo struct {
-		parentPID int
-		children  map[int]bool
-	}
-	procMap := make(map[int]*procInfo)
-	for _, evt := range allEvents {
-		if evt.PID <= 0 {
+	// Query events for each known PID
+	var filtered []store.TelemetryEvent
+	for _, pid := range pids {
+		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: det.AgentID,
+			PID:     pid,
+			From:    from,
+			To:      to,
+			Limit:   500,
+		})
+		if err != nil {
 			continue
 		}
-		pi, ok := procMap[evt.PID]
-		if !ok {
-			pi = &procInfo{children: make(map[int]bool)}
-			procMap[evt.PID] = pi
-		}
-		if evt.ParentPID > 0 && pi.parentPID == 0 {
-			pi.parentPID = evt.ParentPID
-		}
-		if evt.ParentPID > 0 && evt.ParentPID != evt.PID {
-			parent, ok := procMap[evt.ParentPID]
-			if !ok {
-				parent = &procInfo{children: make(map[int]bool)}
-				procMap[evt.ParentPID] = parent
-			}
-			parent.children[evt.PID] = true
-		}
+		filtered = append(filtered, events...)
 	}
 
-	// Relevant PIDs:
-	// 1. Ancestry from detection events (known PIDs)
-	// 2. Walk UP from trigger PIDs through telemetry to fill gaps
-	// 3. Walk DOWN only from trigger PIDs (not ancestors)
-	relevant := make(map[int]bool)
-	for pid := range ancestryPIDs {
-		relevant[pid] = true
-	}
-
-	// Walk UP from each trigger PID through telemetry parent links
-	// to build the complete spine (fills gaps if detection ancestors are incomplete).
+	// Also fetch children of trigger PIDs by querying for parent_pid
+	// (events where parent_pid matches our trigger PIDs)
 	for pid := range triggerPIDs {
-		cur := pid
-		for i := 0; i < 20; i++ {
-			pi, ok := procMap[cur]
-			if !ok || pi.parentPID <= 0 || pi.parentPID == cur {
-				break
-			}
-			relevant[pi.parentPID] = true
-			cur = pi.parentPID
+		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID:   det.AgentID,
+			ParentPID: pid,
+			From:      from,
+			To:        to,
+			Limit:     200,
+		})
+		if err != nil {
+			continue
 		}
+		filtered = append(filtered, events...)
 	}
 
-	// Walk DOWN only from trigger PIDs — not ancestors.
-	var walkDown func(pid int, depth int)
-	walkDown = func(pid int, depth int) {
-		if depth > 10 {
-			return
-		}
-		pi, ok := procMap[pid]
-		if !ok {
-			return
-		}
-		for child := range pi.children {
-			relevant[child] = true
-			walkDown(child, depth+1)
-		}
-	}
-	for pid := range triggerPIDs {
-		walkDown(pid, 0)
-	}
-
-	// Return ALL events for relevant PIDs (no event-type filtering).
-	filtered := make([]store.TelemetryEvent, 0, len(allEvents)/4)
-	for _, evt := range allEvents {
-		if relevant[evt.PID] {
-			filtered = append(filtered, evt)
-		}
-	}
-	log.Infof("fleet: process tree: %d total events, %d relevant PIDs, %d filtered events", len(allEvents), len(relevant), len(filtered))
+	log.Infof("fleet: process tree: %d PIDs queried, %d total events returned", len(pids), len(filtered))
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{

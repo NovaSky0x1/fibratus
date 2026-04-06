@@ -207,6 +207,11 @@ func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.Te
 		countQuery += " AND pid = ?"
 		args = append(args, opts.PID)
 	}
+	if opts.ParentPID > 0 {
+		query += " AND parent_pid = ?"
+		countQuery += " AND parent_pid = ?"
+		args = append(args, opts.ParentPID)
+	}
 	if opts.Search != "" {
 		like := "%" + opts.Search + "%"
 		query += " AND (process_name ILIKE ? OR process_exe ILIKE ? OR process_cmdline ILIKE ? OR event_name ILIKE ?)"

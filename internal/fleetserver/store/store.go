@@ -211,6 +211,7 @@ type TelemetrySearchOpts struct {
 	EventName   string
 	ProcessName string
 	PID         int
+	ParentPID   int
 	Search      string // full text search across process_name, process_exe, process_cmdline, event_name
 	Query       string // Fibratus QL expression (e.g., "ps.name = 'cmd.exe' and kevt.name = 'CreateProcess'")
 	From        time.Time
