@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/qlparser"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/validator"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
@@ -33,9 +34,11 @@ import (
 )
 
 // validateAndSetStatus runs condition validation on a rule using the
-// real Fibratus QL parser and sets its validation status fields.
-func validateAndSetStatus(rule *fleet.Rule) {
-	result := validator.ValidateCondition(rule.Condition)
+// real Fibratus QL parser with macro support and sets validation status.
+func (h *RuleHandler) validateAndSetStatus(r *http.Request, rule *fleet.Rule) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	macros := h.loadMacros(r, orgID)
+	result := validator.ValidateConditionWithMacros(rule.Condition, macros)
 	if result.Valid {
 		rule.ValidationStatus = "valid"
 		rule.ValidationErrors = json.RawMessage(`[]`)
@@ -44,6 +47,23 @@ func validateAndSetStatus(rule *fleet.Rule) {
 		errJSON, _ := json.Marshal(result.Errors)
 		rule.ValidationErrors = errJSON
 	}
+}
+
+// loadMacros loads org macros and converts them for the QL parser.
+func (h *RuleHandler) loadMacros(r *http.Request, orgID string) map[string]*qlparser.Macro {
+	dbMacros, err := h.macros.List(r.Context(), orgID)
+	if err != nil || len(dbMacros) == 0 {
+		return nil
+	}
+	macros := make(map[string]*qlparser.Macro, len(dbMacros))
+	for _, m := range dbMacros {
+		macros[m.Name] = &qlparser.Macro{
+			ID:   m.Name,
+			Expr: m.Expr,
+			List: m.List,
+		}
+	}
+	return macros
 }
 
 // RuleHandler handles rule management API requests.
@@ -140,7 +160,7 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run condition validation
-	validateAndSetStatus(&rule)
+	h.validateAndSetStatus(r, &rule)
 	if rule.ValidationStatus == "invalid" {
 		rule.Enabled = false // invalid rules cannot be enabled
 	} else {
@@ -249,7 +269,7 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-validate condition
-	validateAndSetStatus(&rule)
+	h.validateAndSetStatus(r, &rule)
 	if rule.ValidationStatus == "invalid" {
 		rule.Enabled = false // invalid rules cannot be enabled
 	}
@@ -310,17 +330,8 @@ func (h *RuleHandler) Validate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run validation
-	condResult := validator.ValidateCondition(existing.Condition)
-	if condResult.Valid {
-		existing.ValidationStatus = "valid"
-		existing.ValidationErrors = json.RawMessage(`[]`)
-	} else {
-		existing.ValidationStatus = "invalid"
-		errJSON, _ := json.Marshal(condResult.Errors)
-		existing.ValidationErrors = errJSON
-		existing.Enabled = false // disable invalid rules
-	}
+	// Run validation with macros
+	h.validateAndSetStatus(r, existing)
 
 	if err := h.rules.Update(r.Context(), existing); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update rule")
@@ -330,8 +341,7 @@ func (h *RuleHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"rule_id":           ruleID,
 		"validation_status": existing.ValidationStatus,
-		"validation_errors": condResult.Errors,
-		"warnings":          condResult.Warnings,
+		"validation_errors": existing.ValidationErrors,
 	}})
 }
 
@@ -345,7 +355,9 @@ func (h *RuleHandler) ValidateCondition(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	result := validator.ValidateCondition(req.Condition)
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	macros := h.loadMacros(r, orgID)
+	result := validator.ValidateConditionWithMacros(req.Condition, macros)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: result})
 }
 
@@ -362,7 +374,7 @@ func (h *RuleHandler) ValidateAll(w http.ResponseWriter, r *http.Request) {
 	validated := 0
 	invalid := 0
 	for _, rule := range rules {
-		validateAndSetStatus(rule)
+		h.validateAndSetStatus(r, rule)
 		if rule.ValidationStatus == "invalid" {
 			rule.Enabled = false
 			invalid++

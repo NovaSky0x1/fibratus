@@ -158,7 +158,7 @@ func (s *Server) Run(ctx context.Context) error {
 	dbAdminHandler := handler.NewDBAdminHandler(db, chDB)
 	groupHandler := handler.NewGroupHandler(groupStore)
 	handler.SetGitHubSyncDB(db)
-	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, auditStore, userStore)
+	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 
 	// ═══════════════════════════════════════════════════════════

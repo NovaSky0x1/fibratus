@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/qlparser"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/validator"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
@@ -50,19 +51,38 @@ type GitHubSyncConfig struct {
 // GitHubSyncHandler manages GitHub-based detection rule synchronization.
 type GitHubSyncHandler struct {
 	rules  store.RuleStore
+	macros store.MacroStore
 	audit  store.AuditStore
 	users  store.UserStore
 	client *http.Client
 }
 
 // NewGitHubSyncHandler creates a new GitHub sync handler.
-func NewGitHubSyncHandler(rules store.RuleStore, audit store.AuditStore, users store.UserStore) *GitHubSyncHandler {
+func NewGitHubSyncHandler(rules store.RuleStore, macros store.MacroStore, audit store.AuditStore, users store.UserStore) *GitHubSyncHandler {
 	return &GitHubSyncHandler{
 		rules:  rules,
+		macros: macros,
 		audit:  audit,
 		users:  users,
 		client: &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// loadMacros loads org macros and converts them for the QL parser.
+func (h *GitHubSyncHandler) loadMacros(ctx context.Context, orgID string) map[string]*qlparser.Macro {
+	dbMacros, err := h.macros.List(ctx, orgID)
+	if err != nil || len(dbMacros) == 0 {
+		return nil
+	}
+	macros := make(map[string]*qlparser.Macro, len(dbMacros))
+	for _, m := range dbMacros {
+		macros[m.Name] = &qlparser.Macro{
+			ID:   m.Name,
+			Expr: m.Expr,
+			List: m.List,
+		}
+	}
+	return macros
 }
 
 // GetConfig handles GET /api/v1/orgs/{org_id}/github-sync
@@ -221,8 +241,9 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 			rule.Severity = "medium"
 		}
 
-		// Run condition validation using the real QL parser
-		condResult := validator.ValidateCondition(rule.Condition)
+		// Run condition validation using the real QL parser with macros
+		macros := h.loadMacros(ctx, orgID)
+		condResult := validator.ValidateConditionWithMacros(rule.Condition, macros)
 		if condResult.Valid {
 			rule.ValidationStatus = "valid"
 			rule.ValidationErrors = json.RawMessage(`[]`)
