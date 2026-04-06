@@ -1,16 +1,16 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
   xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
   xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package Name="Fibratus"
       Version="$(var.VERSION)"
-      Manufacturer="Nedim Sabic Sabic &lt;https://www.fibratus.io&gt;"
+      Manufacturer="NovaSky Security &lt;https://novasky.io&gt;"
       UpgradeCode="E81B8794-3277-47F9-BE58-2EF2D20930EC"
       InstallerVersion="200"
       Compressed="yes"
       Language="1033">
-    <SummaryInformation Description="Fibratus Installer" />
+    <SummaryInformation Description="Fibratus EDR Agent Installer" />
 
     <Media Id="1" Cabinet="fibratus.cab" EmbedCab="yes" />
 
@@ -20,15 +20,19 @@
 
     <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A later version of [ProductName] is already installed" AllowSameVersionUpgrades="yes" />
 
+    <!-- Enrollment properties — pass via msiexec /i fibratus.msi ENROLLMENT_TOKEN=ft-... SERVER_URL=https://... -->
+    <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
+    <Property Id="SERVER_URL" Secure="yes" />
+
     <UI Id="UI">
       <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLDIR" />
     </UI>
 
     <!-- Custom banners -->
-    <WixVariable Id="WixUIDialogBmp" Value="background.png" /> <!-- Background bitmap used on the welcome and completion dialogs, should be 493 × 312 pixels -->
-    <WixVariable Id="WixUIBannerBmp" Value="banner.png" />  <!-- Top banner, should be 493 × 58 pixels -->
+    <WixVariable Id="WixUIDialogBmp" Value="background.png" /> <!-- Background bitmap used on the welcome and completion dialogs, should be 493 x 312 pixels -->
+    <WixVariable Id="WixUIBannerBmp" Value="banner.png" />  <!-- Top banner, should be 493 x 58 pixels -->
 
-    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="You're all set up! Fibratus is running and securing your endpoint." />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Fibratus EDR agent is installed and running. If enrollment parameters were provided, the agent will automatically connect to the fleet server." />
 
     <!-- License -->
     <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf"/>
@@ -50,7 +54,7 @@
             Start="auto"
             ErrorControl="normal" Vital="yes">
           <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart"
-              ThirdFailureActionType="restart" RestartServiceDelayInSeconds="60" />
+              ThirdFailureActionType="restart" RestartServiceDelayInSeconds="10" />
         </ServiceInstall>
         <ServiceControl Id="Fibratus" Name="Fibratus" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
       </Component>
@@ -74,10 +78,15 @@
     <Property Id="ConfigureServiceRecovery" Value="&quot;SC.EXE&quot; failureflag fibratus 1" />
     <CustomAction Id="ConfigureServiceRecovery" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec" Impersonate="no" Execute="deferred" Return="ignore" />
 
+    <!-- Enrollment custom action — runs fibratus enroll if token and server are provided -->
+    <Property Id="EnrollAgent" Value="&quot;[INSTALLDIR]Bin\fibratus.exe&quot; enroll --token [ENROLLMENT_TOKEN] --server [SERVER_URL] --insecure" />
+    <CustomAction Id="EnrollAgent" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec" Impersonate="no" Execute="deferred" Return="ignore" />
+
     <util:CloseApplication Id="CloseSystray" CloseMessage="yes" Target="fibratus-systray.exe" RebootPrompt="no" />
 
     <InstallExecuteSequence>
       <Custom Action="ConfigureServiceRecovery" After="InstallServices" Condition="NOT REMOVE" />
+      <Custom Action="EnrollAgent" After="ConfigureServiceRecovery" Condition="NOT REMOVE AND ENROLLMENT_TOKEN AND SERVER_URL" />
     </InstallExecuteSequence>
 
   </Package>
