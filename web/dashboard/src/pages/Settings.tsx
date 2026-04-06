@@ -943,173 +943,199 @@ function SecuritySection() {
 
 function GitHubSyncSection() {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ repo_url: '', branch: 'main', path: 'rules/', token: '', interval: 30, enabled: false })
-  const [loaded, setLoaded] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number; errors: string[]; duration: string } | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [form, setForm] = useState({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true })
+  const [editId, setEditId] = useState<string | null>(null)
+  const [syncResult, setSyncResult] = useState<Record<string, unknown> | null>(null)
 
   const { data } = useQuery({
-    queryKey: ['github-sync-config'],
-    queryFn: () => api.getGitHubSyncConfig(),
+    queryKey: ['github-sync-configs'],
+    queryFn: () => api.listGitHubSyncConfigs(),
+  })
+  const configs = (data?.data || []) as Record<string, unknown>[]
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.saveGitHubSyncConfig({ ...form, id: editId || undefined, scope: 'account' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['github-sync-configs'] })
+      setShowAdd(false)
+      setEditId(null)
+      setForm({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true })
+    },
   })
 
-  // Load config into form on first fetch
-  if (data?.data && !loaded) {
-    const cfg = data.data as Record<string, unknown>
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteGitHubSyncConfig(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['github-sync-configs'] }),
+  })
+
+  const syncAllMutation = useMutation({
+    mutationFn: () => api.triggerGitHubSync(),
+    onSuccess: (res) => {
+      if (res.data) setSyncResult(res.data as Record<string, unknown>)
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  const syncOneMutation = useMutation({
+    mutationFn: (id: string) => api.triggerGitHubSyncOne(id),
+    onSuccess: (res) => {
+      if (res.data) setSyncResult(res.data as Record<string, unknown>)
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  const startEdit = (cfg: Record<string, unknown>) => {
+    setEditId(cfg.id as string)
     setForm({
+      name: (cfg.name as string) || '',
       repo_url: (cfg.repo_url as string) || '',
       branch: (cfg.branch as string) || 'main',
-      path: (cfg.path as string) || 'rules/',
-      token: (cfg.token as string) === '***configured***' ? '' : '',
+      path: (cfg.path as string) || '',
+      token: '',
       interval: (cfg.interval as number) || 30,
       enabled: (cfg.enabled as boolean) || false,
     })
-    setLoaded(true)
+    setShowAdd(true)
   }
 
-  const [saveMsg, setSaveMsg] = useState('')
-  const [saveError, setSaveError] = useState('')
-
-  const saveMutation = useMutation({
-    mutationFn: () => api.saveGitHubSyncConfig({ ...form, scope: (form as Record<string, unknown>).scope as string || 'account' }),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['github-sync-config'] })
-      setSaveMsg('Configuration saved successfully')
-      setSaveError('')
-      if (res.error) setSaveError(res.error.message)
-      setTimeout(() => setSaveMsg(''), 3000)
-    },
-    onError: (err: Error) => {
-      setSaveError(err.message || 'Failed to save')
-      setSaveMsg('')
-    },
-  })
-
-  const syncMutation = useMutation({
-    mutationFn: () => api.triggerGitHubSync(),
-    onSuccess: (res) => {
-      if (res.data) setSyncResult(res.data as typeof syncResult)
-      if (res.error) setSaveError(res.error.message)
-      queryClient.invalidateQueries({ queryKey: ['rules'] })
-    },
-    onError: (err: Error) => {
-      setSaveError(err.message || 'Sync failed')
-    },
-  })
+  const inputCls = "w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
 
   return (
     <div className="mt-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">Detection as Code</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Sync detection rules from a GitHub repository. Rules are validated before import.</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Detection as Code</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Sync detection rules from GitHub repositories. Rules are validated before import.</p>
+        </div>
+        <div className="flex gap-2">
+          {configs.length > 0 && (
+            <button onClick={() => syncAllMutation.mutate()} disabled={syncAllMutation.isPending}
+              className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50">
+              {syncAllMutation.isPending ? 'Syncing...' : 'Sync All'}
+            </button>
+          )}
+          <button onClick={() => { setShowAdd(true); setEditId(null); setForm({ name: '', repo_url: '', branch: 'main', path: '', token: '', interval: 30, enabled: true }) }}
+            className="rounded-lg bg-fibratus-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-fibratus-700">
+            Add Source
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Repository URL</label>
-            <input
-              value={form.repo_url}
-              onChange={e => setForm({ ...form, repo_url: e.target.value })}
-              placeholder="https://github.com/owner/repo"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
-            />
-            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">GitHub repository URL. Supports github.com or api.github.com format. Recursively scans subdirectories for .yml/.yaml rule files.</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Branch</label>
-            <input
-              value={form.branch}
-              onChange={e => setForm({ ...form, branch: e.target.value })}
-              placeholder="main"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Rules Path</label>
-            <input
-              value={form.path}
-              onChange={e => setForm({ ...form, path: e.target.value })}
-              placeholder="rules/"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">GitHub Token (PAT)</label>
-            <input
-              type="password"
-              value={form.token}
-              onChange={e => setForm({ ...form, token: e.target.value })}
-              placeholder="ghp_..."
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
-            />
-            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Optional for public repos. Required for private repos.</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} className="rounded" />
-            <span className="text-sm text-gray-700 dark:text-slate-300">Enable automatic sync</span>
-          </label>
-          <select value={(form as Record<string, unknown>).scope as string || 'account'} onChange={e => setForm({ ...form, scope: e.target.value } as typeof form)}
-            className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-2 py-1 text-xs">
-            <option value="account">Account-wide (all orgs)</option>
-            <option value="org">This org only</option>
-          </select>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 dark:text-slate-400">every</span>
-            <input
-              type="number"
-              value={form.interval}
-              onChange={e => setForm({ ...form, interval: Number(e.target.value) })}
-              min={5}
-              className="w-16 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-2 py-1 text-sm text-center"
-            />
-            <span className="text-sm text-gray-500 dark:text-slate-400">minutes</span>
-          </div>
-        </div>
-
-        <div className="flex gap-3 pt-2">
-          <button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
-          >
-            {saveMutation.isPending ? 'Saving...' : 'Save Configuration'}
-          </button>
-          <button
-            onClick={() => syncMutation.mutate()}
-            disabled={syncMutation.isPending || !form.repo_url}
-            className="rounded-lg border border-fibratus-300 bg-fibratus-50 px-4 py-2 text-sm font-medium text-fibratus-700 hover:bg-fibratus-100 disabled:opacity-50"
-          >
-            {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
-          </button>
-        </div>
-
-        {saveMsg && <p className="mt-2 text-sm text-emerald-600 dark:text-emerald-400">{saveMsg}</p>}
-        {saveError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{saveError}</p>}
-
-        {syncResult && (
-          <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4">
-            <h4 className="text-sm font-medium text-gray-900 dark:text-slate-100">Sync Result</h4>
-            <div className="mt-2 flex gap-6 text-sm">
-              <span className="text-emerald-700">{syncResult.created} created</span>
-              <span className="text-blue-700">{syncResult.updated} updated</span>
-              <span className="text-gray-500">{syncResult.skipped} skipped</span>
-              <span className="text-gray-400">{syncResult.duration}</span>
-            </div>
-            {syncResult.errors && syncResult.errors.length > 0 && (
-              <div className="mt-2 max-h-32 overflow-auto">
-                {syncResult.errors.map((err, i) => (
-                  <div key={i} className="text-xs text-red-600 py-0.5">{err}</div>
-                ))}
+      {/* Existing sources */}
+      {configs.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {configs.map((cfg) => (
+            <div key={cfg.id as string} className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm dark:shadow-slate-900/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ' + ((cfg.enabled as boolean) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-400')}>
+                    {(cfg.enabled as boolean) ? 'Active' : 'Disabled'}
+                  </span>
+                  <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{cfg.name as string || 'Unnamed'}</span>
+                  <span className="text-xs font-mono text-gray-400 dark:text-slate-500">{cfg.branch as string}</span>
+                  {cfg.path && <span className="text-xs font-mono text-gray-400 dark:text-slate-500">/{cfg.path as string}</span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => syncOneMutation.mutate(cfg.id as string)} disabled={syncOneMutation.isPending}
+                    className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50">
+                    Sync
+                  </button>
+                  <button onClick={() => startEdit(cfg)}
+                    className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700">
+                    Edit
+                  </button>
+                  <button onClick={() => deleteMutation.mutate(cfg.id as string)}
+                    className="rounded border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
+                    Delete
+                  </button>
+                </div>
               </div>
-            )}
+              <div className="mt-1 text-xs font-mono text-gray-500 dark:text-slate-400 truncate">{cfg.repo_url as string}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {configs.length === 0 && !showAdd && (
+        <div className="mt-4 rounded-xl border border-dashed border-gray-300 dark:border-slate-600 p-8 text-center text-sm text-gray-400 dark:text-slate-500">
+          No GitHub sync sources configured. Click "Add Source" to connect a repository.
+        </div>
+      )}
+
+      {/* Add/Edit form */}
+      {showAdd && (
+        <div className="mt-4 rounded-xl border border-fibratus-200 dark:border-fibratus-800 bg-fibratus-50/30 dark:bg-slate-800 p-6 shadow-sm space-y-4">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">{editId ? 'Edit Source' : 'Add GitHub Source'}</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Name</label>
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="My Rules" className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Repository URL</label>
+              <input value={form.repo_url} onChange={e => setForm({ ...form, repo_url: e.target.value })} placeholder="https://github.com/owner/repo" className={inputCls + ' font-mono'} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Branch</label>
+              <input value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })} placeholder="main" className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Rules Path</label>
+              <input value={form.path} onChange={e => setForm({ ...form, path: e.target.value })} placeholder="rules/" className={inputCls + ' font-mono'} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">GitHub Token (PAT)</label>
+              <input type="password" value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} placeholder={editId ? '(unchanged)' : 'ghp_...'} className={inputCls + ' font-mono'} />
+            </div>
+            <div className="flex items-end gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} className="rounded" />
+                <span className="text-sm text-gray-700 dark:text-slate-300">Auto-sync</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500">every</span>
+                <input type="number" value={form.interval} onChange={e => setForm({ ...form, interval: Number(e.target.value) })} min={5}
+                  className="w-14 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-1.5 py-1 text-xs text-center" />
+                <span className="text-xs text-gray-500">min</span>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+          <div className="flex gap-3">
+            <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.repo_url}
+              className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50">
+              {saveMutation.isPending ? 'Saving...' : editId ? 'Update' : 'Add Source'}
+            </button>
+            <button onClick={() => { setShowAdd(false); setEditId(null) }}
+              className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sync result */}
+      {syncResult && (
+        <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-gray-900 dark:text-slate-100">Sync Result</h4>
+            <button onClick={() => setSyncResult(null)} className="text-xs text-gray-400 hover:text-gray-600">dismiss</button>
+          </div>
+          <div className="mt-2 flex gap-6 text-sm">
+            <span className="text-emerald-600 dark:text-emerald-400">{syncResult.created as number || 0} created</span>
+            <span className="text-blue-600 dark:text-blue-400">{syncResult.updated as number || 0} updated</span>
+            <span className="text-red-600 dark:text-red-400">{syncResult.deleted as number || 0} deleted</span>
+            <span className="text-gray-500">{syncResult.skipped as number || 0} skipped</span>
+          </div>
+          {(syncResult.errors as string[])?.length > 0 && (
+            <div className="mt-2 max-h-32 overflow-auto">
+              {(syncResult.errors as string[]).map((err, i) => (
+                <div key={i} className="text-xs text-red-600 dark:text-red-400 py-0.5">{err}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

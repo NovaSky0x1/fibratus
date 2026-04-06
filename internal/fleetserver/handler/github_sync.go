@@ -20,6 +20,7 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -38,6 +39,8 @@ import (
 
 // GitHubSyncConfig holds config for syncing rules from a GitHub repository.
 type GitHubSyncConfig struct {
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name"`        // user-friendly label
 	RepoURL   string `json:"repo_url"`
 	Branch    string `json:"branch"`
 	Path      string `json:"path"`
@@ -85,19 +88,19 @@ func (h *GitHubSyncHandler) loadMacros(ctx context.Context, orgID string) map[st
 	return macros
 }
 
-// GetConfig handles GET /api/v1/orgs/{org_id}/github-sync
-func (h *GitHubSyncHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
+// ListConfigs handles GET /api/v1/orgs/{org_id}/github-sync
+func (h *GitHubSyncHandler) ListConfigs(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	cfg := loadGitHubSyncConfig(orgID)
-	// Never expose the token
-	cfg.Token = ""
-	if cfg.RepoURL != "" {
-		cfg.Token = "***configured***"
+	configs := loadAllSyncConfigs(orgID)
+	for i := range configs {
+		if configs[i].Token != "" {
+			configs[i].Token = "***configured***"
+		}
 	}
-	writeJSON(w, http.StatusOK, fleet.Response{Data: cfg})
+	writeJSON(w, http.StatusOK, fleet.Response{Data: configs})
 }
 
-// SaveConfig handles PUT /api/v1/orgs/{org_id}/github-sync
+// SaveConfig handles POST /api/v1/orgs/{org_id}/github-sync
 func (h *GitHubSyncHandler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	accountID := ctxutil.AccountIDFromContext(r.Context())
@@ -109,19 +112,15 @@ func (h *GitHubSyncHandler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-convert GitHub web URLs to API URLs
-	// e.g., "https://github.com/owner/repo" → "https://api.github.com/repos/owner/repo"
 	if strings.HasPrefix(cfg.RepoURL, "https://github.com/") {
 		path := strings.TrimPrefix(cfg.RepoURL, "https://github.com/")
 		path = strings.TrimSuffix(path, "/")
-		// Remove /tree/branch/path if present
 		if idx := strings.Index(path, "/tree/"); idx >= 0 {
 			path = path[:idx]
 		}
 		cfg.RepoURL = "https://api.github.com/repos/" + path
 	}
 	cfg.RepoURL = strings.TrimSuffix(cfg.RepoURL, "/")
-
 	if cfg.Branch == "" {
 		cfg.Branch = "main"
 	}
@@ -132,31 +131,86 @@ func (h *GitHubSyncHandler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 	if cfg.Scope == "" {
 		cfg.Scope = "account"
 	}
+	if cfg.Name == "" {
+		parts := strings.Split(cfg.RepoURL, "/")
+		if len(parts) > 0 {
+			cfg.Name = parts[len(parts)-1]
+		}
+	}
 	cfg.AccountID = accountID
-
-	saveGitHubSyncConfig(orgID, &cfg)
-	logAudit(r, h.audit, h.users, userID, orgID, "update", "github_sync", "", "GitHub sync config (scope="+cfg.Scope+")", nil)
-	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "saved"}})
+	saveSyncConfig(orgID, &cfg)
+	logAudit(r, h.audit, h.users, userID, orgID, "update", "github_sync", cfg.ID, cfg.Name, nil)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: cfg})
 }
 
-// TriggerSync handles POST /api/v1/orgs/{org_id}/github-sync/trigger
+// DeleteConfig handles DELETE /api/v1/orgs/{org_id}/github-sync/{id}
+func (h *GitHubSyncHandler) DeleteConfig(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	parts := strings.Split(r.URL.Path, "/github-sync/")
+	if len(parts) < 2 || parts[1] == "" {
+		writeError(w, http.StatusBadRequest, "config ID required")
+		return
+	}
+	configID := strings.TrimSuffix(strings.TrimSuffix(parts[1], "/"), "/trigger")
+	if githubSyncDB != nil {
+		githubSyncDB.Exec(`DELETE FROM github_sync_configs WHERE id = $1 AND org_id = $2`, configID, orgID)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// TriggerSync handles POST /api/v1/orgs/{org_id}/github-sync/trigger — syncs ALL sources
 func (h *GitHubSyncHandler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	userID := ctxutil.UserIDFromContext(r.Context())
-	cfg := loadGitHubSyncConfig(orgID)
-
-	if cfg.RepoURL == "" {
-		writeError(w, http.StatusBadRequest, "GitHub sync not configured")
+	configs := loadAllSyncConfigs(orgID)
+	if len(configs) == 0 {
+		writeError(w, http.StatusBadRequest, "no GitHub sync sources configured")
 		return
 	}
+	allResults := &SyncResult{}
+	for _, cfg := range configs {
+		if cfg.RepoURL == "" {
+			continue
+		}
+		result, err := h.syncFromGitHub(r.Context(), orgID, cfg)
+		if err != nil {
+			allResults.Errors = append(allResults.Errors, cfg.Name+": "+err.Error())
+			continue
+		}
+		allResults.Created += result.Created
+		allResults.Updated += result.Updated
+		allResults.Deleted += result.Deleted
+		allResults.Skipped += result.Skipped
+		allResults.Invalid += result.Invalid
+		allResults.Errors = append(allResults.Errors, result.Errors...)
+		allResults.ValidationErrors = append(allResults.ValidationErrors, result.ValidationErrors...)
+	}
+	allResults.Duration = time.Since(time.Now()).String()
+	logAudit(r, h.audit, h.users, userID, orgID, "execute", "github_sync", "", "Sync all sources", allResults)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: allResults})
+}
 
+// TriggerSyncOne handles POST /api/v1/orgs/{org_id}/github-sync/{id}/trigger
+func (h *GitHubSyncHandler) TriggerSyncOne(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	userID := ctxutil.UserIDFromContext(r.Context())
+	parts := strings.Split(r.URL.Path, "/github-sync/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "config ID required")
+		return
+	}
+	configID := strings.TrimSuffix(parts[1], "/trigger")
+	cfg := loadSyncConfigByID(orgID, configID)
+	if cfg == nil || cfg.RepoURL == "" {
+		writeError(w, http.StatusBadRequest, "sync source not found")
+		return
+	}
 	result, err := h.syncFromGitHub(r.Context(), orgID, cfg)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "sync failed: "+err.Error())
 		return
 	}
-
-	logAudit(r, h.audit, h.users, userID, orgID, "execute", "github_sync", "", "Manual sync trigger", result)
+	logAudit(r, h.audit, h.users, userID, orgID, "execute", "github_sync", configID, "Sync: "+cfg.Name, result)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: result})
 }
 
@@ -399,64 +453,82 @@ func SetGitHubSyncDB(db *sql.DB) {
 	githubSyncDB = db
 }
 
-// loadGitHubSyncConfig loads config — tries account-level first, then org-level
-func loadGitHubSyncConfig(orgID string) *GitHubSyncConfig {
-	cfg := &GitHubSyncConfig{Branch: "main", Path: "", Interval: 30, Scope: "account"}
+// loadAllSyncConfigs returns all sync configs for an org (including account-level).
+func loadAllSyncConfigs(orgID string) []*GitHubSyncConfig {
 	if githubSyncDB == nil {
-		return cfg
+		return nil
 	}
-	// Try org-specific first, then account-level
+	rows, err := githubSyncDB.Query(
+		`SELECT COALESCE(id,''), COALESCE(name,''), repo_url, branch, path, token, interval_min, enabled, COALESCE(scope,'account'), COALESCE(account_id,'')
+		 FROM github_sync_configs
+		 WHERE org_id = $1 OR account_id = (SELECT account_id FROM organizations WHERE id = $1)
+		 ORDER BY name ASC`, orgID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var configs []*GitHubSyncConfig
+	for rows.Next() {
+		cfg := &GitHubSyncConfig{}
+		if rows.Scan(&cfg.ID, &cfg.Name, &cfg.RepoURL, &cfg.Branch, &cfg.Path, &cfg.Token, &cfg.Interval, &cfg.Enabled, &cfg.Scope, &cfg.AccountID) == nil {
+			configs = append(configs, cfg)
+		}
+	}
+	return configs
+}
+
+// loadSyncConfigByID returns a single sync config by ID.
+func loadSyncConfigByID(orgID, id string) *GitHubSyncConfig {
+	if githubSyncDB == nil {
+		return nil
+	}
+	cfg := &GitHubSyncConfig{}
 	row := githubSyncDB.QueryRow(
-		`SELECT repo_url, branch, path, token, interval_min, enabled, COALESCE(scope, 'account'), COALESCE(account_id, '')
-		 FROM github_sync_configs WHERE org_id = $1 OR account_id = (SELECT account_id FROM organizations WHERE id = $1)
-		 ORDER BY CASE WHEN org_id = $1 THEN 0 ELSE 1 END LIMIT 1`, orgID)
-	if err := row.Scan(&cfg.RepoURL, &cfg.Branch, &cfg.Path, &cfg.Token, &cfg.Interval, &cfg.Enabled, &cfg.Scope, &cfg.AccountID); err != nil {
-		return cfg
+		`SELECT COALESCE(id,''), COALESCE(name,''), repo_url, branch, path, token, interval_min, enabled, COALESCE(scope,'account'), COALESCE(account_id,'')
+		 FROM github_sync_configs WHERE id = $1 AND (org_id = $2 OR account_id = (SELECT account_id FROM organizations WHERE id = $2))`, id, orgID)
+	if row.Scan(&cfg.ID, &cfg.Name, &cfg.RepoURL, &cfg.Branch, &cfg.Path, &cfg.Token, &cfg.Interval, &cfg.Enabled, &cfg.Scope, &cfg.AccountID) != nil {
+		return nil
 	}
 	return cfg
 }
 
-// loadAccountSyncConfig loads config specifically for an account
-func loadAccountSyncConfig(accountID string) *GitHubSyncConfig {
-	cfg := &GitHubSyncConfig{Branch: "main", Path: "", Interval: 30, Scope: "account", AccountID: accountID}
-	if githubSyncDB == nil {
-		return cfg
-	}
-	row := githubSyncDB.QueryRow(
-		`SELECT repo_url, branch, path, token, interval_min, enabled FROM github_sync_configs WHERE account_id = $1 AND scope = 'account' LIMIT 1`, accountID)
-	row.Scan(&cfg.RepoURL, &cfg.Branch, &cfg.Path, &cfg.Token, &cfg.Interval, &cfg.Enabled)
-	return cfg
-}
-
-func saveGitHubSyncConfig(orgID string, cfg *GitHubSyncConfig) {
+func saveSyncConfig(orgID string, cfg *GitHubSyncConfig) {
 	if githubSyncDB == nil {
 		return
 	}
 	accountID := cfg.AccountID
 	if accountID == "" {
-		// Look up account from org
 		githubSyncDB.QueryRow(`SELECT account_id FROM organizations WHERE id = $1`, orgID).Scan(&accountID)
 	}
-	scope := cfg.Scope
-	if scope == "" {
-		scope = "account"
+	if cfg.Scope == "" {
+		cfg.Scope = "account"
+	}
+	if cfg.ID == "" {
+		// New config — generate ID
+		b := make([]byte, 16)
+		rand.Read(b)
+		cfg.ID = fmt.Sprintf("%x", b)
 	}
 
-	// Delete existing configs for this account/org to avoid duplicates
-	if scope == "account" {
-		githubSyncDB.Exec(`DELETE FROM github_sync_configs WHERE account_id = $1 AND scope = 'account'`, accountID)
-	} else {
-		githubSyncDB.Exec(`DELETE FROM github_sync_configs WHERE org_id = $1 AND scope = 'org'`, orgID)
+	// Upsert: try update first, then insert
+	res, _ := githubSyncDB.Exec(
+		`UPDATE github_sync_configs SET name=$3, repo_url=$4, branch=$5, path=$6, token=CASE WHEN $7='' THEN token ELSE $7 END,
+			interval_min=$8, enabled=$9, scope=$10, updated_at=NOW()
+		 WHERE id=$1 AND org_id=$2`,
+		cfg.ID, orgID, cfg.Name, cfg.RepoURL, cfg.Branch, cfg.Path, cfg.Token, cfg.Interval, cfg.Enabled, cfg.Scope)
+	if n, _ := res.RowsAffected(); n == 0 {
+		token := cfg.Token
+		if token == "" {
+			token = ""
+		}
+		githubSyncDB.Exec(
+			`INSERT INTO github_sync_configs (id, account_id, org_id, name, repo_url, branch, path, token, interval_min, enabled, scope, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+			cfg.ID, accountID, orgID, cfg.Name, cfg.RepoURL, cfg.Branch, cfg.Path, token, cfg.Interval, cfg.Enabled, cfg.Scope)
 	}
-
-	githubSyncDB.Exec(
-		`INSERT INTO github_sync_configs (account_id, org_id, repo_url, branch, path, token, interval_min, enabled, scope, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-		accountID, orgID, cfg.RepoURL, cfg.Branch, cfg.Path, cfg.Token, cfg.Interval, cfg.Enabled, scope)
 }
 
-// StartPeriodicSync starts background goroutines for each configured org.
-// Call this from server startup.
+// StartPeriodicSync starts background goroutines for each configured sync source.
 func (h *GitHubSyncHandler) StartPeriodicSync(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
@@ -468,38 +540,29 @@ func (h *GitHubSyncHandler) StartPeriodicSync(ctx context.Context) {
 					continue
 				}
 				rows, err := githubSyncDB.QueryContext(ctx,
-					`SELECT DISTINCT COALESCE(account_id, org_id) as key, account_id, org_id, scope FROM github_sync_configs WHERE enabled = true AND repo_url != ''`)
+					`SELECT COALESCE(id,''), org_id, COALESCE(name,''), repo_url, branch, path, token, interval_min, COALESCE(scope,'account'), COALESCE(account_id,'')
+					 FROM github_sync_configs WHERE enabled = true AND repo_url != ''`)
 				if err != nil {
 					continue
 				}
-				type syncJob struct {
-					accountID, orgID, scope string
-				}
-				var jobs []syncJob
+				var configs []*GitHubSyncConfig
+				var orgIDs []string
 				for rows.Next() {
-					var j syncJob
-					var key string
-					if rows.Scan(&key, &j.accountID, &j.orgID, &j.scope) == nil {
-						jobs = append(jobs, j)
+					cfg := &GitHubSyncConfig{}
+					var oid string
+					if rows.Scan(&cfg.ID, &oid, &cfg.Name, &cfg.RepoURL, &cfg.Branch, &cfg.Path, &cfg.Token, &cfg.Interval, &cfg.Scope, &cfg.AccountID) == nil {
+						configs = append(configs, cfg)
+						orgIDs = append(orgIDs, oid)
 					}
 				}
 				rows.Close()
 
-				for _, job := range jobs {
-					var cfg *GitHubSyncConfig
-					if job.scope == "account" {
-						cfg = loadAccountSyncConfig(job.accountID)
-					} else {
-						cfg = loadGitHubSyncConfig(job.orgID)
-					}
-					if cfg.RepoURL == "" {
-						continue
-					}
-					result, err := h.syncFromGitHub(ctx, job.orgID, cfg)
+				for i, cfg := range configs {
+					result, err := h.syncFromGitHub(ctx, orgIDs[i], cfg)
 					if err != nil {
-						log.Warnf("fleet: GitHub periodic sync failed: %v", err)
-					} else if result.Created > 0 || result.Updated > 0 {
-						log.Infof("fleet: GitHub periodic sync: %d created, %d updated", result.Created, result.Updated)
+						log.Warnf("fleet: periodic sync %q failed: %v", cfg.Name, err)
+					} else if result.Created > 0 || result.Updated > 0 || result.Deleted > 0 {
+						log.Infof("fleet: periodic sync %q: %d created, %d updated, %d deleted", cfg.Name, result.Created, result.Updated, result.Deleted)
 					}
 				}
 			case <-ctx.Done():

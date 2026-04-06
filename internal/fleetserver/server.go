@@ -322,13 +322,17 @@ func (s *Server) Run(ctx context.Context) error {
 		case strings.HasPrefix(subpath, "/macros/") && r.Method == http.MethodDelete:
 			macroHandler.Delete(w, r)
 
-		// GitHub Sync
+		// GitHub Sync (multi-repo)
 		case subpath == "/github-sync" && r.Method == http.MethodGet:
-			githubSyncHandler.GetConfig(w, r)
-		case subpath == "/github-sync" && r.Method == http.MethodPut:
+			githubSyncHandler.ListConfigs(w, r)
+		case subpath == "/github-sync" && r.Method == http.MethodPost:
 			githubSyncHandler.SaveConfig(w, r)
 		case subpath == "/github-sync/trigger" && r.Method == http.MethodPost:
 			githubSyncHandler.TriggerSync(w, r)
+		case strings.HasSuffix(subpath, "/trigger") && strings.HasPrefix(subpath, "/github-sync/") && r.Method == http.MethodPost:
+			githubSyncHandler.TriggerSyncOne(w, r)
+		case strings.HasPrefix(subpath, "/github-sync/") && r.Method == http.MethodDelete:
+			githubSyncHandler.DeleteConfig(w, r)
 
 		// Audit Log
 		case subpath == "/audit-log" && r.Method == http.MethodGet:

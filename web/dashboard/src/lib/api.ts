@@ -378,11 +378,15 @@ export const api = {
   },
 
   // GitHub Sync
-  getGitHubSyncConfig: () => fetchApi<unknown>(orgPath('/github-sync')),
-  saveGitHubSyncConfig: (data: { repo_url: string; branch: string; path: string; token: string; interval: number; enabled: boolean; scope?: string }) =>
-    fetchApi<unknown>(orgPath('/github-sync'), { method: 'PUT', body: JSON.stringify(data) }),
+  listGitHubSyncConfigs: () => fetchApi<unknown[]>(orgPath('/github-sync')),
+  saveGitHubSyncConfig: (data: Record<string, unknown>) =>
+    fetchApi<unknown>(orgPath('/github-sync'), { method: 'POST', body: JSON.stringify(data) }),
+  deleteGitHubSyncConfig: (id: string) =>
+    fetchApi<void>(orgPath(`/github-sync/${id}`), { method: 'DELETE' }),
   triggerGitHubSync: () =>
-    fetchApi<{ created: number; updated: number; skipped: number; errors: string[]; duration: string }>(orgPath('/github-sync/trigger'), { method: 'POST' }),
+    fetchApi<unknown>(orgPath('/github-sync/trigger'), { method: 'POST' }),
+  triggerGitHubSyncOne: (id: string) =>
+    fetchApi<unknown>(orgPath(`/github-sync/${id}/trigger`), { method: 'POST' }),
 
   // Account Settings
   getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string }>('/account/settings'),
