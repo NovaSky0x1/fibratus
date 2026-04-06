@@ -146,26 +146,9 @@ func (h *InstallHandler) Binary(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "fibratus.exe", stat.ModTime(), f)
 }
 
-// MSI handles GET /api/v1/agent/msi — serves the agent MSI installer.
+// MSI handles GET /api/v1/agent/msi — redirects to the GitHub release MSI.
 func (h *InstallHandler) MSI(w http.ResponseWriter, r *http.Request) {
-	paths := []string{
-		"/opt/fibratus-fleet/downloads/fibratus-1.0.0-slim-amd64.msi",
-		"build/msi/fibratus-1.0.0-slim-amd64.msi",
-	}
-	for _, p := range paths {
-		f, err := os.Open(p)
-		if err != nil {
-			continue
-		}
-		defer f.Close()
-		stat, _ := f.Stat()
-		w.Header().Set("Content-Type", "application/x-msi")
-		w.Header().Set("Content-Disposition", "attachment; filename=fibratus.msi")
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", stat.Size()))
-		http.ServeContent(w, r, "fibratus.msi", stat.ModTime(), f)
-		return
-	}
-	writeError(w, http.StatusNotFound, "agent MSI not available")
+	http.Redirect(w, r, "https://github.com/NovaSky0x1/fibratus/releases/download/v1.0.0-rc1/fibratus-1.0.0-amd64.msi", http.StatusFound)
 }
 
 // Config handles GET /api/v1/agent/config — serves the default agent config.
