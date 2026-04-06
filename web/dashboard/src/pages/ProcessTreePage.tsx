@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, type Detection } from '../lib/api'
@@ -51,7 +51,7 @@ export default function ProcessTreePage() {
     refetchOnWindowFocus: false,
   })
 
-  const [selectedPid, setSelectedPid] = useState<number | null>(null)
+  const [selectedPid] = useState<number | null>(null)
 
   // For event mode, build a synthetic detection-like object so DetectionProcessGraph works
   const syntheticDetection = useMemo((): Detection | null => {
@@ -66,13 +66,16 @@ export default function ProcessTreePage() {
       agent_id: agentId || '',
       agent_hostname: firstEvt?.process_name || '',
       rule_name: `Process Tree — PID ${pidParam}`,
+      title: `Process Tree — PID ${pidParam}`,
+      text: '',
+      description: '',
       rule_id: '',
       severity: 'medium',
-      output: '',
+      labels: {},
+      tags: [],
       events: '[]',
       timestamp: tsParam || new Date().toISOString(),
-      created_at: tsParam || new Date().toISOString(),
-    } as Detection
+    } as unknown as Detection
   }, [detection, treeData, agentId, pidParam, tsParam])
 
   // Events for the detail panel (from either mode)
@@ -181,7 +184,7 @@ export default function ProcessTreePage() {
               {detection ? (
                 <div className="text-center space-y-2 px-6">
                   <p className="font-medium text-gray-900 dark:text-slate-100">{detection.rule_name}</p>
-                  <p className="text-xs">{detection.output}</p>
+                  <p className="text-xs">{detection.text || detection.description}</p>
                   <p className="text-[10px] text-gray-400">Click a process node to see its events</p>
                 </div>
               ) : (
