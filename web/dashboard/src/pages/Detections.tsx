@@ -334,7 +334,7 @@ function EventCard({ evt }: { evt: DetectionEvent }) {
         <span className="rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 text-xs font-medium">{evt.name || 'Unknown'}</span>
         {evt.category && <span className="text-xs text-gray-400 dark:text-slate-500">{evt.category}</span>}
         {/* Key detail inline: DNS name, file path, registry key, network dest */}
-        {params.name && (evt.name === 'QueryDns' || evt.name === 'ReplyDns') && (
+        {!!params.name && (evt.name === 'QueryDns' || evt.name === 'ReplyDns') && (
           <span className="rounded bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-300 px-2 py-0.5 text-xs font-mono font-medium">{String(params.name)}</span>
         )}
         {!!params.file_path && (
@@ -346,7 +346,7 @@ function EventCard({ evt }: { evt: DetectionEvent }) {
         {!!params.key_name && (
           <span className="text-xs font-mono text-gray-600 dark:text-slate-400 truncate max-w-md">{String(params.key_name)}</span>
         )}
-        {params.dip && (
+        {!!params.dip && (
           <span className="text-xs font-mono text-gray-600 dark:text-slate-400">{String(params.dip)}:{String(params.dport || '')}</span>
         )}
         {evt.timestamp && <span className="ml-auto text-xs text-gray-400 dark:text-slate-500">{new Date(evt.timestamp).toLocaleString()}</span>}
