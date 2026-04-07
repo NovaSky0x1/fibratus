@@ -51,7 +51,7 @@ export default function Detections() {
   // Fetch rules to resolve rule links
   const { data: rulesData } = useQuery({
     queryKey: ['rules-for-lookup'],
-    queryFn: () => api.getRules(),
+    queryFn: () => api.getRules({ per_page: '1000' }),
     staleTime: 60000,
   })
   const rulesMap = new Map<string, Rule>()
