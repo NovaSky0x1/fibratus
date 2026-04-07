@@ -300,9 +300,9 @@ export const api = {
   },
   getDetectionProcessTree: (id: string) =>
     fetchApi<{ detection: Detection; events: unknown[] }>(orgPath(`/detections/${id}/process-tree`)),
-  getDetectionProcessContext: (id: string, pid: number) =>
+  getDetectionProcessContext: (id: string, pid: number, ancestorsOnly = false) =>
     fetchApi<{ events: unknown[]; target_pid: number; parent_pid: number; child_pids: Record<number, boolean> }>(
-      orgPath(`/detections/${id}/process-context?pid=${pid}`)
+      orgPath(`/detections/${id}/process-context?pid=${pid}${ancestorsOnly ? '&ancestors=true' : ''}`)
     ),
 
   // Rules (org-scoped)

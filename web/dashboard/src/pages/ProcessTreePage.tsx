@@ -55,7 +55,7 @@ export default function ProcessTreePage() {
     setLoadingPid(pid)
     try {
       if (detectionId) {
-        const res = await api.getDetectionProcessContext(detectionId, pid)
+        const res = await api.getDetectionProcessContext(detectionId, pid, true)
         const d = (res.data || {}) as Record<string, unknown>
         if (d.events) setExtraEvents(prev => [...prev, ...(d.events as TelemetryEvent[])])
       } else if (agentId) {

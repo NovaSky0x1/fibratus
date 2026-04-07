@@ -371,6 +371,7 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 	detID = strings.TrimSuffix(detID, "/process-context/")
 
 	targetPID := intParam(r, "pid", 0)
+	ancestorsOnly := r.URL.Query().Get("ancestors") == "true"
 	if targetPID <= 0 {
 		writeError(w, http.StatusBadRequest, "pid parameter required")
 		return
@@ -416,20 +417,20 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Query children
-	childEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-		AgentID: det.AgentID, ParentPID: targetPID, From: from, To: to, Limit: 500,
-	})
-
+	// Query children (skip if ancestors-only mode)
 	children := make(map[int]bool)
-	for _, evt := range childEvents {
-		if evt.PID != targetPID {
-			children[evt.PID] = true
-		}
-	}
-
 	filtered := append(targetEvents, parentEvents...)
-	filtered = append(filtered, childEvents...)
+	if !ancestorsOnly {
+		childEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: det.AgentID, ParentPID: targetPID, From: from, To: to, Limit: 500,
+		})
+		for _, evt := range childEvents {
+			if evt.PID != targetPID {
+				children[evt.PID] = true
+			}
+		}
+		filtered = append(filtered, childEvents...)
+	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{

@@ -297,7 +297,7 @@ function DetectionTreeTab({ detection, focusPid }: { detection: Detection; focus
   const loadContext = async (pid: number) => {
     setLoadingPid(pid)
     try {
-      const res = await api.getDetectionProcessContext(detection.id, pid)
+      const res = await api.getDetectionProcessContext(detection.id, pid, true)
       if (res.data?.events) setExtraEvents(prev => [...prev, ...(res.data!.events as unknown[])])
     } finally {
       setLoadingPid(null)
