@@ -258,32 +258,42 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	triggerPIDs, ancestryPIDs := extractDetectionPIDs(det.Events)
 	log.Infof("fleet: process tree for detection %s: triggerPIDs=%v ancestryPIDs=%v events_raw_len=%d", det.ID, triggerPIDs, ancestryPIDs, len(det.Events))
 
-	// Two time windows:
-	// - Wide window for process lifecycle (CreateProcess/TerminateProcess) to build
-	//   full ancestry (explorer.exe → terminal → powershell) even if ancestors
-	//   started hours ago
-	// - Narrow window for activity events (file, network, DNS, registry) to avoid
-	//   flooding with unrelated events
+	// Only fetch CreateProcess/TerminateProcess events — these build the tree structure.
+	// Activity events (DNS, file, network) are loaded on-demand via ProcessContext
+	// when the user clicks a node to expand it.
 	wideFrom := det.Timestamp.Add(-24 * time.Hour)
-	narrowFrom := det.Timestamp.Add(-5 * time.Minute)
 	to := det.Timestamp.Add(1 * time.Minute)
 
-	// Collect all known PIDs from the detection
-	pids := make([]int, 0, len(ancestryPIDs))
+	allPIDs := make([]int, 0, len(ancestryPIDs))
 	for pid := range ancestryPIDs {
-		pids = append(pids, pid)
+		allPIDs = append(allPIDs, pid)
 	}
 
 	var filtered []store.TelemetryEvent
 
-	// 1. Wide window: fetch CreateProcess events for all ancestry PIDs
-	//    This ensures the full process tree is connected
-	for _, pid := range pids {
+	// Fetch CreateProcess events for all known PIDs (wide window for full ancestry)
+	for _, pid := range allPIDs {
 		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
 			AgentID:   det.AgentID,
 			PID:       pid,
 			EventName: "CreateProcess",
 			From:      wideFrom,
+			To:        to,
+			Limit:     10,
+		})
+		if err != nil {
+			continue
+		}
+		filtered = append(filtered, events...)
+	}
+
+	// Also fetch CreateProcess for direct children of trigger PIDs
+	for pid := range triggerPIDs {
+		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID:   det.AgentID,
+			ParentPID: pid,
+			EventName: "CreateProcess",
+			From:      det.Timestamp.Add(-5 * time.Minute),
 			To:        to,
 			Limit:     50,
 		})
@@ -293,38 +303,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, events...)
 	}
 
-	// 2. Narrow window: fetch all event types for trigger PIDs
-	//    This gets the DNS queries, file ops, network connections near the detection
-	for pid := range triggerPIDs {
-		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID: det.AgentID,
-			PID:     pid,
-			From:    narrowFrom,
-			To:      to,
-			Limit:   500,
-		})
-		if err != nil {
-			continue
-		}
-		filtered = append(filtered, events...)
-	}
-
-	// 3. Fetch children of trigger PIDs (narrow window)
-	for pid := range triggerPIDs {
-		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID:   det.AgentID,
-			ParentPID: pid,
-			From:      narrowFrom,
-			To:        to,
-			Limit:     200,
-		})
-		if err != nil {
-			continue
-		}
-		filtered = append(filtered, events...)
-	}
-
-	log.Infof("fleet: process tree: %d PIDs queried, %d total events returned", len(pids), len(filtered))
+	log.Infof("fleet: process tree: %d PIDs queried, %d process events returned", len(allPIDs), len(filtered))
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{
@@ -419,12 +398,13 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	from := det.Timestamp.Add(-1 * time.Hour)
-	to := det.Timestamp.Add(1 * time.Hour)
+	wideFrom := det.Timestamp.Add(-24 * time.Hour)
+	narrowFrom := det.Timestamp.Add(-5 * time.Minute)
+	to := det.Timestamp.Add(1 * time.Minute)
 
-	// Find parent PID from target's events
+	// Find parent PID from target's CreateProcess event
 	targetEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-		AgentID: det.AgentID, PID: targetPID, From: from, To: to, Limit: 100,
+		AgentID: det.AgentID, PID: targetPID, EventName: "CreateProcess", From: wideFrom, To: to, Limit: 5,
 	})
 	parentPID := 0
 	for _, evt := range targetEvents {
@@ -444,16 +424,15 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 	var filtered []store.TelemetryEvent
 
 	if ancestorsOnly {
-		// Walk up the tree: load parent, grandparent, great-grandparent (up to 5 levels)
+		// Walk up the tree: load CreateProcess for parent, grandparent, etc. (up to 8 levels)
 		curPID := parentPID
-		_ = parentName // parent name used for logging only
-		for level := 0; level < 5 && curPID > 0; level++ {
+		_ = parentName
+		for level := 0; level < 8 && curPID > 0; level++ {
 			ancestorEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-				AgentID: det.AgentID, PID: curPID, From: from, To: to, Limit: 300,
+				AgentID: det.AgentID, PID: curPID, EventName: "CreateProcess", From: wideFrom, To: to, Limit: 5,
 			})
 			if len(ancestorEvents) > 0 {
 				filtered = append(filtered, ancestorEvents...)
-				// Find this ancestor's parent for next iteration
 				nextPID := 0
 				for _, e := range ancestorEvents {
 					if e.ParentPID > 0 && e.ParentPID != curPID {
@@ -463,24 +442,32 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 				}
 				curPID = nextPID
 			} else {
-				break // no telemetry for this PID — can't walk further
+				break
 			}
 		}
 	} else {
+		// Return: CreateProcess for target + activity events in narrow window
 		filtered = append(filtered, targetEvents...)
+		// Activity events for the clicked PID (narrow window)
+		activityEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: det.AgentID, PID: targetPID, From: narrowFrom, To: to, Limit: 200,
+		})
+		filtered = append(filtered, activityEvents...)
+		// CreateProcess for parent
 		if parentPID > 0 {
 			parentEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-				AgentID: det.AgentID, PID: parentPID, From: from, To: to, Limit: 500,
+				AgentID: det.AgentID, PID: parentPID, EventName: "CreateProcess", From: wideFrom, To: to, Limit: 5,
 			})
 			filtered = append(filtered, parentEvents...)
 		}
 	}
 
-	// Query children (skip if ancestors-only mode)
+	// Query children CreateProcess events (skip if ancestors-only mode)
 	children := make(map[int]bool)
 	if !ancestorsOnly {
 		childEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID: det.AgentID, ParentPID: targetPID, From: from, To: to, Limit: 500,
+			AgentID: det.AgentID, ParentPID: targetPID, EventName: "CreateProcess",
+			From: narrowFrom, To: to, Limit: 50,
 		})
 		for _, evt := range childEvents {
 			if evt.PID != targetPID {
