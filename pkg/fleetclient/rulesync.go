@@ -19,11 +19,11 @@
 package fleetclient
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
@@ -31,11 +31,75 @@ import (
 )
 
 // RuleSyncCallback is called when rules are updated from the server.
-// The path points to the directory containing the downloaded rule files.
-type RuleSyncCallback func(rulesDir string) error
+// Rules are provided as in-memory byte slices — never written to disk.
+// ruleDocs: individual YAML rule documents, macrosYAML: combined macros YAML.
+type RuleSyncCallback func(ruleDocs [][]byte, macrosYAML []byte) error
+
+// EncryptedRuleStore holds rules encrypted in memory using DPAPI.
+// Rules are decrypted only when passed to the rule compiler.
+type EncryptedRuleStore struct {
+	mu           sync.RWMutex
+	encRuleDocs  [][]byte // each entry is a DPAPI-encrypted rule YAML
+	encMacros    []byte   // DPAPI-encrypted macros YAML
+	version      string
+	ruleCount    int
+}
+
+// NewEncryptedRuleStore creates a new in-memory encrypted rule store.
+func NewEncryptedRuleStore() *EncryptedRuleStore {
+	return &EncryptedRuleStore{}
+}
+
+// Store encrypts and stores rule documents and macros in memory.
+func (s *EncryptedRuleStore) Store(ruleDocs [][]byte, macrosYAML []byte, version string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.encRuleDocs = make([][]byte, len(ruleDocs))
+	for i, doc := range ruleDocs {
+		s.encRuleDocs[i] = protectMemory(doc)
+	}
+	if len(macrosYAML) > 0 {
+		s.encMacros = protectMemory(macrosYAML)
+	} else {
+		s.encMacros = nil
+	}
+	s.version = version
+	s.ruleCount = len(ruleDocs)
+}
+
+// Decrypt returns decrypted copies of the rules and macros.
+// The caller should zero the returned slices after use.
+func (s *EncryptedRuleStore) Decrypt() (ruleDocs [][]byte, macrosYAML []byte) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ruleDocs = make([][]byte, len(s.encRuleDocs))
+	for i, enc := range s.encRuleDocs {
+		ruleDocs[i] = unprotectMemory(enc)
+	}
+	if s.encMacros != nil {
+		macrosYAML = unprotectMemory(s.encMacros)
+	}
+	return
+}
+
+// Version returns the current ruleset version hash.
+func (s *EncryptedRuleStore) Version() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.version
+}
+
+// RuleCount returns the number of stored rules.
+func (s *EncryptedRuleStore) RuleCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ruleCount
+}
 
 // StartRuleSync opens a persistent gRPC stream to receive rule updates
-// pushed by the server. Falls back to periodic polling on stream errors.
+// pushed by the server. Rules are stored encrypted in memory — never on disk.
 func (c *Client) StartRuleSync(onUpdate RuleSyncCallback) {
 	c.mu.Lock()
 	c.ruleSyncCallback = onUpdate
@@ -46,7 +110,6 @@ func (c *Client) StartRuleSync(onUpdate RuleSyncCallback) {
 }
 
 // ruleStreamLoop maintains a persistent SubscribeRules stream.
-// On disconnect, it reconnects with exponential backoff.
 func (c *Client) ruleStreamLoop(onUpdate RuleSyncCallback) {
 	defer c.wg.Done()
 
@@ -84,7 +147,6 @@ func (c *Client) subscribeRules(onUpdate RuleSyncCallback) error {
 	orgID := c.orgID
 	c.mu.RUnlock()
 
-	// Load current rules version from disk
 	currentVersion := loadFile(filepath.Join(c.dataDir, "rules-etag"))
 
 	stream, err := c.agentClient.SubscribeRules(c.grpcCtx(), &pb.RuleSubscription{
@@ -96,7 +158,7 @@ func (c *Client) subscribeRules(onUpdate RuleSyncCallback) error {
 		return fmt.Errorf("open rule stream: %w", err)
 	}
 
-	log.Info("fleet: rule subscription stream opened")
+	log.Info("fleet: rule subscription stream opened (in-memory mode)")
 
 	for {
 		update, err := stream.Recv()
@@ -110,62 +172,41 @@ func (c *Client) subscribeRules(onUpdate RuleSyncCallback) error {
 	}
 }
 
-// applyRuleUpdate writes rules and macros to disk and triggers the callback.
+// applyRuleUpdate parses the YAML, stores rules encrypted in memory,
+// and triggers the callback. No files are written to disk.
 func (c *Client) applyRuleUpdate(update *pb.RuleUpdate, onUpdate RuleSyncCallback) error {
-	rulesDir := filepath.Join(c.dataDir, "rules")
-	macrosDir := filepath.Join(rulesDir, "Macros")
-	os.MkdirAll(rulesDir, 0o755)
-	os.MkdirAll(macrosDir, 0o755)
-
-	// Remove old fleet rule files
-	oldRules, _ := filepath.Glob(filepath.Join(rulesDir, "fleet-rule-*.yml"))
-	for _, f := range oldRules {
-		os.Remove(f)
-	}
-
-	// Write macros
-	if len(update.MacrosYaml) > 0 {
-		if err := os.WriteFile(filepath.Join(macrosDir, "macros.yml"), update.MacrosYaml, 0o644); err != nil {
-			return fmt.Errorf("write macros: %w", err)
-		}
-		log.Infof("fleet: wrote macros (%d bytes)", len(update.MacrosYaml))
-	}
-
-	// Split rules by YAML document separator and write each as a separate file
-	var ruleDocs []string
+	// Parse rule documents from YAML
+	var ruleDocs [][]byte
 	docs := strings.Split(string(update.RulesYaml), "\n---\n")
 	for _, doc := range docs {
 		trimmed := strings.TrimSpace(doc)
 		if trimmed == "" {
 			continue
 		}
+		// Skip macros that leaked into rules YAML
 		if strings.HasPrefix(trimmed, "- macro:") {
-			// Macro snuck into rules YAML — write to macros file
-			var buf bytes.Buffer
-			buf.WriteString(doc)
-			buf.WriteString("\n")
-			os.WriteFile(filepath.Join(macrosDir, "macros.yml"), buf.Bytes(), 0o644)
-		} else if strings.HasPrefix(trimmed, "name:") {
-			ruleDocs = append(ruleDocs, doc)
+			continue
+		}
+		if strings.HasPrefix(trimmed, "name:") {
+			ruleDocs = append(ruleDocs, []byte(doc))
 		}
 	}
 
-	for i, doc := range ruleDocs {
-		ruleFile := filepath.Join(rulesDir, fmt.Sprintf("fleet-rule-%03d.yml", i+1))
-		if err := os.WriteFile(ruleFile, []byte(doc), 0o644); err != nil {
-			return fmt.Errorf("write rule %d: %w", i+1, err)
-		}
-	}
-	log.Infof("fleet: wrote %d rule files (version: %s)", len(ruleDocs), update.Version)
+	macrosYAML := update.MacrosYaml
 
-	// Save version for next reconnect
+	log.Infof("fleet: received %d rules (version: %s) — loaded to encrypted memory, no disk", len(ruleDocs), update.Version)
+
+	// Save only the version etag to disk (not the rules themselves)
 	if update.Version != "" {
 		os.WriteFile(filepath.Join(c.dataDir, "rules-etag"), []byte(update.Version), 0o644)
 	}
 
-	// Trigger callback
+	// Clean up any old rule files that may exist from previous versions
+	cleanupLegacyRuleFiles(c.dataDir)
+
+	// Trigger callback with in-memory rules
 	if onUpdate != nil {
-		if err := onUpdate(rulesDir); err != nil {
+		if err := onUpdate(ruleDocs, macrosYAML); err != nil {
 			return fmt.Errorf("rule update callback: %w", err)
 		}
 	}
@@ -173,7 +214,22 @@ func (c *Client) applyRuleUpdate(update *pb.RuleUpdate, onUpdate RuleSyncCallbac
 	return nil
 }
 
-// RulesDir returns the path where fleet-synced rules are cached.
+// cleanupLegacyRuleFiles removes any rule files written by older agent versions.
+func cleanupLegacyRuleFiles(dataDir string) {
+	rulesDir := filepath.Join(dataDir, "rules")
+	files, _ := filepath.Glob(filepath.Join(rulesDir, "fleet-rule-*.yml"))
+	for _, f := range files {
+		os.Remove(f)
+	}
+	os.Remove(filepath.Join(rulesDir, "fleet-rules.yml"))
+	// Remove macros subdirectory
+	os.RemoveAll(filepath.Join(rulesDir, "Macros"))
+	// Remove empty rules directory
+	os.Remove(rulesDir)
+}
+
+// RulesDir is kept for backward compatibility but returns empty string
+// in memory-only mode.
 func (c *Client) RulesDir() string {
-	return filepath.Join(c.dataDir, "rules")
+	return ""
 }

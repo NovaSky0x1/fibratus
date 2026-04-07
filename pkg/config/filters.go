@@ -334,6 +334,75 @@ func (f *Filters) LoadMacros() error {
 	return nil
 }
 
+// LoadFiltersFromMemory loads rules from raw YAML byte slices without
+// touching disk. Each entry is one YAML rule document.
+func (f *Filters) LoadFiltersFromMemory(ruleDocs [][]byte) error {
+	f.filters = make([]*FilterConfig, 0, len(ruleDocs))
+	ids := make(map[string]bool)
+
+	for i, doc := range ruleDocs {
+		doc = bytes.TrimSpace(doc)
+		if len(doc) == 0 {
+			continue
+		}
+		flt, err := decodeFilter(fmt.Sprintf("memory-rule-%d", i), doc)
+		if err != nil {
+			log.Warnf("skip invalid in-memory rule %d: %v", i, err)
+			continue
+		}
+		if ids[flt.ID] {
+			log.Warnf("skip duplicate rule id %s (%s)", flt.ID, flt.Name)
+			continue
+		}
+		ids[flt.ID] = true
+		f.filters = append(f.filters, flt)
+	}
+
+	if len(f.filters) == 0 {
+		log.Warn("no rules were loaded from memory")
+	} else {
+		log.Infof("loaded %d rules from memory (no disk)", len(f.filters))
+	}
+	return nil
+}
+
+// LoadMacrosFromMemory loads macros from raw YAML bytes without
+// touching disk.
+func (f *Filters) LoadMacrosFromMemory(yamlBytes []byte) error {
+	f.macros = make(map[string]*Macro)
+	yamlBytes = bytes.TrimSpace(yamlBytes)
+	if len(yamlBytes) == 0 {
+		return nil
+	}
+
+	// validate
+	var out interface{}
+	if err := yaml.Unmarshal(yamlBytes, &out); err != nil {
+		return fmt.Errorf("invalid macro yaml: %v", err)
+	}
+
+	// render templates
+	buf, err := renderTmpl("memory-macros", yamlBytes)
+	if err != nil {
+		return err
+	}
+
+	var macros []Macro
+	if err := yaml.Unmarshal(buf, &macros); err != nil {
+		return fmt.Errorf("decode macros: %v", err)
+	}
+	for _, m := range macros {
+		f.macros[m.ID] = &Macro{
+			ID:          m.ID,
+			Description: m.Description,
+			Expr:        m.Expr,
+			List:        m.List,
+		}
+	}
+	log.Infof("loaded %d macros from memory (no disk)", len(f.macros))
+	return nil
+}
+
 func isValidExt(path string) bool {
 	return filepath.Ext(path) == ".yml" || filepath.Ext(path) == ".yaml"
 }

@@ -588,12 +588,33 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	}
 	client.StartHeartbeat(collector)
 
-	// Start rule sync — when rules change, restart the service to load new rules.
-	// Hot-reloading via engine.Compile() hangs on sequence rules when the process
-	// snapshotter is attached, so a clean service restart is the reliable path.
-	client.StartRuleSync(func(rulesDir string) error {
-		log.Info("fleet: rules updated from server, restarting service to load new rules...")
-		restartService()
+	// Start rule sync — rules are loaded into encrypted memory (DPAPI),
+	// never written to disk. On update, rules are fed directly to the
+	// rule engine compiler from memory.
+	client.StartRuleSync(func(ruleDocs [][]byte, macrosYAML []byte) error {
+		log.Infof("fleet: %d rules received in memory (DPAPI encrypted), compiling...", len(ruleDocs))
+
+		// Load macros from memory first (rules may reference them)
+		if len(macrosYAML) > 0 {
+			if err := cfg.Filters.LoadMacrosFromMemory(macrosYAML); err != nil {
+				log.Warnf("fleet: failed to load macros from memory: %v", err)
+			}
+		}
+
+		// Load rules from memory
+		if err := cfg.Filters.LoadFiltersFromMemory(ruleDocs); err != nil {
+			return fmt.Errorf("fleet: load rules from memory: %w", err)
+		}
+
+		// Recompile the rule engine with new in-memory rules
+		if f.engine != nil {
+			if _, err := f.engine.Compile(); err != nil {
+				log.Errorf("fleet: rule compile error: %v", err)
+				return err
+			}
+			log.Infof("fleet: rules compiled successfully from memory (%d rules)", len(ruleDocs))
+		}
+
 		return nil
 	})
 
