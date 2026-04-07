@@ -230,22 +230,12 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 		// evaluate against any event type. Without this, the ETW trace is
 		// configured to only collect events for rules known at startup (0 rules).
 		if cfg.Fleet.Enabled {
-			rs = &config.RulesCompileResult{
-				HasProcEvents:       true,
-				HasThreadEvents:     true,
-				HasImageEvents:      true,
-				HasFileEvents:       true,
-				HasRegistryEvents:   true,
-				HasNetworkEvents:    true,
-				HasHandleEvents:     true,
-				HasMemEvents:        true,
-				HasVAMapEvents:      true,
-				HasDNSEvents:        true,
-				HasAuditAPIEvents:   true,
-				HasThreadpoolEvents: false,
-				NumberRules:         1, // nonzero to indicate rules are expected
-			}
-			log.Info("fleet mode: ETW trace configured to collect all event types for async rules")
+			// Set rs to nil so the ETW source skips ALL drop mask logic.
+			// When e.r is nil, no events are dropped — everything flows through.
+			// Rules arrive async via gRPC and compile later; the engine
+			// evaluates on its side which events match.
+			rs = nil
+			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks)")
 		}
 	} else {
 		log.Info("rule engine is disabled")
