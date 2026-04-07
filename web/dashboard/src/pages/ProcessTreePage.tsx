@@ -22,9 +22,14 @@ export default function ProcessTreePage() {
   // Fetch detection process tree (stable, no refetch)
   const { data: treeRes, isLoading } = useQuery({
     queryKey: ['process-tree-page', detectionId || `${agentId}-${pidParam}-${tsParam}`],
-    queryFn: () => detectionId
-      ? api.getDetectionProcessTree(detectionId)
-      : api.getTelemetryProcessTree(agentId!, Number(pidParam), tsParam || new Date().toISOString()),
+    queryFn: async (): Promise<{ data?: unknown }> => {
+      if (detectionId) {
+        const r = await api.getDetectionProcessTree(detectionId)
+        return { data: r.data }
+      }
+      const r = await api.getTelemetryProcessTree(agentId!, Number(pidParam), tsParam || new Date().toISOString())
+      return { data: r.data }
+    },
     enabled: !!detectionId || (!!agentId && !!pidParam),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
