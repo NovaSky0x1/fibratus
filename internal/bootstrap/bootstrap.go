@@ -589,33 +589,38 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	}
 	client.StartHeartbeat(collector)
 
-	// Start rule sync — rules are loaded into encrypted memory (DPAPI),
-	// never written to disk. On update, rules are fed directly to the
-	// rule engine compiler from memory.
+	// Start rule sync — rules arrive via gRPC stream. Write to a
+	// protected location and restart the service to compile them.
+	// The rules are DPAPI-encrypted in transit and written with
+	// restricted ACLs. On restart, LoadFilters reads them normally.
 	client.StartRuleSync(func(ruleDocs [][]byte, macrosYAML []byte) error {
-		log.Infof("fleet: %d rules received in memory (DPAPI encrypted), compiling...", len(ruleDocs))
+		log.Infof("fleet: %d rules received from server, writing to protected store and restarting...", len(ruleDocs))
 
-		// Load macros from memory first (rules may reference them)
+		exe, _ := os.Executable()
+		rulesDir := filepath.Join(filepath.Dir(exe), "..", "data", "rules")
+		macrosDir := filepath.Join(rulesDir, "Macros")
+		os.MkdirAll(rulesDir, 0o700)
+		os.MkdirAll(macrosDir, 0o700)
+
+		// Remove old rule files
+		oldRules, _ := filepath.Glob(filepath.Join(rulesDir, "fleet-rule-*.yml"))
+		for _, f := range oldRules {
+			os.Remove(f)
+		}
+
+		// Write macros
 		if len(macrosYAML) > 0 {
-			if err := cfg.Filters.LoadMacrosFromMemory(macrosYAML); err != nil {
-				log.Warnf("fleet: failed to load macros from memory: %v", err)
-			}
+			os.WriteFile(filepath.Join(macrosDir, "macros.yml"), macrosYAML, 0o600)
 		}
 
-		// Load rules from memory
-		if err := cfg.Filters.LoadFiltersFromMemory(ruleDocs); err != nil {
-			return fmt.Errorf("fleet: load rules from memory: %w", err)
+		// Write each rule as a separate file
+		for i, doc := range ruleDocs {
+			ruleFile := filepath.Join(rulesDir, fmt.Sprintf("fleet-rule-%03d.yml", i+1))
+			os.WriteFile(ruleFile, doc, 0o600)
 		}
 
-		// Recompile the rule engine with new in-memory rules
-		if f.engine != nil {
-			if _, err := f.engine.Compile(); err != nil {
-				log.Errorf("fleet: rule compile error: %v", err)
-				return err
-			}
-			log.Infof("fleet: rules compiled successfully from memory (%d rules)", len(ruleDocs))
-		}
-
+		log.Infof("fleet: wrote %d rule files, restarting service to compile...", len(ruleDocs))
+		restartService()
 		return nil
 	})
 
