@@ -291,6 +291,22 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, fallback...)
 	}
 
+	// Fetch security-relevant activity events for trigger PIDs (narrow window)
+	// These show up as category nodes (NET, FILE, REGISTRY) on the trigger process
+	securityEvents := []string{"QueryDns", "ReplyDns", "Connect", "Accept",
+		"CreateFile", "WriteFile", "DeleteFile", "RenameFile",
+		"RegSetValue", "RegCreateKey", "RegDeleteKey", "RegDeleteValue",
+		"LoadImage", "SetThreadContext"}
+	for pid := range triggerPIDs {
+		for _, evtName := range securityEvents {
+			events, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+				AgentID: det.AgentID, PID: pid, EventName: evtName,
+				From: det.Timestamp.Add(-2 * time.Minute), To: to, Limit: 50,
+			})
+			filtered = append(filtered, events...)
+		}
+	}
+
 	// Fetch CreateProcess for direct children of trigger PIDs
 	for pid := range triggerPIDs {
 		events, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
