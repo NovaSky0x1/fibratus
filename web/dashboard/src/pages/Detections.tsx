@@ -337,13 +337,13 @@ function EventCard({ evt }: { evt: DetectionEvent }) {
         {params.name && (evt.name === 'QueryDns' || evt.name === 'ReplyDns') && (
           <span className="rounded bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-300 px-2 py-0.5 text-xs font-mono font-medium">{String(params.name)}</span>
         )}
-        {params.file_path && (
+        {!!params.file_path && (
           <span className="text-xs font-mono text-gray-600 dark:text-slate-400 truncate max-w-md">{String(params.file_path)}</span>
         )}
-        {params.file_name && !params.file_path && (
+        {!!params.file_name && !params.file_path && (
           <span className="text-xs font-mono text-gray-600 dark:text-slate-400 truncate max-w-md">{String(params.file_name)}</span>
         )}
-        {params.key_name && (
+        {!!params.key_name && (
           <span className="text-xs font-mono text-gray-600 dark:text-slate-400 truncate max-w-md">{String(params.key_name)}</span>
         )}
         {params.dip && (
