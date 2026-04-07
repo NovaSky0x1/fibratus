@@ -319,14 +319,27 @@ func extractDetectionPIDs(eventsRaw json.RawMessage) (triggerPIDs, allPIDs map[i
 	triggerPIDs = make(map[int]bool)
 	allPIDs = make(map[int]bool)
 
-	var events []struct {
-		Proc struct {
-			PID       int      `json:"pid"`
-			PPID      int      `json:"ppid"`
-			Ancestors []string `json:"ancestors"`
-		} `json:"proc"`
+	type procInfo struct {
+		PID       int      `json:"pid"`
+		PPID      int      `json:"ppid"`
+		Ancestors []string `json:"ancestors"`
 	}
+	type eventInfo struct {
+		Proc procInfo `json:"proc"`
+	}
+
+	// Try parsing as array of events first (direct event list)
+	var events []eventInfo
 	if err := json.Unmarshal(eventsRaw, &events); err != nil {
+		// Try parsing as a single alert object with nested events
+		var alert struct {
+			Events []eventInfo `json:"events"`
+		}
+		if err2 := json.Unmarshal(eventsRaw, &alert); err2 == nil {
+			events = alert.Events
+		}
+	}
+	if len(events) == 0 {
 		return
 	}
 
