@@ -257,8 +257,15 @@ function EventRow({ evt, isFocus, isOpen, onToggle }: {
 
 function summarizeEvent(evt: TelemetryEvent): string {
   const p = evt.params || {}
+  const name = evt.event_name || ''
+
+  // DNS events (categorized as 'net' by ETW)
+  if (name === 'QueryDns' || name === 'ReplyDns') {
+    return (p.name || p.domain || '') as string
+  }
+
   switch (evt.event_category) {
-    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || ''
+    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || (p.name as string) || ''
     case 'dns': return (p.name || p.domain || '') as string
     case 'file': return (p.file_name || p.file_object || '') as string
     case 'registry': return (p.key_name || p.key || '') as string
