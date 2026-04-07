@@ -44,39 +44,78 @@ const cat: Record<string, { accent: string; badge: string; edge: string }> = {
 }
 function cc(c: string) { return cat[c] || cat.handle }
 
+function parseParams(raw: unknown): Record<string, unknown> {
+  if (!raw) return {}
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>
+  if (typeof raw === 'string') { try { return JSON.parse(raw) } catch { return {} } }
+  return {}
+}
+
 function evtInfo(evt: TelemetryEvent): string[] {
-  const p = evt.params || {}
+  const p = parseParams(evt.params)
   const lines: string[] = []
   switch (evt.event_category) {
     case 'file':
-      if (p.file_name || p.file_object) lines.push(String(p.file_name || p.file_object))
-      if (p.operation) lines.push('op: ' + p.operation)
-      if (p.io_size) lines.push('size: ' + p.io_size)
+      if (p.file_path) lines.push(String(p.file_path))
+      if (p.create_disposition) lines.push('op: ' + p.create_disposition)
+      if (p.type) lines.push('type: ' + p.type)
+      if (p.share_mask) lines.push('share: ' + p.share_mask)
+      if (p.status) lines.push('status: ' + p.status)
       break
     case 'registry':
-      if (p.key_name || p.key) lines.push(String(p.key_name || p.key))
-      if (p.value_name) lines.push('value: ' + p.value_name)
-      if (p.value) lines.push('data: ' + String(p.value).slice(0, 60))
+      if (p.key_path) lines.push(String(p.key_path))
+      if (p.status) lines.push('status: ' + p.status)
       break
     case 'net':
       if (p.dip) lines.push(`dst: ${p.dip}:${p.dport || ''}`)
       if (p.sip) lines.push(`src: ${p.sip}:${p.sport || ''}`)
       if (p.l4_proto) lines.push('proto: ' + p.l4_proto)
+      if (p.dport_name) lines.push('service: ' + p.dport_name)
       break
     case 'dns':
-      if (p.name || p.domain) lines.push(String(p.name || p.domain))
+      if (p.name) lines.push(String(p.name))
       if (p.rr) lines.push('type: ' + p.rr)
-      if (p.answers) lines.push('answers: ' + String(p.answers))
+      if (p.options) lines.push('opts: ' + p.options)
       break
     case 'image':
-      if (p.file_name || p.image_name) lines.push(String(p.file_name || p.image_name))
-      if (p.is_signed !== undefined) lines.push('signed: ' + p.is_signed)
+      if (p.file_path) lines.push(String(p.file_path))
+      if (p.image_size) lines.push('size: ' + p.image_size)
       if (p.signature_type) lines.push('sig: ' + p.signature_type)
+      if (p.signature_level) lines.push('level: ' + p.signature_level)
+      if (p.md5) lines.push('md5: ' + p.md5)
+      break
+    case 'thread':
+      if (p.base_prio) lines.push('prio: ' + p.base_prio)
+      if (p.io_prio) lines.push('io: ' + p.io_prio)
+      if (p.kstack_base) lines.push('kstack: ' + p.kstack_base)
+      break
+    case 'mem':
+      if (p.base_address) lines.push('addr: ' + p.base_address)
+      if (p.region_size) lines.push('size: ' + p.region_size)
+      if (p.alloc_type) lines.push('alloc: ' + p.alloc_type)
+      if (p.protection) lines.push('prot: ' + p.protection)
+      break
+    case 'handle':
+      if (p.handle_name) lines.push(String(p.handle_name))
+      if (p.handle_type) lines.push('type: ' + p.handle_type)
       break
     default:
-      for (const [k, v] of Object.entries(p).slice(0, 3)) lines.push(`${k}: ${String(v).slice(0, 50)}`)
+      for (const [k, v] of Object.entries(p).slice(0, 4)) lines.push(`${k}: ${String(v).slice(0, 60)}`)
   }
   return lines
+}
+
+function evtPreview(evt: TelemetryEvent): string {
+  const p = parseParams(evt.params)
+  switch (evt.event_category) {
+    case 'file': return String(p.file_path || '')
+    case 'registry': return String(p.key_path || '')
+    case 'net': return [p.dip, p.dport].filter(Boolean).join(':')
+    case 'dns': return String(p.name || '')
+    case 'image': return String(p.file_path || '')
+    case 'handle': return String(p.handle_name || '')
+    default: return ''
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -237,7 +276,7 @@ async function doLayout(nodes: Node[], edges: Edge[]): Promise<{ nodes: Node[]; 
 
 function DetailPanel({ event, onClose }: { event: TelemetryEvent | null; onClose: () => void }) {
   if (!event) return null
-  const params = event.params || {}
+  const params = parseParams(event.params)
   return (
     <div className="w-80 h-full bg-white dark:bg-slate-800 border-l border-gray-200 dark:border-slate-700 overflow-y-auto shrink-0">
       <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-800">
@@ -358,10 +397,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
           const catId = `cat-${pid}-${c}`
           const catExp = expandedCats.has(catId)
           const catEvts = evts.filter(e => e.event_category === c)
-          const preview = catEvts.slice(0, 3).map(e => {
-            const info = evtInfo(e)
-            return info[0] || e.event_name
-          })
+          const preview = catEvts.slice(0, 3).map(e => evtPreview(e) || e.event_name).filter(Boolean)
           allNodes.push({ id: catId, type: 'categoryNode', position: { x: 0, y: 0 }, data: { category: c, count, expanded: catExp, preview } })
           allEdges.push({ id: `e-${procId}-${catId}`, source: procId, target: catId, type: 'smoothstep', style: { stroke: cc(c).edge, strokeWidth: 1.5 } })
 
