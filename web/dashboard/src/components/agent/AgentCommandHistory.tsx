@@ -128,7 +128,7 @@ export default function AgentCommandHistory({ agentId }: { agentId: string }) {
                       </span>
                       {isExpanded && (
                         <div className="mt-3 space-y-2" onClick={e => e.stopPropagation()}>
-                          {cmd.payload && (
+                          {cmd.payload != null && (
                             <div>
                               <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Payload</span>
                               <pre className="mt-0.5 text-xs font-mono text-gray-600 dark:text-slate-400 bg-gray-50 dark:bg-slate-900 rounded p-2 whitespace-pre-wrap break-all">
