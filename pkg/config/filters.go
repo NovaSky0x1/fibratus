@@ -281,8 +281,12 @@ func (f Filters) IsMacroList(id string) bool {
 
 // LoadMacros from the macro library. The Go templates are applied
 // on each macro file before running the YAML decoder on them.
+// Macros already loaded from memory (fleet server) are preserved.
 func (f *Filters) LoadMacros() error {
-	f.macros = make(map[string]*Macro)
+	// Preserve macros loaded from fleet server
+	if f.macros == nil {
+		f.macros = make(map[string]*Macro)
+	}
 	for _, p := range f.Macros.FromPaths {
 		paths, err := filepath.Glob(p)
 		if err != nil {
