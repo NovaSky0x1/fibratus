@@ -394,10 +394,28 @@ func buildComparison(field, op, value, dbType string, argIdx int) (string, []int
 		jsonPath = fieldToJSONPath(field)
 	}
 	ph := placeholder()
+	jsonExtract := fmt.Sprintf("JSONExtractString(raw_event, %s)", jsonPath)
 	if dbType == "clickhouse" {
-		return fmt.Sprintf("JSONExtractString(raw_event, %s) = %s", jsonPath, ph), []interface{}{value}, argIdx
+		switch op {
+		case "=":
+			return fmt.Sprintf("%s = %s", jsonExtract, ph), []interface{}{value}, argIdx
+		case "!=":
+			return fmt.Sprintf("%s != %s", jsonExtract, ph), []interface{}{value}, argIdx
+		case "~=", "icontains", "contains":
+			return fmt.Sprintf("%s ILIKE %s", jsonExtract, ph), []interface{}{"%" + value + "%"}, argIdx
+		case "startswith", "istartswith":
+			return fmt.Sprintf("%s ILIKE %s", jsonExtract, ph), []interface{}{value + "%"}, argIdx
+		case "endswith", "iendswith":
+			return fmt.Sprintf("%s ILIKE %s", jsonExtract, ph), []interface{}{"%" + value}, argIdx
+		case "matches", "imatches":
+			pattern := strings.ReplaceAll(value, "*", "%")
+			pattern = strings.ReplaceAll(pattern, "?", "_")
+			return fmt.Sprintf("%s ILIKE %s", jsonExtract, ph), []interface{}{pattern}, argIdx
+		default:
+			return fmt.Sprintf("%s = %s", jsonExtract, ph), []interface{}{value}, argIdx
+		}
 	}
-	// PostgreSQL JSONB
+	// PostgreSQL JSONB fallback
 	return fmt.Sprintf("raw_event::text ILIKE %s", ph), []interface{}{"%" + value + "%"}, argIdx
 }
 
