@@ -360,6 +360,21 @@ ALTER TABLE github_sync_configs ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFA
 ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE rules ADD COLUMN IF NOT EXISTS validation_errors JSONB DEFAULT '[]';
 ALTER TABLE rules ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+
+-- ═══════════════════════════════════════════════════════════════
+-- Heartbeat history for agent health sparklines
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS heartbeat_history (
+    id              BIGSERIAL PRIMARY KEY,
+    org_id          TEXT NOT NULL,
+    agent_id        TEXT NOT NULL,
+    cpu_pct         DOUBLE PRECISION DEFAULT 0,
+    mem_mb          BIGINT DEFAULT 0,
+    events_per_sec  DOUBLE PRECISION DEFAULT 0,
+    active_rules    INT DEFAULT 0,
+    timestamp       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_hb_history_agent ON heartbeat_history(agent_id, timestamp DESC);
 `
 
 // Migrate runs the database schema migrations.

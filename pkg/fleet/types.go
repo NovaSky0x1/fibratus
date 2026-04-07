@@ -234,6 +234,21 @@ const (
 	CmdGetFile     = "get_file"
 	CmdRunCommand  = "run_command"
 	CmdCollectInfo = "collect_info"
+
+	// Structured data-gathering commands
+	CmdGetProcesses = "get_processes"
+	CmdGetNetwork   = "get_network"
+	CmdGetServices  = "get_services"
+	CmdGetDrivers   = "get_drivers"
+	CmdGetAutoruns  = "get_autoruns"
+	CmdGetSoftware  = "get_software"
+	CmdGetUsers     = "get_users"
+	CmdGetRegistry  = "get_registry"
+
+	// Capture and scanning commands
+	CmdStartCapture = "start_capture"
+	CmdStopCapture  = "stop_capture"
+	CmdYaraScan     = "yara_scan"
 )
 
 // Command status values

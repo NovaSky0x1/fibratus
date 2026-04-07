@@ -228,6 +228,44 @@ func (h *AgentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HeartbeatHistory handles GET /api/v1/orgs/{org_id}/agents/{id}/heartbeat-history
+func (h *AgentHandler) HeartbeatHistory(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/agents/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+	agentID := strings.TrimSuffix(parts[1], "/heartbeat-history")
+	agentID = strings.TrimSuffix(agentID, "/")
+
+	limit := intParam(r, "limit", 60)
+
+	// Type-assert to access GetHeartbeatHistory (only on postgres.AgentStore)
+	type heartbeatHistorian interface {
+		GetHeartbeatHistory(ctx interface{}, orgID, agentID string, limit int) ([]fleet.Heartbeat, error)
+	}
+	historian, ok := h.agents.(heartbeatHistorian)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "heartbeat history not supported")
+		return
+	}
+
+	history, err := historian.GetHeartbeatHistory(r.Context(), orgID, agentID, limit)
+	if err != nil {
+		log.Errorf("fleet: heartbeat history error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: history})
+}
+
 func intParam(r *http.Request, key string, defaultVal int) int {
 	v := r.URL.Query().Get(key)
 	if v == "" {

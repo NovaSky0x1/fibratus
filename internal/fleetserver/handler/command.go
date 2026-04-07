@@ -40,6 +40,18 @@ var allowedCommandTypes = map[string]bool{
 	fleet.CmdGetFile:     true,
 	fleet.CmdRunCommand:  true,
 	fleet.CmdCollectInfo: true,
+
+	fleet.CmdGetProcesses: true,
+	fleet.CmdGetNetwork:   true,
+	fleet.CmdGetServices:  true,
+	fleet.CmdGetDrivers:   true,
+	fleet.CmdGetAutoruns:  true,
+	fleet.CmdGetSoftware:  true,
+	fleet.CmdGetUsers:     true,
+	fleet.CmdGetRegistry:  true,
+	fleet.CmdStartCapture: true,
+	fleet.CmdStopCapture:  true,
+	fleet.CmdYaraScan:     true,
 }
 
 // CommandHandler handles command queue API requests.

@@ -62,6 +62,28 @@ func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
 		return e.collectInfo(cmd)
 	case fleet.CmdUninstall:
 		return e.uninstall(cmd)
+	case fleet.CmdGetProcesses:
+		return e.getProcesses(cmd)
+	case fleet.CmdGetNetwork:
+		return e.getNetwork(cmd)
+	case fleet.CmdGetServices:
+		return e.getServices(cmd)
+	case fleet.CmdGetDrivers:
+		return e.getDrivers(cmd)
+	case fleet.CmdGetAutoruns:
+		return e.getAutoruns(cmd)
+	case fleet.CmdGetSoftware:
+		return e.getSoftware(cmd)
+	case fleet.CmdGetUsers:
+		return e.getUsers(cmd)
+	case fleet.CmdGetRegistry:
+		return e.getRegistry(cmd)
+	case fleet.CmdStartCapture:
+		return e.startCapture(cmd)
+	case fleet.CmdStopCapture:
+		return e.stopCapture(cmd)
+	case fleet.CmdYaraScan:
+		return e.yaraScan(cmd)
 	default:
 		return nil, fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
@@ -335,28 +357,314 @@ func (e *WindowsExecutor) collectInfo(cmd *fleet.Command) (json.RawMessage, erro
 	return result, nil
 }
 
-// uninstall removes the Fibratus service and cleans up.
+// uninstall removes Fibratus using the MSI uninstaller for full cleanup.
 func (e *WindowsExecutor) uninstall(cmd *fleet.Command) (json.RawMessage, error) {
-	// Stop the service
-	runCmd("sc", "stop", "fibratus")
-	time.Sleep(2 * time.Second)
+	// Find the MSI product code from the registry
+	psCmd := `$pc = (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object { $_.GetValue("DisplayName") -like "*Fibratus*" }).PSChildName; if ($pc) { Write-Output $pc } else { Write-Output "NOT_FOUND" }`
+	productCode, err := runPowerShell(psCmd)
+	productCode = strings.TrimSpace(productCode)
 
-	// Remove the service
-	out, err := runCmd("sc", "delete", "fibratus")
-	if err != nil {
-		return nil, fmt.Errorf("failed to remove service: %s: %v", out, err)
+	if err != nil || productCode == "" || productCode == "NOT_FOUND" {
+		// Fallback: try 64-bit registry path
+		psCmd = `$pc = (Get-ChildItem "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object { $_.GetValue("DisplayName") -like "*Fibratus*" }).PSChildName; if ($pc) { Write-Output $pc } else { Write-Output "NOT_FOUND" }`
+		productCode, err = runPowerShell(psCmd)
+		productCode = strings.TrimSpace(productCode)
 	}
 
-	// Clean up data directory
+	if err != nil || productCode == "" || productCode == "NOT_FOUND" {
+		// Last resort: manual service removal
+		runCmd("sc", "stop", "fibratus")
+		time.Sleep(2 * time.Second)
+		runCmd("sc", "delete", "fibratus")
+		exe, _ := os.Executable()
+		dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+		os.RemoveAll(dataDir)
+
+		result, _ := json.Marshal(map[string]interface{}{
+			"uninstalled": true,
+			"method":      "manual",
+			"message":     "MSI product code not found. Service removed manually.",
+		})
+		return result, nil
+	}
+
+	// Run MSI uninstall silently
+	out, err := runCmd("msiexec", "/x", productCode, "/quiet", "/norestart")
+	if err != nil {
+		return nil, fmt.Errorf("msi uninstall failed: %s: %v", out, err)
+	}
+
+	// Clean up enrollment data directory (MSI doesn't remove this)
 	exe, _ := os.Executable()
 	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
 	os.RemoveAll(dataDir)
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"uninstalled": true,
-		"message":     "Fibratus service removed. Binary remains on disk for manual cleanup.",
+		"uninstalled":  true,
+		"method":       "msi",
+		"product_code": productCode,
+		"message":      "Fibratus uninstalled via MSI. Full cleanup complete.",
 	})
 	return result, nil
+}
+
+// getProcesses returns structured process information.
+func (e *WindowsExecutor) getProcesses(cmd *fleet.Command) (json.RawMessage, error) {
+	psCmd := `Get-Process | Where-Object { $_.Id -ne 0 } | Select-Object Id,ProcessName,@{N='cpu_pct';E={[math]::Round($_.CPU,1)}},@{N='mem_mb';E={[math]::Round($_.WorkingSet64/1MB,1)}},Path,@{N='cmdline';E={try{(Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue).CommandLine}catch{''}}},@{N='username';E={try{$o=(Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue).GetOwner();if($o.User){"$($o.Domain)\$($o.User)"}else{''}}catch{''}}} | ConvertTo-Json -Depth 3 -Compress`
+	out, err := runPowerShellLong(psCmd, 60)
+	if err != nil {
+		return nil, fmt.Errorf("get_processes: %v: %s", err, out)
+	}
+	// Wrap in envelope
+	result, _ := json.Marshal(map[string]interface{}{
+		"processes": json.RawMessage(out),
+	})
+	return result, nil
+}
+
+// getNetwork returns structured network connection information.
+func (e *WindowsExecutor) getNetwork(cmd *fleet.Command) (json.RawMessage, error) {
+	psCmd := `$conns = Get-NetTCPConnection -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess; $procs = @{}; Get-Process | ForEach-Object { $procs[$_.Id] = $_.ProcessName }; $conns | ForEach-Object { $_ | Add-Member -NotePropertyName 'process_name' -NotePropertyValue ($procs[[int]$_.OwningProcess]) -PassThru } | ConvertTo-Json -Depth 3 -Compress`
+	out, err := runPowerShellLong(psCmd, 30)
+	if err != nil {
+		return nil, fmt.Errorf("get_network: %v: %s", err, out)
+	}
+	result, _ := json.Marshal(map[string]interface{}{
+		"connections": json.RawMessage(out),
+	})
+	return result, nil
+}
+
+// getServices returns structured Windows service information.
+func (e *WindowsExecutor) getServices(cmd *fleet.Command) (json.RawMessage, error) {
+	psCmd := `Get-CimInstance Win32_Service | Select-Object Name,DisplayName,State,StartMode,@{N='account';E={$_.StartName}},PathName,ProcessId | ConvertTo-Json -Depth 3 -Compress`
+	out, err := runPowerShellLong(psCmd, 30)
+	if err != nil {
+		return nil, fmt.Errorf("get_services: %v: %s", err, out)
+	}
+	result, _ := json.Marshal(map[string]interface{}{
+		"services": json.RawMessage(out),
+	})
+	return result, nil
+}
+
+// getDrivers returns loaded kernel driver information.
+func (e *WindowsExecutor) getDrivers(cmd *fleet.Command) (json.RawMessage, error) {
+	psCmd := `Get-CimInstance Win32_SystemDriver | Select-Object Name,DisplayName,State,StartMode,PathName,ServiceType | ConvertTo-Json -Depth 3 -Compress`
+	out, err := runPowerShellLong(psCmd, 30)
+	if err != nil {
+		return nil, fmt.Errorf("get_drivers: %v: %s", err, out)
+	}
+	result, _ := json.Marshal(map[string]interface{}{
+		"drivers": json.RawMessage(out),
+	})
+	return result, nil
+}
+
+// getAutoruns returns persistence mechanisms (Run keys, scheduled tasks, startup folder, auto-start services).
+func (e *WindowsExecutor) getAutoruns(cmd *fleet.Command) (json.RawMessage, error) {
+	// Registry Run keys
+	runKeysCmd := `$keys = @(); foreach ($path in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce')) { try { $props = Get-ItemProperty $path -ErrorAction SilentlyContinue; if ($props) { $props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object { $keys += @{name=$_.Name;value=$_.Value;location=$path} } } } catch {} }; $keys | ConvertTo-Json -Depth 3 -Compress`
+	runKeys, _ := runPowerShellLong(runKeysCmd, 15)
+
+	// Scheduled tasks
+	tasksCmd := `Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Ready' -and $_.TaskPath -notlike '\Microsoft\*' } | Select-Object TaskName,TaskPath,State,@{N='action';E={($_.Actions | Select-Object -First 1).Execute}},@{N='trigger';E={($_.Triggers | Select-Object -First 1).ToString()}} | ConvertTo-Json -Depth 3 -Compress`
+	tasks, _ := runPowerShellLong(tasksCmd, 15)
+
+	// Startup folder
+	startupCmd := `$items = @(); foreach ($dir in @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp","$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup")) { Get-ChildItem $dir -ErrorAction SilentlyContinue | ForEach-Object { $items += @{name=$_.Name;path=$_.FullName;location=$dir} } }; $items | ConvertTo-Json -Depth 3 -Compress`
+	startup, _ := runPowerShellLong(startupCmd, 10)
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"run_keys":       safeJSON(runKeys),
+		"scheduled_tasks": safeJSON(tasks),
+		"startup_folder": safeJSON(startup),
+	})
+	return result, nil
+}
+
+// getSoftware returns installed software from the registry.
+func (e *WindowsExecutor) getSoftware(cmd *fleet.Command) (json.RawMessage, error) {
+	psCmd := `$apps = @(); foreach ($path in @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')) { Get-ItemProperty $path -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | ForEach-Object { $apps += @{name=$_.DisplayName;version=$_.DisplayVersion;publisher=$_.Publisher;install_date=$_.InstallDate;size_mb=[math]::Round($_.EstimatedSize/1024,1)} } }; $apps | Sort-Object { $_.name } | ConvertTo-Json -Depth 3 -Compress`
+	out, err := runPowerShellLong(psCmd, 30)
+	if err != nil {
+		return nil, fmt.Errorf("get_software: %v: %s", err, out)
+	}
+	result, _ := json.Marshal(map[string]interface{}{
+		"software": json.RawMessage(out),
+	})
+	return result, nil
+}
+
+// getUsers returns local user accounts, active sessions, and admin group members.
+func (e *WindowsExecutor) getUsers(cmd *fleet.Command) (json.RawMessage, error) {
+	usersCmd := `Get-LocalUser | Select-Object Name,Enabled,LastLogon,Description | ConvertTo-Json -Depth 3 -Compress`
+	users, _ := runPowerShellLong(usersCmd, 10)
+
+	adminsCmd := `Get-LocalGroupMember -Group Administrators -ErrorAction SilentlyContinue | Select-Object Name,ObjectClass,PrincipalSource | ConvertTo-Json -Depth 3 -Compress`
+	admins, _ := runPowerShellLong(adminsCmd, 10)
+
+	sessions, _ := runCmd("query", "user")
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"local_users": safeJSON(users),
+		"admin_group": safeJSON(admins),
+		"sessions":    strings.TrimSpace(sessions),
+	})
+	return result, nil
+}
+
+// getRegistry returns registry keys and values at a given path.
+func (e *WindowsExecutor) getRegistry(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		Path string `json:"path"`
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+	if payload.Path == "" {
+		payload.Path = "HKLM:\\SOFTWARE"
+	}
+
+	// Get subkeys
+	keysCmd := fmt.Sprintf(`Get-ChildItem '%s' -ErrorAction SilentlyContinue | Select-Object PSChildName,@{N='subkey_count';E={(Get-ChildItem $_.PSPath -ErrorAction SilentlyContinue).Count}} | ConvertTo-Json -Depth 3 -Compress`, payload.Path)
+	keys, _ := runPowerShellLong(keysCmd, 15)
+
+	// Get values at this path
+	valsCmd := fmt.Sprintf(`$props = Get-ItemProperty '%s' -ErrorAction SilentlyContinue; if ($props) { $props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object { @{name=$_.Name;value=($_.Value | Out-String).Trim();type=$_.TypeNameOfValue} } | ConvertTo-Json -Depth 3 -Compress }`, payload.Path)
+	vals, _ := runPowerShellLong(valsCmd, 15)
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"path":   payload.Path,
+		"keys":   safeJSON(keys),
+		"values": safeJSON(vals),
+	})
+	return result, nil
+}
+
+// startCapture starts a kernel event capture in the background.
+func (e *WindowsExecutor) startCapture(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		Filter   string `json:"filter"`
+		Duration int    `json:"duration"` // seconds, 0 = indefinite
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	exe, _ := os.Executable()
+	captureDir := filepath.Join(filepath.Dir(exe), "..", "captures")
+	os.MkdirAll(captureDir, 0o755)
+	capturePath := filepath.Join(captureDir, fmt.Sprintf("capture-%d.kcap", time.Now().Unix()))
+
+	args := []string{"capture", "-o", capturePath}
+	if payload.Filter != "" {
+		args = append(args, payload.Filter)
+	}
+
+	c := exec.Command(exe, args...)
+	if err := c.Start(); err != nil {
+		return nil, fmt.Errorf("start capture: %v", err)
+	}
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"started":      true,
+		"capture_path": capturePath,
+		"pid":          c.Process.Pid,
+		"filter":       payload.Filter,
+	})
+	return result, nil
+}
+
+// stopCapture stops a running capture by PID.
+func (e *WindowsExecutor) stopCapture(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		PID int `json:"pid"`
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	if payload.PID <= 0 {
+		return nil, fmt.Errorf("capture pid required")
+	}
+
+	out, err := runCmd("taskkill", "/F", "/PID", fmt.Sprintf("%d", payload.PID))
+	if err != nil {
+		return nil, fmt.Errorf("stop capture: %s: %v", out, err)
+	}
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"stopped": true,
+		"pid":     payload.PID,
+		"message": strings.TrimSpace(out),
+	})
+	return result, nil
+}
+
+// yaraScan runs a YARA scan on a process or file.
+func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		PID  int    `json:"pid"`
+		Path string `json:"path"`
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	if payload.PID == 0 && payload.Path == "" {
+		return nil, fmt.Errorf("pid or path required for yara scan")
+	}
+
+	exe, _ := os.Executable()
+	var args []string
+	if payload.PID > 0 {
+		args = []string{"yara", "--pid", fmt.Sprintf("%d", payload.PID)}
+	} else {
+		args = []string{"yara", "--path", payload.Path}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	c := exec.CommandContext(ctx, exe, args...)
+	out, err := c.CombinedOutput()
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"pid":     payload.PID,
+		"path":    payload.Path,
+		"output":  string(out),
+		"error":   errStr(err),
+		"success": err == nil,
+	})
+	return result, nil
+}
+
+// runPowerShell runs a PowerShell command with default timeout.
+func runPowerShell(psCmd string) (string, error) {
+	return runPowerShellLong(psCmd, 30)
+}
+
+// runPowerShellLong runs a PowerShell command with a custom timeout.
+func runPowerShellLong(psCmd string, timeoutSec int) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", psCmd)
+	out, err := c.CombinedOutput()
+	return string(out), err
+}
+
+// safeJSON wraps a raw JSON string, returning an empty array if invalid.
+func safeJSON(s string) json.RawMessage {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "null" {
+		return json.RawMessage("[]")
+	}
+	// Ensure it's valid JSON
+	if json.Valid([]byte(s)) {
+		return json.RawMessage(s)
+	}
+	return json.RawMessage("[]")
+}
+
+// errStr returns an error string or empty string if nil.
+func errStr(err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 func runCmd(name string, args ...string) (string, error) {

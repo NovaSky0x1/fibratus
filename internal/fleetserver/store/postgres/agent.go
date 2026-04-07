@@ -183,7 +183,43 @@ func (s *AgentStore) UpdateHeartbeat(ctx context.Context, orgID, id string, hb *
 		`UPDATE agents SET last_heartbeat=$3, status='online', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
 		id, orgID, hb.Timestamp,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	// Record heartbeat history for sparkline charts
+	_, _ = s.db.ExecContext(ctx,
+		`INSERT INTO heartbeat_history (org_id, agent_id, cpu_pct, mem_mb, events_per_sec, active_rules, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		orgID, id, hb.CPUPercent, hb.MemoryMB, hb.EventsPerSec, hb.ActiveRules, hb.Timestamp,
+	)
+	return nil
+}
+
+// GetHeartbeatHistory returns the last N heartbeat entries for sparkline charts.
+func (s *AgentStore) GetHeartbeatHistory(ctx context.Context, orgID, agentID string, limit int) ([]fleet.Heartbeat, error) {
+	if limit <= 0 {
+		limit = 60
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT cpu_pct, mem_mb, events_per_sec, active_rules, timestamp FROM heartbeat_history WHERE org_id=$1 AND agent_id=$2 ORDER BY timestamp DESC LIMIT $3`,
+		orgID, agentID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []fleet.Heartbeat
+	for rows.Next() {
+		var hb fleet.Heartbeat
+		if err := rows.Scan(&hb.CPUPercent, &hb.MemoryMB, &hb.EventsPerSec, &hb.ActiveRules, &hb.Timestamp); err != nil {
+			continue
+		}
+		history = append(history, hb)
+	}
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+	return history, nil
 }
 
 func (s *AgentStore) CountByStatus(ctx context.Context, orgID string) (map[fleet.AgentStatus]int, error) {
