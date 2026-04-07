@@ -51,11 +51,12 @@ export default function ProcessTreePage() {
     try {
       if (detectionId) {
         const res = await api.getDetectionProcessContext(detectionId, pid)
-        if (res.data?.events) setExtraEvents(prev => [...prev, ...(res.data!.events as TelemetryEvent[])])
+        const d = (res.data || {}) as Record<string, unknown>
+        if (d.events) setExtraEvents(prev => [...prev, ...(d.events as TelemetryEvent[])])
       } else if (agentId) {
         const res = await api.getTelemetryProcessTree(agentId, pid, tsParam || new Date().toISOString())
-        const data = res.data as { events?: TelemetryEvent[] } | undefined
-        if (data?.events) setExtraEvents(prev => [...prev, ...data.events!])
+        const d = (res.data || {}) as Record<string, unknown>
+        if (d.events) setExtraEvents(prev => [...prev, ...(d.events as TelemetryEvent[])])
       }
     } finally {
       setLoadingPid(null)
@@ -63,7 +64,8 @@ export default function ProcessTreePage() {
   }, [detectionId, agentId, tsParam])
 
   // Combine base events + extra loaded events (dedup by id)
-  const baseEvents = ((treeRes?.data as Record<string, unknown>)?.events || []) as TelemetryEvent[]
+  const treeDataObj = (treeRes?.data || {}) as Record<string, unknown>
+  const baseEvents = (treeDataObj.events || []) as TelemetryEvent[]
   const allEvents = useMemo(() => {
     if (extraEvents.length === 0) return baseEvents
     const seen = new Set<number>()
@@ -74,7 +76,7 @@ export default function ProcessTreePage() {
     return merged
   }, [baseEvents, extraEvents])
 
-  const focusPids = ((treeRes?.data as Record<string, unknown>)?.focus_pids || {}) as Record<number, boolean>
+  const focusPids = (treeDataObj.focus_pids || {}) as Record<number, boolean>
   if (pidParam) focusPids[Number(pidParam)] = true
 
   const title = detection?.rule_name || detection?.title || `Process Tree — PID ${pidParam}`
