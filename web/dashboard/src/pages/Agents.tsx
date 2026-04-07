@@ -125,15 +125,6 @@ export default function Agents() {
   const [page, setPage] = useState(1)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [agentToDelete, setAgentToDelete] = useState<Agent | null>(null)
-  const queryClient = useQueryClient()
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.deleteAgent(id),
-    onSuccess: () => {
-      setAgentToDelete(null)
-      queryClient.invalidateQueries({ queryKey: ['agents'] })
-    },
-  })
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null)
   const [activeTab, setActiveTab] = useState<'details' | 'response' | 'terminal' | 'files' | 'events' | 'processes' | 'history'>('details')
   const [shellType, setShellType] = useState<'cmd' | 'powershell'>('powershell')
@@ -158,6 +149,7 @@ export default function Agents() {
     mutationFn: (id: string) => api.deleteAgent(id),
     onSuccess: () => {
       setDeleteTarget(null)
+      setAgentToDelete(null)
       setSelectedAgent(null)
       queryClient.invalidateQueries({ queryKey: ['agents'] })
     },
