@@ -246,10 +246,11 @@ func scanRuleRows(rows *sql.Rows) (*fleet.Rule, error) {
 	r := &fleet.Rule{}
 	var labelsJSON []byte
 	var validationErrorsJSON []byte
+	var tagsRaw, refsRaw []sql.NullString
 	err := rows.Scan(
 		&r.ID, &r.OrgID, &r.Name, &r.Version, &r.Description,
 		&r.Condition, &r.Output, &r.Severity, &labelsJSON,
-		pq.Array(&r.Tags), pq.Array(&r.References), &r.RawYAML, &r.Enabled,
+		pq.Array(&tagsRaw), pq.Array(&refsRaw), &r.RawYAML, &r.Enabled,
 		&r.ValidationStatus, &validationErrorsJSON,
 		&r.Source, &r.CreatedAt, &r.UpdatedAt,
 	)
@@ -258,5 +259,15 @@ func scanRuleRows(rows *sql.Rows) (*fleet.Rule, error) {
 	}
 	json.Unmarshal(labelsJSON, &r.Labels)
 	r.ValidationErrors = validationErrorsJSON
+	for _, t := range tagsRaw {
+		if t.Valid {
+			r.Tags = append(r.Tags, t.String)
+		}
+	}
+	for _, ref := range refsRaw {
+		if ref.Valid {
+			r.References = append(r.References, ref.String)
+		}
+	}
 	return r, nil
 }
