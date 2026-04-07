@@ -71,13 +71,21 @@ export default function Detections() {
   const perPage = data?.meta?.per_page ?? 50
   const totalPages = Math.ceil(total / perPage)
 
-  // Sync selected detection with URL ?id= param
+  // Sync selected detection with URL ?id= param.
+  // If the detection isn't in the current page, fetch it directly by ID.
   const urlDetId = searchParams.get('id')
   useEffect(() => {
-    if (urlDetId && !selectedDet && allDetections.length > 0) {
-      const found = allDetections.find(d => d.id === urlDetId)
-      if (found) setSelectedDet(found)
+    if (!urlDetId || selectedDet) return
+    // Try to find in current page first
+    const found = allDetections.find(d => d.id === urlDetId)
+    if (found) {
+      setSelectedDet(found)
+      return
     }
+    // Not in current page — fetch directly
+    api.getDetection(urlDetId).then(res => {
+      if (res.data) setSelectedDet(res.data)
+    }).catch(() => {})
   }, [urlDetId, allDetections, selectedDet])
 
   const selectDetection = (det: Detection | null) => {

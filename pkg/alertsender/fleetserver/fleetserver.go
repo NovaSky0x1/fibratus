@@ -71,7 +71,7 @@ func (s *sender) Send(alert alertsender.Alert) error {
 		Title:       alert.Title,
 		Text:        alert.Text,
 		Description: alert.Description,
-		Severity:    string(alert.Severity),
+		Severity:    alert.Severity.String(),
 		Tags:        alert.Tags,
 		Labels:      alert.Labels,
 		Timestamp:   timestamppb.Now(),
