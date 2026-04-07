@@ -1,26 +1,20 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ReactFlow, Background, Controls, MiniMap,
+  type Node, type Edge, Position, Handle,
+  ReactFlowProvider, useReactFlow,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+import Dagre from '@dagrejs/dagre'
+
+// ═══════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════
 
 interface TelemetryEvent {
   id: number; timestamp: string; event_name: string; event_category: string
   pid: number; tid: number; process_name: string; process_exe: string
   process_cmdline: string; parent_pid: number; parent_name: string
-  params: Record<string, unknown>
-}
-
-interface TreeNode {
-  pid: number
-  name: string
-  exe: string
-  cmdline: string
-  parentPid: number
-  parentName: string
-  eventName: string
-  timestamp: string
-  category: string
-  children: TreeNode[]
-  isTrigger: boolean
-  isOnPath: boolean
-  collapsed: boolean
   params: Record<string, unknown>
 }
 
@@ -31,25 +25,28 @@ interface Props {
   loadingPid?: number | null
 }
 
-const catColors: Record<string, { border: string; badge: string; line: string }> = {
-  process:  { border: 'border-l-blue-500',    badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',       line: 'bg-blue-300 dark:bg-blue-700' },
-  file:     { border: 'border-l-amber-500',   badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',   line: 'bg-amber-300 dark:bg-amber-700' },
-  registry: { border: 'border-l-purple-500',  badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300', line: 'bg-purple-300 dark:bg-purple-700' },
-  net:      { border: 'border-l-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300', line: 'bg-emerald-300 dark:bg-emerald-700' },
-  image:    { border: 'border-l-indigo-500',  badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300', line: 'bg-indigo-300 dark:bg-indigo-700' },
-  dns:      { border: 'border-l-teal-500',    badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300',       line: 'bg-teal-300 dark:bg-teal-700' },
-  thread:   { border: 'border-l-pink-500',    badge: 'bg-pink-100 text-pink-700 dark:bg-pink-900/50 dark:text-pink-300',       line: 'bg-pink-300 dark:bg-pink-700' },
-  mem:      { border: 'border-l-rose-500',    badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300',       line: 'bg-rose-300 dark:bg-rose-700' },
-  handle:   { border: 'border-l-gray-400',    badge: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',          line: 'bg-gray-300 dark:bg-gray-600' },
+// ═══════════════════════════════════════════════════
+// Colors
+// ═══════════════════════════════════════════════════
+
+const catStyle: Record<string, { bg: string; border: string; badge: string; text: string }> = {
+  process:  { bg: 'bg-white dark:bg-slate-800',          border: 'border-blue-400',    badge: 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300',       text: 'text-blue-600 dark:text-blue-400' },
+  file:     { bg: 'bg-white dark:bg-slate-800',          border: 'border-amber-400',   badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300',   text: 'text-amber-600 dark:text-amber-400' },
+  registry: { bg: 'bg-white dark:bg-slate-800',          border: 'border-purple-400',  badge: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300', text: 'text-purple-600 dark:text-purple-400' },
+  net:      { bg: 'bg-white dark:bg-slate-800',          border: 'border-emerald-400', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300', text: 'text-emerald-600 dark:text-emerald-400' },
+  image:    { bg: 'bg-white dark:bg-slate-800',          border: 'border-indigo-400',  badge: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300', text: 'text-indigo-600 dark:text-indigo-400' },
+  dns:      { bg: 'bg-white dark:bg-slate-800',          border: 'border-teal-400',    badge: 'bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-300',       text: 'text-teal-600 dark:text-teal-400' },
+  thread:   { bg: 'bg-white dark:bg-slate-800',          border: 'border-pink-400',    badge: 'bg-pink-100 text-pink-800 dark:bg-pink-900/60 dark:text-pink-300',       text: 'text-pink-600 dark:text-pink-400' },
+  mem:      { bg: 'bg-white dark:bg-slate-800',          border: 'border-rose-400',    badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-300',       text: 'text-rose-600 dark:text-rose-400' },
+  handle:   { bg: 'bg-white dark:bg-slate-800',          border: 'border-gray-300',    badge: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',          text: 'text-gray-500 dark:text-gray-400' },
 }
+function cs(cat: string) { return catStyle[cat] || catStyle.handle }
 
-function getCat(cat: string) { return catColors[cat] || catColors.handle }
-
-function eventDetail(evt: TelemetryEvent): string {
+function evtSummary(evt: TelemetryEvent): string {
   const p = evt.params || {}
   switch (evt.event_category) {
-    case 'file': return String(p.file_name || p.file_object || '')
-    case 'registry': return String(p.key_name || p.key || '')
+    case 'file': return String(p.file_name || p.file_object || p.path || '')
+    case 'registry': return String(p.key_name || p.key || p.path || '')
     case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || ''
     case 'dns': return String(p.name || p.domain || '')
     case 'image': return String(p.file_name || p.image_name || '')
@@ -57,265 +54,299 @@ function eventDetail(evt: TelemetryEvent): string {
   }
 }
 
-export default function ProcessChain({ events, focusPids, onLoadContext, loadingPid }: Props) {
-  const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+// ═══════════════════════════════════════════════════
+// Custom Nodes
+// ═══════════════════════════════════════════════════
 
-  // Build tree: each event becomes a node, grouped by PID then branching by child PIDs
-  const roots = useMemo(() => {
-    if (!events.length) return []
-
-    // Group events by PID
-    const byPid = new Map<number, TelemetryEvent[]>()
-    for (const evt of events) {
-      if (evt.pid <= 0) continue
-      const list = byPid.get(evt.pid) || []
-      list.push(evt)
-      byPid.set(evt.pid, list)
-    }
-
-    // Find parent-child relationships
-    const childrenOf = new Map<number, Set<number>>()
-    const parentOf = new Map<number, number>()
-    for (const [pid, evts] of byPid) {
-      const ppid = evts[0].parent_pid
-      if (ppid > 0 && ppid !== pid && byPid.has(ppid)) {
-        parentOf.set(pid, ppid)
-        if (!childrenOf.has(ppid)) childrenOf.set(ppid, new Set())
-        childrenOf.get(ppid)!.add(pid)
-      }
-    }
-
-    // Find focus path
-    const onPath = new Set<number>()
-    for (const pid of Object.keys(focusPids).map(Number)) {
-      onPath.add(pid)
-      let cur = pid
-      for (let i = 0; i < 20; i++) {
-        const p = parentOf.get(cur)
-        if (!p) break
-        onPath.add(p)
-        cur = p
-      }
-    }
-
-    // Build tree nodes for each PID
-    const buildPidNodes = (pid: number): TreeNode[] => {
-      const evts = byPid.get(pid) || []
-      const isTrigger = !!focusPids[pid]
-      const isPath = onPath.has(pid)
-      const kids = childrenOf.get(pid) || new Set()
-
-      // Group by event category for non-process events
-      const processEvts = evts.filter(e => e.event_category === 'process')
-      const otherByCat = new Map<string, TelemetryEvent[]>()
-      for (const e of evts) {
-        if (e.event_category === 'process') continue
-        const list = otherByCat.get(e.event_category) || []
-        list.push(e)
-        otherByCat.set(e.event_category, list)
-      }
-
-      // Root node for this PID = the process creation event or first event
-      const mainEvt = processEvts.find(e => e.event_name === 'CreateProcess') || evts[0]
-      const children: TreeNode[] = []
-
-      // Add event category nodes as children (file, reg, net, dns, etc.)
-      for (const [cat, catEvts] of otherByCat) {
-        const catNode: TreeNode = {
-          pid, name: `${cat.toUpperCase()} (${catEvts.length})`, exe: '',
-          cmdline: '', parentPid: pid, parentName: mainEvt.process_name,
-          eventName: catEvts[0].event_name, timestamp: catEvts[0].timestamp,
-          category: cat, children: [], isTrigger: false, isOnPath: isPath,
-          collapsed: !isTrigger, params: {},
-        }
-        // Each event in the category becomes a leaf node
-        for (const e of catEvts.slice(0, 30)) {
-          catNode.children.push({
-            pid: e.pid, name: eventDetail(e) || e.event_name, exe: '',
-            cmdline: '', parentPid: pid, parentName: '',
-            eventName: e.event_name, timestamp: e.timestamp,
-            category: e.event_category, children: [], isTrigger: false,
-            isOnPath: false, collapsed: false, params: e.params || {},
-          })
-        }
-        if (catEvts.length > 30) {
-          catNode.children.push({
-            pid: 0, name: `+${catEvts.length - 30} more`, exe: '',
-            cmdline: '', parentPid: 0, parentName: '',
-            eventName: '', timestamp: '', category: cat,
-            children: [], isTrigger: false, isOnPath: false,
-            collapsed: false, params: {},
-          })
-        }
-        children.push(catNode)
-      }
-
-      // Add child process nodes
-      for (const cpid of kids) {
-        children.push(...buildPidNodes(cpid))
-      }
-
-      return [{
-        pid, name: mainEvt.process_name, exe: mainEvt.process_exe || '',
-        cmdline: mainEvt.process_cmdline || '', parentPid: mainEvt.parent_pid,
-        parentName: mainEvt.parent_name || '',
-        eventName: mainEvt.event_name || 'CreateProcess',
-        timestamp: mainEvt.timestamp, category: 'process',
-        children, isTrigger, isOnPath: isPath, collapsed: false,
-        params: {},
-      }]
-    }
-
-    // Find roots (PIDs with no parent in the data)
-    const rootPids = [...byPid.keys()].filter(pid => !parentOf.has(pid))
-    const tree: TreeNode[] = []
-    for (const pid of rootPids) tree.push(...buildPidNodes(pid))
-    return tree
-  }, [events, focusPids])
-
-  const toggleCollapse = useCallback((id: string) => {
-    setCollapsedNodes(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }, [])
-
-  if (roots.length === 0) {
-    return <div className="flex items-center justify-center h-48 text-sm text-gray-400 dark:text-slate-500">No process events found for this detection.</div>
+function ProcessNodeComponent({ data }: { data: Record<string, unknown> }) {
+  const d = data as {
+    label: string; exe: string; cmdline: string; pid: number; ppid: number
+    parentName: string; timestamp: string; eventName: string
+    isTrigger: boolean; isOnPath: boolean; category: string
+    onLoadParent?: () => void; canLoadParent?: boolean; loading?: boolean
   }
-
-  // Check if any root has a parent not in the tree (for "load parent" button)
-  const topRoot = roots[0]
-  const canLoadParent = topRoot && topRoot.parentPid > 0 && onLoadContext
+  const s = cs(d.category)
 
   return (
-    <div className="overflow-auto p-4 min-h-[300px]">
-      {canLoadParent && (
-        <button onClick={() => onLoadContext!(topRoot.pid)} disabled={loadingPid === topRoot.pid}
-          className="mb-3 inline-flex items-center gap-1 rounded-lg border border-dashed border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs text-gray-500 dark:text-slate-400 hover:border-gray-400 hover:text-gray-700 dark:hover:text-slate-300 disabled:opacity-50">
-          {loadingPid === topRoot.pid ? 'Loading...' : `Load parent (${topRoot.parentName || topRoot.parentPid})`}
+    <div className={
+      'rounded-xl border-l-4 border shadow-sm transition-shadow hover:shadow-md ' +
+      s.border + ' ' + s.bg + ' ' +
+      (d.isTrigger ? 'border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-950/30 shadow-red-100 dark:shadow-red-900/20 ' : 'border-gray-200 dark:border-slate-700 ') +
+      (d.isOnPath && !d.isTrigger ? 'bg-blue-50/40 dark:bg-blue-950/20 ' : '')
+    } style={{ width: 280, padding: '10px 14px' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-300 dark:!bg-slate-600 !w-2 !h-2 !border-0" />
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${s.badge}`}>{d.eventName}</span>
+        <span className="text-[10px] text-gray-400 dark:text-slate-500">{d.timestamp && new Date(d.timestamp).toLocaleTimeString()}</span>
+        {d.isTrigger && <span className="rounded bg-red-500 text-white text-[9px] px-1.5 py-0.5 font-bold">TRIGGER</span>}
+      </div>
+
+      {d.exe && <div className="mt-1.5 text-[11px] font-mono text-gray-700 dark:text-slate-200 break-all leading-tight"><span className="text-gray-400 dark:text-slate-500">exe </span>{d.exe}</div>}
+      {d.cmdline && d.cmdline !== d.exe && <div className="mt-0.5 text-[10px] font-mono text-gray-500 dark:text-slate-400 break-all leading-tight">{d.cmdline}</div>}
+
+      <div className="mt-1.5 flex items-center gap-3 text-[10px] font-mono">
+        {d.pid > 0 && <span><span className="text-gray-400 dark:text-slate-500">pid </span><span className="text-red-600 dark:text-red-400 font-semibold">{d.pid}</span></span>}
+        {d.ppid > 0 && <span><span className="text-gray-400 dark:text-slate-500">parent </span>{d.ppid}</span>}
+      </div>
+
+      {d.canLoadParent && (
+        <button onClick={(e) => { e.stopPropagation(); d.onLoadParent?.() }}
+          disabled={d.loading}
+          className="mt-1.5 text-[10px] text-fibratus-600 dark:text-fibratus-400 hover:underline disabled:opacity-50">
+          {d.loading ? 'Loading...' : `Load parent (${d.parentName || d.ppid})`}
         </button>
       )}
-      <div className="flex items-start">
-        {roots.map((node, i) => (
-          <NodeRenderer key={`root-${i}`} node={node} depth={0}
-            collapsedNodes={collapsedNodes} toggleCollapse={toggleCollapse}
-            selectedId={selectedId} setSelectedId={setSelectedId}
-            parentId="" index={i} />
-        ))}
-      </div>
+
+      <Handle type="source" position={Position.Right} className="!bg-gray-300 dark:!bg-slate-600 !w-2 !h-2 !border-0" />
     </div>
   )
 }
 
-interface NodeRendererProps {
-  node: TreeNode
-  depth: number
-  collapsedNodes: Set<string>
-  toggleCollapse: (id: string) => void
-  selectedId: string | null
-  setSelectedId: (id: string | null) => void
-  parentId: string
-  index: number
-}
-
-function NodeRenderer({ node, depth, collapsedNodes, toggleCollapse, selectedId, setSelectedId, parentId, index }: NodeRendererProps) {
-  const id = `${parentId}-${node.pid}-${node.category}-${index}`
-  const cat = getCat(node.category)
-  const isCollapsed = node.collapsed ? !collapsedNodes.has(id) : collapsedNodes.has(id) // default collapsed state inverted by toggle
-  const hasChildren = node.children.length > 0
-  const isSelected = selectedId === id
-  const isProcess = node.category === 'process' && node.eventName !== ''
-  const isLeaf = !hasChildren && !isProcess
+function EventNodeComponent({ data }: { data: Record<string, unknown> }) {
+  const d = data as {
+    label: string; eventName: string; detail: string; timestamp: string
+    category: string; isTrigger: boolean; params: Record<string, unknown>
+  }
+  const s = cs(d.category)
 
   return (
-    <div className="flex items-start">
-      {/* This node */}
-      <div className="flex flex-col items-start">
-        <div
-          onClick={() => {
-            if (hasChildren) toggleCollapse(id)
-            setSelectedId(isSelected ? null : id)
-          }}
-          className={
-            'rounded-lg border-l-4 border border-gray-200 dark:border-slate-700 px-3 py-2 cursor-pointer transition-all select-none ' +
-            cat.border + ' ' +
-            (node.isTrigger
-              ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 shadow-md shadow-red-100 dark:shadow-red-900/20 '
-              : node.isOnPath
-                ? 'bg-blue-50/50 dark:bg-blue-950/20 '
-                : 'bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 ') +
-            (isSelected ? 'ring-2 ring-fibratus-400 ' : '') +
-            (isLeaf ? 'min-w-[180px] max-w-[280px] ' : 'min-w-[240px] max-w-[320px] ')
-          }
-        >
-          {/* Event badge + timestamp */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${cat.badge}`}>{node.eventName || node.name}</span>
-            {node.timestamp && <span className="text-[10px] text-gray-400 dark:text-slate-500">{new Date(node.timestamp).toLocaleTimeString()}</span>}
-            {node.isTrigger && <span className="rounded bg-red-500 text-white text-[9px] px-1.5 py-0.5 font-bold">TRIGGER</span>}
-            {hasChildren && (
-              <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-auto">
-                {isCollapsed ? `+${node.children.length}` : '−'}
-              </span>
-            )}
-          </div>
+    <div className={
+      'rounded-lg border-l-4 border shadow-sm ' + s.border + ' ' + s.bg + ' border-gray-200 dark:border-slate-700'
+    } style={{ width: 240, padding: '8px 12px' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-300 dark:!bg-slate-600 !w-1.5 !h-1.5 !border-0" />
 
-          {/* Process info */}
-          {isProcess && (
-            <div className="mt-1 space-y-0.5">
-              {node.exe && <div className="text-[11px] font-mono text-gray-700 dark:text-slate-300 truncate"><span className="text-gray-400 dark:text-slate-500">exe: </span>{node.exe}</div>}
-              {node.pid > 0 && <div className="text-[11px] font-mono text-gray-500 dark:text-slate-400"><span className="text-gray-400 dark:text-slate-500">pid: </span><span className="text-red-600 dark:text-red-400 font-medium">{node.pid}</span>{node.parentPid > 0 && <span> <span className="text-gray-400 dark:text-slate-500">parent:</span> {node.parentPid}</span>}</div>}
-            </div>
-          )}
+      <div className="flex items-center gap-2">
+        <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${s.badge}`}>{d.eventName}</span>
+        <span className="text-[9px] text-gray-400 dark:text-slate-500">{d.timestamp && new Date(d.timestamp).toLocaleTimeString()}</span>
+      </div>
+      {d.detail && <div className="mt-1 text-[10px] font-mono text-gray-600 dark:text-slate-300 break-all leading-tight">{d.detail}</div>}
 
-          {/* Leaf event detail */}
-          {isLeaf && node.name && node.eventName && (
-            <div className="mt-0.5 text-[10px] font-mono text-gray-500 dark:text-slate-400 truncate">{node.name}</div>
-          )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-300 dark:!bg-slate-600 !w-1.5 !h-1.5 !border-0" />
+    </div>
+  )
+}
 
-          {/* Params for leaf events */}
-          {isLeaf && isSelected && node.params && Object.keys(node.params).length > 0 && (
-            <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-slate-700 space-y-0.5">
-              {Object.entries(node.params).slice(0, 8).map(([k, v]) => (
-                <div key={k} className="text-[10px] font-mono flex gap-1">
-                  <span className="text-gray-400 dark:text-slate-500 shrink-0">{k}:</span>
-                  <span className="text-gray-700 dark:text-slate-300 truncate">{String(v)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+function CategoryNodeComponent({ data }: { data: Record<string, unknown> }) {
+  const d = data as { label: string; count: number; category: string }
+  const s = cs(d.category)
+
+  return (
+    <div className={
+      'rounded-lg border-l-4 border shadow-sm cursor-pointer hover:shadow-md transition-shadow ' +
+      s.border + ' ' + s.bg + ' border-gray-200 dark:border-slate-700'
+    } style={{ width: 200, padding: '8px 12px' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-300 dark:!bg-slate-600 !w-2 !h-2 !border-0" />
+
+      <div className="flex items-center gap-2">
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${s.badge}`}>{d.category.toUpperCase()}</span>
+        <span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">{d.count} events</span>
       </div>
 
-      {/* Children (branching to the right) */}
-      {hasChildren && !isCollapsed && (
-        <div className="flex items-start ml-0">
-          {/* Horizontal connector line */}
-          <div className="flex flex-col justify-center self-stretch shrink-0">
-            <div className={`w-6 h-px ${cat.line} my-auto`} />
-          </div>
-          {/* Vertical branch with children */}
-          <div className="flex flex-col gap-1.5 relative">
-            {/* Vertical line connecting children */}
-            {node.children.length > 1 && (
-              <div className={`absolute left-0 top-3 bottom-3 w-px ${cat.line}`} />
-            )}
-            {node.children.map((child, ci) => (
-              <div key={ci} className="flex items-start">
-                {/* Horizontal tick from vertical line */}
-                <div className={`w-4 h-px ${cat.line} mt-3 shrink-0`} />
-                <NodeRenderer node={child} depth={depth + 1}
-                  collapsedNodes={collapsedNodes} toggleCollapse={toggleCollapse}
-                  selectedId={selectedId} setSelectedId={setSelectedId}
-                  parentId={id} index={ci} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-300 dark:!bg-slate-600 !w-2 !h-2 !border-0" />
     </div>
+  )
+}
+
+const nodeTypes = {
+  process: ProcessNodeComponent,
+  event: EventNodeComponent,
+  category: CategoryNodeComponent,
+}
+
+// ═══════════════════════════════════════════════════
+// Layout with Dagre
+// ═══════════════════════════════════════════════════
+
+function layoutGraph(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
+  const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: 60, marginx: 20, marginy: 20 })
+
+  for (const node of nodes) {
+    const w = node.type === 'process' ? 280 : node.type === 'category' ? 200 : 240
+    const h = node.type === 'process' ? 120 : 50
+    g.setNode(node.id, { width: w, height: h })
+  }
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target)
+  }
+
+  Dagre.layout(g)
+
+  return {
+    nodes: nodes.map(node => {
+      const pos = g.node(node.id)
+      const w = node.type === 'process' ? 280 : node.type === 'category' ? 200 : 240
+      const h = node.type === 'process' ? 120 : 50
+      return { ...node, position: { x: pos.x - w / 2, y: pos.y - h / 2 } }
+    }),
+    edges,
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// Auto fit
+// ═══════════════════════════════════════════════════
+
+function FitOnLoad() {
+  const { fitView } = useReactFlow()
+  useEffect(() => { setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100) }, [fitView])
+  return null
+}
+
+// ═══════════════════════════════════════════════════
+// Main Component
+// ═══════════════════════════════════════════════════
+
+function ProcessChainInner({ events, focusPids, onLoadContext, loadingPid }: Props) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const toggleExpand = useCallback((catId: string) => {
+    setExpanded(prev => { const n = new Set(prev); if (n.has(catId)) n.delete(catId); else n.add(catId); return n })
+  }, [])
+
+  const { nodes, edges } = useMemo(() => {
+    if (!events.length) return { nodes: [], edges: [] }
+
+    const allNodes: Node[] = []
+    const allEdges: Edge[] = []
+
+    // Group by PID
+    const byPid = new Map<number, TelemetryEvent[]>()
+    for (const e of events) {
+      if (e.pid <= 0) continue
+      const list = byPid.get(e.pid) || []
+      list.push(e)
+      byPid.set(e.pid, list)
+    }
+
+    // Parent-child
+    const parentOf = new Map<number, number>()
+    for (const [pid, evts] of byPid) {
+      const ppid = evts[0].parent_pid
+      if (ppid > 0 && ppid !== pid && byPid.has(ppid)) parentOf.set(pid, ppid)
+    }
+
+    // Focus path
+    const onPath = new Set<number>()
+    for (const pid of Object.keys(focusPids).map(Number)) {
+      onPath.add(pid)
+      let cur = pid
+      for (let i = 0; i < 20; i++) { const p = parentOf.get(cur); if (!p) break; onPath.add(p); cur = p }
+    }
+
+    // Build nodes per PID
+    for (const [pid, evts] of byPid) {
+      const mainEvt = evts.find(e => e.event_name === 'CreateProcess') || evts[0]
+      const isTrigger = !!focusPids[pid]
+      const procNodeId = `p-${pid}`
+      const canLoadParent = mainEvt.parent_pid > 0 && !byPid.has(mainEvt.parent_pid) && !!onLoadContext
+
+      allNodes.push({
+        id: procNodeId, type: 'process',
+        position: { x: 0, y: 0 },
+        data: {
+          label: mainEvt.process_name, exe: mainEvt.process_exe, cmdline: mainEvt.process_cmdline,
+          pid, ppid: mainEvt.parent_pid, parentName: mainEvt.parent_name,
+          timestamp: mainEvt.timestamp, eventName: mainEvt.event_name || 'NEW_PROCESS',
+          isTrigger, isOnPath: onPath.has(pid), category: 'process',
+          canLoadParent, loading: loadingPid === pid,
+          onLoadParent: canLoadParent ? () => onLoadContext!(pid) : undefined,
+        },
+      })
+
+      // Edge to parent
+      if (parentOf.has(pid)) {
+        allEdges.push({
+          id: `e-${parentOf.get(pid)}-${pid}`,
+          source: `p-${parentOf.get(pid)}`, target: procNodeId,
+          style: { stroke: isTrigger || onPath.has(pid) ? '#ef4444' : '#d1d5db', strokeWidth: onPath.has(pid) ? 2 : 1 },
+          animated: isTrigger,
+        })
+      }
+
+      // Group non-process events by category
+      const catGroups = new Map<string, TelemetryEvent[]>()
+      for (const e of evts) {
+        if (e.event_category === 'process') continue
+        const list = catGroups.get(e.event_category) || []
+        list.push(e)
+        catGroups.set(e.event_category, list)
+      }
+
+      for (const [cat, catEvts] of catGroups) {
+        const catNodeId = `cat-${pid}-${cat}`
+
+        allNodes.push({
+          id: catNodeId, type: 'category',
+          position: { x: 0, y: 0 },
+          data: { label: cat, count: catEvts.length, category: cat },
+        })
+        allEdges.push({
+          id: `e-${procNodeId}-${catNodeId}`,
+          source: procNodeId, target: catNodeId,
+          style: { stroke: '#d1d5db', strokeWidth: 1 },
+        })
+
+        // If expanded, show individual events
+        if (expanded.has(catNodeId)) {
+          for (const evt of catEvts.slice(0, 15)) {
+            const evtNodeId = `evt-${evt.id}`
+            allNodes.push({
+              id: evtNodeId, type: 'event',
+              position: { x: 0, y: 0 },
+              data: {
+                label: evt.event_name, eventName: evt.event_name,
+                detail: evtSummary(evt), timestamp: evt.timestamp,
+                category: cat, isTrigger: false, params: evt.params,
+              },
+            })
+            allEdges.push({
+              id: `e-${catNodeId}-${evtNodeId}`,
+              source: catNodeId, target: evtNodeId,
+              style: { stroke: '#e5e7eb', strokeWidth: 1 },
+            })
+          }
+        }
+      }
+    }
+
+    return layoutGraph(allNodes, allEdges)
+  }, [events, focusPids, expanded, onLoadContext, loadingPid])
+
+  const onNodeClick = useCallback((_: unknown, node: Node) => {
+    if (node.type === 'category') toggleExpand(node.id)
+  }, [toggleExpand])
+
+  if (nodes.length === 0) {
+    return <div className="flex items-center justify-center h-64 text-sm text-gray-400 dark:text-slate-500">No process events found.</div>
+  }
+
+  return (
+    <div className="h-full w-full" style={{ minHeight: 400 }}>
+      <ReactFlow
+        nodes={nodes} edges={edges}
+        nodeTypes={nodeTypes}
+        onNodeClick={onNodeClick}
+        fitView
+        minZoom={0.1} maxZoom={2}
+        defaultEdgeOptions={{ type: 'smoothstep' }}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background color="#e5e7eb" gap={20} size={1} />
+        <Controls position="bottom-left" showInteractive={false} />
+        <MiniMap pannable zoomable position="bottom-right"
+          nodeColor={(n) => n.data?.isTrigger ? '#ef4444' : n.data?.isOnPath ? '#3b82f6' : '#e5e7eb'} />
+        <FitOnLoad />
+      </ReactFlow>
+    </div>
+  )
+}
+
+export default function ProcessChain(props: Props) {
+  return (
+    <ReactFlowProvider>
+      <ProcessChainInner {...props} />
+    </ReactFlowProvider>
   )
 }
