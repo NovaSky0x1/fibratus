@@ -31,7 +31,7 @@ export default function Rules() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['rules'],
-    queryFn: () => api.getRules(),
+    queryFn: () => api.getRules({ per_page: '1000' }),
   })
 
   const uploadMutation = useMutation({
