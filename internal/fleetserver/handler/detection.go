@@ -427,19 +427,8 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 					}
 				}
 				curPID = nextPID
-			} else if curPID > 0 {
-				// No events for this PID — create a synthetic event so the frontend can show the node
-				synthetic := store.TelemetryEvent{
-					PID:         curPID,
-					ProcessName: curName,
-					EventName:   "Process",
-					EventCategory: "process",
-					Timestamp:   det.Timestamp,
-					AgentID:     det.AgentID,
-					OrgID:       orgID,
-				}
-				filtered = append(filtered, synthetic)
-				break // can't walk further without events
+			} else {
+				break // no telemetry for this PID — can't walk further
 			}
 		}
 	} else {
