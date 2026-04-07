@@ -224,7 +224,7 @@ export default function Agents() {
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && sortedAgents.map((agent) => (
-                <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" onClick={() => { setSelectedAgent(agent); setActiveTab('details') }}>
+                <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" onClick={() => window.location.href = `/agents/${agent.id}`}>
                   <td className="px-6 py-3">
                     <span className="font-medium text-gray-900 dark:text-slate-100">{agent.hostname}</span>
                     <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">{agent.id.slice(0, 8)}</span>

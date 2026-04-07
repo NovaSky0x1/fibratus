@@ -14,6 +14,7 @@ import Settings from './pages/Settings'
 import Management from './pages/Management'
 import Admin from './pages/Admin'
 import ProcessTreePage from './pages/ProcessTreePage'
+import AgentDetailPage from './pages/AgentDetailPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -34,6 +35,7 @@ export default function App() {
             <Layout>
               <Routes>
                 <Route path="/" element={<Overview />} />
+                <Route path="/agents/:id" element={<AgentDetailPage />} />
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/detections" element={<Detections />} />
                 <Route path="/rules" element={<Rules />} />
