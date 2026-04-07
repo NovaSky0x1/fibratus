@@ -51,60 +51,6 @@ function parseParams(raw: unknown): Record<string, unknown> {
   return {}
 }
 
-function evtInfo(evt: TelemetryEvent): string[] {
-  const p = parseParams(evt.params)
-  const lines: string[] = []
-  switch (evt.event_category) {
-    case 'file':
-      if (p.file_path) lines.push(String(p.file_path))
-      if (p.create_disposition) lines.push('op: ' + p.create_disposition)
-      if (p.type) lines.push('type: ' + p.type)
-      if (p.share_mask) lines.push('share: ' + p.share_mask)
-      if (p.status) lines.push('status: ' + p.status)
-      break
-    case 'registry':
-      if (p.key_path) lines.push(String(p.key_path))
-      if (p.status) lines.push('status: ' + p.status)
-      break
-    case 'net':
-      if (p.dip) lines.push(`dst: ${p.dip}:${p.dport || ''}`)
-      if (p.sip) lines.push(`src: ${p.sip}:${p.sport || ''}`)
-      if (p.l4_proto) lines.push('proto: ' + p.l4_proto)
-      if (p.dport_name) lines.push('service: ' + p.dport_name)
-      break
-    case 'dns':
-      if (p.name) lines.push(String(p.name))
-      if (p.rr) lines.push('type: ' + p.rr)
-      if (p.options) lines.push('opts: ' + p.options)
-      break
-    case 'image':
-      if (p.file_path) lines.push(String(p.file_path))
-      if (p.image_size) lines.push('size: ' + p.image_size)
-      if (p.signature_type) lines.push('sig: ' + p.signature_type)
-      if (p.signature_level) lines.push('level: ' + p.signature_level)
-      if (p.md5) lines.push('md5: ' + p.md5)
-      break
-    case 'thread':
-      if (p.base_prio) lines.push('prio: ' + p.base_prio)
-      if (p.io_prio) lines.push('io: ' + p.io_prio)
-      if (p.kstack_base) lines.push('kstack: ' + p.kstack_base)
-      break
-    case 'mem':
-      if (p.base_address) lines.push('addr: ' + p.base_address)
-      if (p.region_size) lines.push('size: ' + p.region_size)
-      if (p.alloc_type) lines.push('alloc: ' + p.alloc_type)
-      if (p.protection) lines.push('prot: ' + p.protection)
-      break
-    case 'handle':
-      if (p.handle_name) lines.push(String(p.handle_name))
-      if (p.handle_type) lines.push('type: ' + p.handle_type)
-      break
-    default:
-      for (const [k, v] of Object.entries(p).slice(0, 4)) lines.push(`${k}: ${String(v).slice(0, 60)}`)
-  }
-  return lines
-}
-
 function evtPreview(evt: TelemetryEvent): string {
   const p = parseParams(evt.params)
   switch (evt.event_category) {
@@ -212,33 +158,6 @@ function CategoryNode({ data }: { data: Record<string, unknown> }) {
 
 // ═══════════════════════════════════════════════════
 // Event Node — shows more detail per category
-// ═══════════════════════════════════════════════════
-
-function EventNode({ data }: { data: Record<string, unknown> }) {
-  const d = data as { eventName: string; category: string; timestamp: string; infoLines: string[] }
-  const c = cc(d.category)
-  return (
-    <div className="rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-      style={{ width: 260, borderLeftWidth: 3, borderLeftColor: c.accent }}>
-      <Handle type="target" position={Position.Left} className="!bg-transparent !border-0 !w-1.5 !h-1.5" />
-      <div className="px-2.5 py-2">
-        <div className="flex items-center gap-1.5">
-          <span className={`rounded px-1 py-0.5 text-[9px] font-bold ${c.badge}`}>{d.eventName}</span>
-          <span className="text-[8px] text-gray-400 font-mono">{d.timestamp && new Date(d.timestamp).toLocaleTimeString()}</span>
-        </div>
-        {d.infoLines.length > 0 && (
-          <div className="mt-1 space-y-0.5">
-            {d.infoLines.map((line, i) => (
-              <div key={i} className="text-[10px] font-mono text-gray-600 dark:text-slate-300 break-all leading-snug">{line}</div>
-            ))}
-          </div>
-        )}
-      </div>
-      <Handle type="source" position={Position.Right} className="!bg-transparent !border-0 !w-1.5 !h-1.5" />
-    </div>
-  )
-}
-
 const nodeTypes = { processNode: ProcessNode, categoryNode: CategoryNode }
 
 // ═══════════════════════════════════════════════════
