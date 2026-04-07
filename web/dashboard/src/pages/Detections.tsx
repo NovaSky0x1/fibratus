@@ -161,7 +161,7 @@ export default function Detections() {
                   onClick={() => { selectDetection(det); setDetailView('detail') }}>
                   <td className="px-6 py-3">
                     <div className="font-medium text-gray-900 dark:text-slate-100">{det.title || det.rule_name}</div>
-                    {det.text && <div className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">{det.text}</div>}
+                    {det.text && <div className="mt-0.5 text-xs text-gray-500 dark:text-slate-400 max-w-lg whitespace-pre-line line-clamp-2">{det.text.trim()}</div>}
                   </td>
                   <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{det.agent_hostname || det.agent_id?.slice(0, 8)}</td>
                   <td className="px-6 py-3"><SeverityBadge severity={det.severity} /></td>
