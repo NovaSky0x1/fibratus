@@ -332,7 +332,8 @@ func (f *App) Run(args []string) error {
 		}
 		// When fleet mode is active, auto-enable fleet server as the output
 		// to stream telemetry to the fleet server for remote visibility.
-		if cfg.Fleet.Enabled && cfg.Output.Type == outputs.Null {
+		// Override console or null output — fleet telemetry takes priority.
+		if cfg.Fleet.Enabled && cfg.Output.Type != outputs.FleetServer {
 			log.Info("fleet: auto-enabling fleet server telemetry output")
 			cfg.Output.Type = outputs.FleetServer
 			cfg.Output.Output = fleetoutput.Config{
