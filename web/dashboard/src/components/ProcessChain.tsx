@@ -15,7 +15,7 @@ interface TelemetryEvent {
   id: number; timestamp: string; event_name: string; event_category: string
   pid: number; tid: number; process_name: string; process_exe: string
   process_cmdline: string; parent_pid: number; parent_name: string
-  params: Record<string, unknown>; raw_event: unknown
+  params: Record<string, unknown>; raw_event?: unknown
 }
 
 interface Props {
