@@ -271,39 +271,43 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 
 	var filtered []store.TelemetryEvent
 
-	// Fetch CreateProcess events for all known PIDs (wide window for full ancestry)
+	// For each known PID, try CreateProcess first. If not found (process
+	// started before agent), fall back to ANY event to get process metadata.
 	for _, pid := range allPIDs {
-		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID:   det.AgentID,
-			PID:       pid,
-			EventName: "CreateProcess",
-			From:      wideFrom,
-			To:        to,
-			Limit:     10,
+		// Try CreateProcess first (best source of process metadata)
+		events, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: det.AgentID, PID: pid, EventName: "CreateProcess",
+			From: wideFrom, To: to, Limit: 5,
 		})
-		if err != nil {
+		if len(events) > 0 {
+			filtered = append(filtered, events...)
 			continue
 		}
-		filtered = append(filtered, events...)
+		// No CreateProcess — fetch one event to get process name/exe/parent info
+		fallback, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: det.AgentID, PID: pid,
+			From: wideFrom, To: to, Limit: 1,
+		})
+		filtered = append(filtered, fallback...)
 	}
 
-	// Also fetch CreateProcess for direct children of trigger PIDs
+	// Fetch CreateProcess for direct children of trigger PIDs
 	for pid := range triggerPIDs {
-		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID:   det.AgentID,
-			ParentPID: pid,
-			EventName: "CreateProcess",
-			From:      det.Timestamp.Add(-5 * time.Minute),
-			To:        to,
-			Limit:     50,
+		events, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: det.AgentID, ParentPID: pid, EventName: "CreateProcess",
+			From: det.Timestamp.Add(-5 * time.Minute), To: to, Limit: 50,
 		})
-		if err != nil {
-			continue
+		if len(events) == 0 {
+			// Fallback: children by parent_pid, any event type
+			events, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+				AgentID: det.AgentID, ParentPID: pid,
+				From: det.Timestamp.Add(-5 * time.Minute), To: to, Limit: 50,
+			})
 		}
 		filtered = append(filtered, events...)
 	}
 
-	log.Infof("fleet: process tree: %d PIDs queried, %d process events returned", len(allPIDs), len(filtered))
+	log.Infof("fleet: process tree: %d PIDs queried, %d events returned", len(allPIDs), len(filtered))
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{
