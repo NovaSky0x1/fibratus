@@ -225,6 +225,28 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 		if rs != nil {
 			log.Infof("rules compile summary: %s", rs)
 		}
+		// In fleet mode, rules arrive asynchronously after ETW trace starts.
+		// Ensure ALL event types are collected so rules compiled later can
+		// evaluate against any event type. Without this, the ETW trace is
+		// configured to only collect events for rules known at startup (0 rules).
+		if cfg.Fleet.Enabled {
+			rs = &config.RulesCompileResult{
+				HasProcEvents:       true,
+				HasThreadEvents:     true,
+				HasImageEvents:      true,
+				HasFileEvents:       true,
+				HasRegistryEvents:   true,
+				HasNetworkEvents:    true,
+				HasHandleEvents:     true,
+				HasMemEvents:        true,
+				HasVAMapEvents:      true,
+				HasDNSEvents:        true,
+				HasAuditAPIEvents:   true,
+				HasThreadpoolEvents: false,
+				NumberRules:         1, // nonzero to indicate rules are expected
+			}
+			log.Info("fleet mode: ETW trace configured to collect all event types for async rules")
+		}
 	} else {
 		log.Info("rule engine is disabled")
 	}
