@@ -408,9 +408,17 @@ func isValidExt(path string) bool {
 }
 
 // LoadFilters loads rules from YAML files or URL addresses.
+// If rules were already loaded from memory (fleet server push),
+// they are preserved and file-based rules are appended.
 func (f *Filters) LoadFilters() error {
-	f.filters = make([]*FilterConfig, 0)
+	// Preserve in-memory rules if they exist
+	existing := f.filters
+	f.filters = make([]*FilterConfig, 0, len(existing))
 	ids := make(map[string]bool)
+	for _, flt := range existing {
+		ids[flt.ID] = true
+		f.filters = append(f.filters, flt)
+	}
 
 	for _, p := range f.Rules.FromPaths {
 		paths, err := filepath.Glob(p)
