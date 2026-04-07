@@ -9,9 +9,22 @@ interface Connection {
   LocalPort: number
   RemoteAddress: string
   RemotePort: number
-  State: string
+  State: string | number
   OwningProcess: number
   process_name: string
+}
+
+// PowerShell 5.1 returns State as integer enum, 7+ as string
+const STATE_MAP: Record<number, string> = {
+  1: 'Closed', 2: 'Listen', 3: 'SynSent', 4: 'SynReceived',
+  5: 'Established', 6: 'FinWait1', 7: 'FinWait2', 8: 'CloseWait',
+  9: 'Closing', 10: 'LastAck', 11: 'TimeWait', 12: 'DeleteTCB',
+  100: 'Bound',
+}
+
+function resolveState(state: string | number): string {
+  if (typeof state === 'number') return STATE_MAP[state] || String(state)
+  return state
 }
 
 interface NetworkResponse {
@@ -55,14 +68,14 @@ export default function AgentNetwork({ agentId }: { agentId: string }) {
 
   const raw = data?.connections
   const connections: Connection[] = Array.isArray(raw) ? raw : raw ? [raw as unknown as Connection] : []
-  const filtered = connections.filter((c) => matchesFilter(c.State, stateFilter))
+  const filtered = connections.filter((c) => matchesFilter(resolveState(c.State), stateFilter))
 
   const { sorted, sort, toggleSort } = useTableSort(filtered, 'State', 'asc')
 
   // Count connections by state for filter badges
   const counts: Record<string, number> = { all: connections.length }
   for (const c of connections) {
-    const s = c.State.toLowerCase().replace(/[_-]/g, '')
+    const s = resolveState(c.State).toLowerCase().replace(/[_-]/g, '')
     for (const f of STATE_FILTERS) {
       if (f !== 'all' && s === f.toLowerCase()) {
         counts[f] = (counts[f] || 0) + 1
@@ -163,10 +176,10 @@ export default function AgentNetwork({ agentId }: { agentId: string }) {
                     <span
                       className={clsx(
                         'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        stateBadgeClasses(conn.State),
+                        stateBadgeClasses(resolveState(conn.State)),
                       )}
                     >
-                      {conn.State}
+                      {resolveState(conn.State)}
                     </span>
                   </td>
                   <td className="px-6 py-2 font-mono text-xs text-gray-700 dark:text-slate-300 tabular-nums">

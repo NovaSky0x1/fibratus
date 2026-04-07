@@ -425,7 +425,8 @@ func (e *WindowsExecutor) getProcesses(cmd *fleet.Command) (json.RawMessage, err
 // getNetwork returns structured network connection information.
 func (e *WindowsExecutor) getNetwork(cmd *fleet.Command) (json.RawMessage, error) {
 	// Build process lookup hash once, then select with it — no per-connection lookups
-	psCmd := `$p=@{};Get-Process|%{$p[$_.Id]=$_.ProcessName};Get-NetTCPConnection -EA 0|Select LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess,@{N='process_name';E={$p[[int]$_.OwningProcess]}}|ConvertTo-Json -Depth 2 -Compress`
+	// State enum must be cast to string — PowerShell 5.1 serializes it as integer
+	psCmd := `$p=@{};Get-Process|%{$p[$_.Id]=$_.ProcessName};@(Get-NetTCPConnection -EA 0|Select LocalAddress,LocalPort,RemoteAddress,RemotePort,@{N='State';E={$_.State.ToString()}},OwningProcess,@{N='process_name';E={$p[[int]$_.OwningProcess]}})|ConvertTo-Json -Depth 2 -Compress`
 	out, err := runPowerShellLong(psCmd, 15)
 	if err != nil {
 		return nil, fmt.Errorf("get_network: %v: %s", err, out)
@@ -469,7 +470,7 @@ func (e *WindowsExecutor) getAutoruns(cmd *fleet.Command) (json.RawMessage, erro
 	runKeys, _ := runPowerShellLong(runKeysCmd, 15)
 
 	// Scheduled tasks
-	tasksCmd := `Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Ready' -and $_.TaskPath -notlike '\Microsoft\*' } | Select-Object TaskName,TaskPath,State,@{N='action';E={($_.Actions | Select-Object -First 1).Execute}},@{N='trigger';E={($_.Triggers | Select-Object -First 1).ToString()}} | ConvertTo-Json -Depth 3 -Compress`
+	tasksCmd := `@(Get-ScheduledTask -EA 0|?{$_.State -eq 'Ready' -and $_.TaskPath -notlike '\Microsoft\*'}|Select TaskName,TaskPath,State,@{N='action';E={($_.Actions|Select -First 1).Execute}})|ConvertTo-Json -Depth 2 -Compress`
 	tasks, _ := runPowerShellLong(tasksCmd, 15)
 
 	// Startup folder
@@ -526,11 +527,12 @@ func (e *WindowsExecutor) getRegistry(cmd *fleet.Command) (json.RawMessage, erro
 	}
 
 	// Get subkeys
-	keysCmd := fmt.Sprintf(`Get-ChildItem '%s' -ErrorAction SilentlyContinue | Select-Object PSChildName,@{N='subkey_count';E={(Get-ChildItem $_.PSPath -ErrorAction SilentlyContinue).Count}} | ConvertTo-Json -Depth 3 -Compress`, payload.Path)
+	// @() forces array output even for single results
+	keysCmd := fmt.Sprintf(`@(Get-ChildItem '%s' -EA 0|Select PSChildName,@{N='subkey_count';E={@(Get-ChildItem $_.PSPath -EA 0).Count}})|ConvertTo-Json -Depth 2 -Compress`, payload.Path)
 	keys, _ := runPowerShellLong(keysCmd, 15)
 
 	// Get values at this path
-	valsCmd := fmt.Sprintf(`$props = Get-ItemProperty '%s' -ErrorAction SilentlyContinue; if ($props) { $props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object { @{name=$_.Name;value=($_.Value | Out-String).Trim();type=$_.TypeNameOfValue} } | ConvertTo-Json -Depth 3 -Compress }`, payload.Path)
+	valsCmd := fmt.Sprintf(`$p=Get-ItemProperty '%s' -EA 0;if($p){@($p.PSObject.Properties|?{$_.Name -notlike 'PS*'}|%%{@{name=$_.Name;value=($_.Value|Out-String).Trim();type=$_.TypeNameOfValue}})|ConvertTo-Json -Depth 2 -Compress}else{'[]'}`, payload.Path)
 	vals, _ := runPowerShellLong(valsCmd, 15)
 
 	result, _ := json.Marshal(map[string]interface{}{
