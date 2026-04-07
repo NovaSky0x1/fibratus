@@ -315,7 +315,10 @@ function DetectionTreeTab({ detection, focusPid }: { detection: Detection; focus
           Full Screen
         </a>
       </div>
-      <ProcessChain events={events} focusPids={focus} onLoadContext={loadContext} loadingPid={loadingPid} />
+      <div style={{ height: 500 }}>
+        <ProcessChain events={events} focusPids={focus} onLoadContext={loadContext} loadingPid={loadingPid}
+          detectionEvents={parseEvents(detection.events) as Record<string, unknown>[]} />
+      </div>
     </div>
   )
 }

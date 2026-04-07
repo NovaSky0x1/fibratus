@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  ReactFlow, Background, Controls, MiniMap, Panel,
+  ReactFlow, Background, Controls, MiniMap,
   type Node, type Edge, Position, Handle,
   ReactFlowProvider, useReactFlow,
 } from '@xyflow/react'
@@ -23,6 +23,8 @@ interface Props {
   focusPids: Record<number, boolean>
   onLoadContext?: (pid: number) => void
   loadingPid?: number | null
+  // Raw detection events JSON — used to enrich trigger process nodes with hashes, certs, etc.
+  detectionEvents?: Record<string, unknown>[]
 }
 
 // ═══════════════════════════════════════════════════
@@ -87,6 +89,7 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
     timestamp: string; eventName: string; isTrigger: boolean; isOnPath: boolean
     canLoadParent: boolean; loading: boolean; onLoadParent?: () => void
     catSummary: string; expanded: boolean
+    md5: string; sha256: string; isSigned: boolean; certSubject: string; sid: string; username: string
   }
   return (
     <div className={
@@ -107,6 +110,10 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
           <span><span className="text-gray-400">pid </span><span className="text-red-600 dark:text-red-400 font-semibold">{d.pid}</span></span>
           {d.ppid > 0 && <span><span className="text-gray-400">parent </span><span className="text-blue-600 dark:text-blue-400">{d.ppid}</span></span>}
         </div>
+        {(d.username || d.sid) && <div className="mt-1 text-[10px] font-mono text-gray-500 dark:text-slate-400">{d.username && <span>{d.username} </span>}{d.sid && <span className="text-gray-400 text-[9px]">{d.sid}</span>}</div>}
+        {d.sha256 && <div className="mt-0.5 text-[9px] font-mono text-gray-400 dark:text-slate-500 break-all">sha256: {d.sha256}</div>}
+        {d.md5 && <div className="text-[9px] font-mono text-gray-400 dark:text-slate-500">md5: {d.md5}</div>}
+        {d.isSigned !== undefined && <div className="text-[9px] font-mono text-gray-400">{d.isSigned ? '✓ signed' : '✗ unsigned'}{d.certSubject ? ` — ${d.certSubject}` : ''}</div>}
         {d.catSummary && <div className="mt-1.5 text-[9px] text-gray-400">{d.expanded ? '▼ click to collapse' : '▶ ' + d.catSummary}</div>}
         {d.canLoadParent && (
           <button onClick={(e) => { e.stopPropagation(); d.onLoadParent?.() }} disabled={d.loading}
@@ -222,7 +229,7 @@ function DetailPanel({ event, onClose }: { event: TelemetryEvent | null; onClose
   if (!event) return null
   const params = event.params || {}
   return (
-    <div className="absolute top-0 right-0 w-80 h-full bg-white dark:bg-slate-800 border-l border-gray-200 dark:border-slate-700 overflow-y-auto shadow-xl z-50">
+    <div className="w-80 h-full bg-white dark:bg-slate-800 border-l border-gray-200 dark:border-slate-700 overflow-y-auto shrink-0">
       <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-800">
         <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${cc(event.event_category).badge}`}>{event.event_name}</span>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
@@ -265,7 +272,7 @@ function FitOnLoad({ trigger }: { trigger: number }) {
   return null
 }
 
-function Inner({ events, focusPids, onLoadContext, loadingPid }: Props) {
+function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }: Props) {
   const [expandedPids, setExpandedPids] = useState<Set<number>>(new Set())
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set())
   const [layoutTrigger, setLayoutTrigger] = useState(0)
@@ -308,6 +315,8 @@ function Inner({ events, focusPids, onLoadContext, loadingPid }: Props) {
       const main = evts.find(e => e.event_name === 'CreateProcess') || evts[0]
       const isTrigger = !!focusPids[pid]
       const procId = `p-${pid}`
+      // Look up enrichment from detection events for this PID
+      const detEvt = (detectionEvents || []).find(e => (e.proc as Record<string, unknown>)?.pid === pid)?.proc as Record<string, unknown> | undefined
       const canLP = main.parent_pid > 0 && !byPid.has(main.parent_pid) && !!onLoadContext
       const pidExp = expandedPids.has(pid)
 
@@ -320,6 +329,10 @@ function Inner({ events, focusPids, onLoadContext, loadingPid }: Props) {
         pid, ppid: main.parent_pid, parentName: main.parent_name, timestamp: main.timestamp,
         isTrigger, isOnPath: onPath.has(pid), canLoadParent: canLP, loading: loadingPid === pid,
         onLoadParent: canLP ? () => onLoadContext!(pid) : undefined, catSummary, expanded: pidExp,
+        // Enrichment from detection events
+        md5: detEvt?.md5 || '', sha256: detEvt?.sha256 || '',
+        isSigned: detEvt?.is_signed, certSubject: detEvt?.cert_subject || '',
+        sid: detEvt?.sid || '', username: detEvt?.username || '',
       }})
       evtMap.set(procId, main)
 
@@ -351,7 +364,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid }: Props) {
       }
     }
     return { rawNodes: allNodes, rawEdges: allEdges, evtMap }
-  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid])
+  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid, detectionEvents])
 
   // Run ELK layout async
   useEffect(() => {
@@ -373,29 +386,29 @@ function Inner({ events, focusPids, onLoadContext, loadingPid }: Props) {
   }
 
   return (
-    <div className="h-full w-full relative" style={{ minHeight: 500 }}>
-      <ReactFlow
-        nodes={laidOut.nodes} edges={laidOut.edges}
-        nodeTypes={nodeTypes} onNodeClick={onNodeClick}
-        fitView minZoom={0.05} maxZoom={2.5}
-        proOptions={{ hideAttribution: true }}
-        defaultEdgeOptions={{ type: 'smoothstep' }}
-      >
-        <Background color="#f0f0f0" gap={24} size={1} />
-        <Controls position="bottom-left" showInteractive={false} />
-        <MiniMap pannable zoomable position="bottom-right"
-          style={{ border: '1px solid #e5e7eb', borderRadius: 8 }}
-          nodeColor={(n) => {
-            const d = n.data as Record<string, unknown>
-            if (d.isTrigger) return '#ef4444'
-            if (d.isOnPath) return '#3b82f6'
-            return cc((d.category as string) || 'handle').accent
-          }} />
-        <FitOnLoad trigger={layoutTrigger} />
-        <Panel position="top-right">
-          <DetailPanel event={selectedEvt} onClose={() => setSelectedEvt(null)} />
-        </Panel>
-      </ReactFlow>
+    <div className="h-full w-full flex" style={{ minHeight: 500 }}>
+      <div className="flex-1 min-w-0">
+        <ReactFlow
+          nodes={laidOut.nodes} edges={laidOut.edges}
+          nodeTypes={nodeTypes} onNodeClick={onNodeClick}
+          fitView minZoom={0.05} maxZoom={2.5}
+          proOptions={{ hideAttribution: true }}
+          defaultEdgeOptions={{ type: 'smoothstep' }}
+        >
+          <Background color="#f0f0f0" gap={24} size={1} />
+          <Controls position="bottom-left" showInteractive={false} />
+          <MiniMap pannable zoomable position="bottom-right"
+            style={{ border: '1px solid #e5e7eb', borderRadius: 8 }}
+            nodeColor={(n) => {
+              const d = n.data as Record<string, unknown>
+              if (d.isTrigger) return '#ef4444'
+              if (d.isOnPath) return '#3b82f6'
+              return cc((d.category as string) || 'handle').accent
+            }} />
+          <FitOnLoad trigger={layoutTrigger} />
+        </ReactFlow>
+      </div>
+      {selectedEvt && <DetailPanel event={selectedEvt} onClose={() => setSelectedEvt(null)} />}
     </div>
   )
 }
