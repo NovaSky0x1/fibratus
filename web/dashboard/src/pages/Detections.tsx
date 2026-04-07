@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { api, type Detection, type Rule } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
@@ -38,6 +39,7 @@ export default function Detections() {
   const [search, setSearch] = useState('')
   const [selectedDet, setSelectedDet] = useState<Detection | null>(null)
   const [detailView, setDetailView] = useState<DetailView>('detail')
+  const navigate = useNavigate()
 
   const { data, isLoading } = useQuery({
     queryKey: ['detections', page, severityFilter],
@@ -148,13 +150,15 @@ export default function Detections() {
           <div>
             {/* View tabs */}
             <div className="flex gap-1 border-b border-gray-200 dark:border-slate-700 mb-4">
-              {(['detail', 'tree'] as const).map(tab => (
-                <button key={tab} onClick={() => setDetailView(tab)}
-                  className={'px-4 py-2 text-sm font-medium border-b-2 -mb-px ' +
-                    (detailView === tab ? 'border-fibratus-600 text-fibratus-600' : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300')}>
-                  {tab === 'detail' ? 'Details' : 'Process Tree'}
-                </button>
-              ))}
+              <button onClick={() => setDetailView('detail')}
+                className={'px-4 py-2 text-sm font-medium border-b-2 -mb-px ' +
+                  (detailView === 'detail' ? 'border-fibratus-600 text-fibratus-600' : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300')}>
+                Details
+              </button>
+              <button onClick={() => navigate(`/process-tree?detection=${selectedDet.id}${focusProc?.pid ? `&pid=${focusProc.pid}` : ''}`)}
+                className="px-4 py-2 text-sm font-medium border-b-2 -mb-px border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300">
+                Process Tree
+              </button>
             </div>
 
             {detailView === 'detail' && (
@@ -262,16 +266,7 @@ export default function Detections() {
               </div>
             )}
 
-            {detailView === 'tree' && (
-              <div className="flex flex-col items-center justify-center py-12 gap-4">
-                <p className="text-sm text-gray-500 dark:text-slate-400">Process tree requires full screen for best experience.</p>
-                <a href={`/process-tree?detection=${selectedDet.id}${focusProc?.pid ? `&pid=${focusProc.pid}` : ''}`}
-                  className="inline-flex items-center gap-2 rounded-lg bg-fibratus-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-fibratus-700">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                  Open Process Tree
-                </a>
-              </div>
-            )}
+            {/* Process Tree tab navigates directly to full screen */}
           </div>
         )}
       </SlidePanel>

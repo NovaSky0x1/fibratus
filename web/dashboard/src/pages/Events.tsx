@@ -1237,14 +1237,20 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
               {(['ancestry', 'callstack', 'modules', 'process_tree', 'raw'] as const).map(t => (
                 <button
                   key={t}
-                  onClick={() => onTabChange(t)}
+                  onClick={() => {
+                    if (t === 'process_tree') {
+                      window.location.href = `/process-tree?agent=${evt.agent_id}&pid=${evt.pid}&ts=${encodeURIComponent(evt.timestamp)}`
+                    } else {
+                      onTabChange(t)
+                    }
+                  }}
                   className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors capitalize ${
                     tab === t
                       ? 'border-blue-600 dark:border-cyan-500 text-blue-700 dark:text-cyan-400'
                       : 'border-transparent text-gray-500 dark:text-slate-500 hover:text-blue-600 dark:hover:text-slate-300'
                   }`}
                 >
-                  {t === 'callstack' ? 'Call Stack' : t === 'raw' ? 'Raw JSON' : t}
+                  {t === 'callstack' ? 'Call Stack' : t === 'raw' ? 'Raw JSON' : t === 'process_tree' ? 'Process Tree' : t}
                 </button>
               ))}
             </div>
@@ -1306,19 +1312,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
               </div>
             )}
 
-            {/* Process Tree tab */}
-            {tab === 'process_tree' && (
-              <div className="py-4 text-center">
-                <a href={`/process-tree?agent=${evt.agent_id}&pid=${evt.pid}&ts=${encodeURIComponent(evt.timestamp)}`}
-                  className="inline-flex items-center gap-2 rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                  Open Process Tree
-                </a>
-                <p className="mt-2 text-xs text-gray-400 dark:text-slate-500">
-                  View the full interactive process tree for PID {evt.pid} ({evt.process_name})
-                </p>
-              </div>
-            )}
+            {/* Process Tree tab — navigates directly to full screen */}
 
             {/* Raw JSON tab */}
             {tab === 'raw' && (
