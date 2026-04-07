@@ -593,6 +593,12 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	// never written to disk. On update, rules are fed directly to the
 	// rule engine compiler from memory.
 	client.StartRuleSync(func(ruleDocs [][]byte, macrosYAML []byte) error {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("fleet: panic during rule compilation (recovered): %v", r)
+			}
+		}()
+
 		log.Infof("fleet: %d rules received in encrypted memory, compiling...", len(ruleDocs))
 
 		// Load macros from memory first (rules may reference them)
@@ -608,9 +614,12 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 			return fmt.Errorf("fleet: load rules from memory: %w", err)
 		}
 
-		// Recompile the rule engine with new in-memory rules
+		// Recompile the rule engine with new in-memory rules.
+		// The engine may not be initialized yet on the first rule delivery
+		// (rules arrive via async gRPC stream before engine.New() completes).
+		// In that case, the engine will compile these rules on its normal init path.
 		if f.engine == nil {
-			log.Warn("fleet: rule engine not initialized yet — rules loaded but not compiled")
+			log.Info("fleet: rules loaded to memory — engine will compile on init")
 			return nil
 		}
 
