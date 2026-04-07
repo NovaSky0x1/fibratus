@@ -6,13 +6,18 @@ import SortableHeader from '../SortableHeader'
 import { api } from '../../lib/api'
 
 interface Process {
-  Id: number
-  ProcessName: string
-  cpu_pct: number
+  ProcessId: number
+  Name: string
+  CommandLine: string
+  ExecutablePath: string
   mem_mb: number
-  Path: string
-  cmdline: string
   username: string
+  // Legacy field names for backward compat
+  Id?: number
+  ProcessName?: string
+  Path?: string
+  cmdline?: string
+  cpu_pct?: number
 }
 
 interface ProcessesResponse {
@@ -43,13 +48,13 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
   const filtered = search
     ? processes.filter(
         (p) =>
-          p.ProcessName.toLowerCase().includes(search.toLowerCase()) ||
+          (p.Name || p.ProcessName || '').toLowerCase().includes(search.toLowerCase()) ||
           (p.username || '').toLowerCase().includes(search.toLowerCase()) ||
-          String(p.Id).includes(search),
+          String(p.ProcessId || p.Id).includes(search),
       )
     : processes
 
-  const { sorted, sort, toggleSort } = useTableSort(filtered, 'cpu_pct', 'desc')
+  const { sorted, sort, toggleSort } = useTableSort(filtered, 'mem_mb', 'desc')
 
   const handleKill = useCallback(
     async (pid: number) => {
@@ -135,9 +140,8 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
-                <SortableHeader label="PID" sortKey="Id" sort={sort} onSort={toggleSort} />
-                <SortableHeader label="Name" sortKey="ProcessName" sort={sort} onSort={toggleSort} />
-                <SortableHeader label="CPU%" sortKey="cpu_pct" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="PID" sortKey="ProcessId" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Name" sortKey="Name" sort={sort} onSort={toggleSort} />
                 <SortableHeader label="Memory (MB)" sortKey="mem_mb" sort={sort} onSort={toggleSort} />
                 <SortableHeader label="User" sortKey="username" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Path</th>
@@ -147,40 +151,26 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {sorted.map((proc) => (
-                <tr key={proc.Id} className="even:bg-gray-50 dark:even:bg-slate-800/50 hover:bg-gray-100/50 dark:hover:bg-slate-700/30">
-                  <td className="px-6 py-2 font-mono text-gray-700 dark:text-slate-300 tabular-nums">{proc.Id}</td>
-                  <td className="px-6 py-2 font-medium text-gray-900 dark:text-slate-100">{proc.ProcessName}</td>
-                  <td className="px-6 py-2 tabular-nums">
-                    <span
-                      className={clsx(
-                        'font-mono',
-                        proc.cpu_pct > 50
-                          ? 'text-red-600 dark:text-red-400'
-                          : proc.cpu_pct > 20
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-gray-700 dark:text-slate-300',
-                      )}
-                    >
-                      {proc.cpu_pct.toFixed(1)}
-                    </span>
-                  </td>
+                <tr key={proc.ProcessId || proc.Id} className="even:bg-gray-50 dark:even:bg-slate-800/50 hover:bg-gray-100/50 dark:hover:bg-slate-700/30">
+                  <td className="px-6 py-2 font-mono text-gray-700 dark:text-slate-300 tabular-nums">{proc.ProcessId || proc.Id}</td>
+                  <td className="px-6 py-2 font-medium text-gray-900 dark:text-slate-100">{proc.Name || proc.ProcessName}</td>
                   <td className="px-6 py-2 font-mono text-gray-700 dark:text-slate-300 tabular-nums">
-                    {proc.mem_mb.toFixed(1)}
+                    {(proc.mem_mb || 0).toFixed(1)}
                   </td>
                   <td className="px-6 py-2 text-gray-600 dark:text-slate-400 text-xs">{proc.username || '-'}</td>
-                  <td className="px-6 py-2 font-mono text-xs text-gray-500 dark:text-slate-400 max-w-xs truncate" title={proc.Path}>
-                    {proc.Path || '-'}
+                  <td className="px-6 py-2 font-mono text-xs text-gray-500 dark:text-slate-400 max-w-xs truncate" title={proc.ExecutablePath || proc.Path || ''}>
+                    {proc.ExecutablePath || proc.Path || '-'}
                   </td>
-                  <td className="px-6 py-2 font-mono text-xs text-gray-500 dark:text-slate-400 max-w-xs truncate" title={proc.cmdline}>
-                    {proc.cmdline || '-'}
+                  <td className="px-6 py-2 font-mono text-xs text-gray-500 dark:text-slate-400 max-w-xs truncate" title={proc.CommandLine || proc.cmdline || ''}>
+                    {proc.CommandLine || proc.cmdline || '-'}
                   </td>
                   <td className="px-6 py-2">
                     <button
-                      onClick={() => handleKill(proc.Id)}
-                      disabled={killingPid === proc.Id}
+                      onClick={() => handleKill(proc.ProcessId || proc.Id || 0)}
+                      disabled={killingPid === (proc.ProcessId || proc.Id)}
                       className="rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 px-2 py-1 text-xs font-medium text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50"
                     >
-                      {killingPid === proc.Id ? '...' : 'Kill'}
+                      {killingPid === (proc.ProcessId || proc.Id) ? '...' : 'Kill'}
                     </button>
                   </td>
                 </tr>

@@ -408,55 +408,56 @@ func (e *WindowsExecutor) uninstall(cmd *fleet.Command) (json.RawMessage, error)
 	return result, nil
 }
 
-// getProcesses returns structured process information.
+// getProcesses returns structured process information using a single WMI query.
 func (e *WindowsExecutor) getProcesses(cmd *fleet.Command) (json.RawMessage, error) {
-	psCmd := `Get-Process | Where-Object { $_.Id -ne 0 } | Select-Object Id,ProcessName,@{N='cpu_pct';E={[math]::Round($_.CPU,1)}},@{N='mem_mb';E={[math]::Round($_.WorkingSet64/1MB,1)}},Path,@{N='cmdline';E={try{(Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue).CommandLine}catch{''}}},@{N='username';E={try{$o=(Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue).GetOwner();if($o.User){"$($o.Domain)\$($o.User)"}else{''}}catch{''}}} | ConvertTo-Json -Depth 3 -Compress`
-	out, err := runPowerShellLong(psCmd, 60)
+	// Single WMI call gets PID, name, cmdline, path, memory in one pass — no per-process lookups
+	psCmd := `Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine,ExecutablePath,@{N='mem_mb';E={[math]::Round($_.WorkingSet64/1MB,1)}},@{N='username';E={try{$o=$_.GetOwner();if($o.User){"$($o.Domain)\$($o.User)"}else{''}}catch{''}}} | ConvertTo-Json -Depth 2 -Compress`
+	out, err := runPowerShellLong(psCmd, 30)
 	if err != nil {
 		return nil, fmt.Errorf("get_processes: %v: %s", err, out)
 	}
-	// Wrap in envelope
 	result, _ := json.Marshal(map[string]interface{}{
-		"processes": json.RawMessage(out),
+		"processes": safeJSON(out),
 	})
 	return result, nil
 }
 
 // getNetwork returns structured network connection information.
 func (e *WindowsExecutor) getNetwork(cmd *fleet.Command) (json.RawMessage, error) {
-	psCmd := `$conns = Get-NetTCPConnection -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess; $procs = @{}; Get-Process | ForEach-Object { $procs[$_.Id] = $_.ProcessName }; $conns | ForEach-Object { $_ | Add-Member -NotePropertyName 'process_name' -NotePropertyValue ($procs[[int]$_.OwningProcess]) -PassThru } | ConvertTo-Json -Depth 3 -Compress`
-	out, err := runPowerShellLong(psCmd, 30)
+	// Build process lookup hash once, then select with it — no per-connection lookups
+	psCmd := `$p=@{};Get-Process|%{$p[$_.Id]=$_.ProcessName};Get-NetTCPConnection -EA 0|Select LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess,@{N='process_name';E={$p[[int]$_.OwningProcess]}}|ConvertTo-Json -Depth 2 -Compress`
+	out, err := runPowerShellLong(psCmd, 15)
 	if err != nil {
 		return nil, fmt.Errorf("get_network: %v: %s", err, out)
 	}
 	result, _ := json.Marshal(map[string]interface{}{
-		"connections": json.RawMessage(out),
+		"connections": safeJSON(out),
 	})
 	return result, nil
 }
 
 // getServices returns structured Windows service information.
 func (e *WindowsExecutor) getServices(cmd *fleet.Command) (json.RawMessage, error) {
-	psCmd := `Get-CimInstance Win32_Service | Select-Object Name,DisplayName,State,StartMode,@{N='account';E={$_.StartName}},PathName,ProcessId | ConvertTo-Json -Depth 3 -Compress`
-	out, err := runPowerShellLong(psCmd, 30)
+	psCmd := `Get-CimInstance Win32_Service|Select Name,DisplayName,State,StartMode,@{N='account';E={$_.StartName}},PathName,ProcessId|ConvertTo-Json -Depth 2 -Compress`
+	out, err := runPowerShellLong(psCmd, 20)
 	if err != nil {
 		return nil, fmt.Errorf("get_services: %v: %s", err, out)
 	}
 	result, _ := json.Marshal(map[string]interface{}{
-		"services": json.RawMessage(out),
+		"services": safeJSON(out),
 	})
 	return result, nil
 }
 
 // getDrivers returns loaded kernel driver information.
 func (e *WindowsExecutor) getDrivers(cmd *fleet.Command) (json.RawMessage, error) {
-	psCmd := `Get-CimInstance Win32_SystemDriver | Select-Object Name,DisplayName,State,StartMode,PathName,ServiceType | ConvertTo-Json -Depth 3 -Compress`
-	out, err := runPowerShellLong(psCmd, 30)
+	psCmd := `Get-CimInstance Win32_SystemDriver|Select Name,DisplayName,State,StartMode,PathName,ServiceType|ConvertTo-Json -Depth 2 -Compress`
+	out, err := runPowerShellLong(psCmd, 20)
 	if err != nil {
 		return nil, fmt.Errorf("get_drivers: %v: %s", err, out)
 	}
 	result, _ := json.Marshal(map[string]interface{}{
-		"drivers": json.RawMessage(out),
+		"drivers": safeJSON(out),
 	})
 	return result, nil
 }
@@ -491,7 +492,7 @@ func (e *WindowsExecutor) getSoftware(cmd *fleet.Command) (json.RawMessage, erro
 		return nil, fmt.Errorf("get_software: %v: %s", err, out)
 	}
 	result, _ := json.Marshal(map[string]interface{}{
-		"software": json.RawMessage(out),
+		"software": safeJSON(out),
 	})
 	return result, nil
 }
