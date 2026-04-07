@@ -397,24 +397,49 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	// Also get parent name from target events
+	parentName := ""
+	for _, evt := range targetEvents {
+		if evt.ParentPID > 0 && parentName == "" {
+			parentName = evt.ParentName
+		}
+	}
+
 	var filtered []store.TelemetryEvent
 
 	if ancestorsOnly {
-		// Only return parent + grandparent events (NOT the target itself — caller already has it)
-		if parentPID > 0 {
-			parentEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-				AgentID: det.AgentID, PID: parentPID, From: from, To: to, Limit: 500,
+		// Walk up the tree: load parent, grandparent, great-grandparent (up to 5 levels)
+		curPID := parentPID
+		curName := parentName
+		for level := 0; level < 5 && curPID > 0; level++ {
+			ancestorEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+				AgentID: det.AgentID, PID: curPID, From: from, To: to, Limit: 300,
 			})
-			filtered = append(filtered, parentEvents...)
-			// Load grandparent too
-			for _, evt := range parentEvents {
-				if evt.ParentPID > 0 && evt.ParentPID != parentPID {
-					gpEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-						AgentID: det.AgentID, PID: evt.ParentPID, From: from, To: to, Limit: 200,
-					})
-					filtered = append(filtered, gpEvents...)
-					break
+			if len(ancestorEvents) > 0 {
+				filtered = append(filtered, ancestorEvents...)
+				// Find this ancestor's parent for next iteration
+				nextPID := 0
+				for _, e := range ancestorEvents {
+					if e.ParentPID > 0 && e.ParentPID != curPID {
+						nextPID = e.ParentPID
+						curName = e.ParentName
+						break
+					}
 				}
+				curPID = nextPID
+			} else if curPID > 0 {
+				// No events for this PID — create a synthetic event so the frontend can show the node
+				synthetic := store.TelemetryEvent{
+					PID:         curPID,
+					ProcessName: curName,
+					EventName:   "Process",
+					EventCategory: "process",
+					Timestamp:   det.Timestamp,
+					AgentID:     det.AgentID,
+					OrgID:       orgID,
+				}
+				filtered = append(filtered, synthetic)
+				break // can't walk further without events
 			}
 		}
 	} else {
