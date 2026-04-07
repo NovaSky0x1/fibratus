@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, type Detection, type Rule } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
-import ProcessChain from '../components/ProcessChain'
+// ProcessChain used only in full-screen /process-tree page
 import { useTableSort } from '../hooks/useTableSort'
 import SortableHeader from '../components/SortableHeader'
 
@@ -279,64 +279,6 @@ export default function Detections() {
   )
 }
 
-function DetectionTreeTab({ detection, focusPid }: { detection: Detection; focusPid?: number }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['detection-tree-chain', detection.id],
-    queryFn: () => api.getDetectionProcessTree(detection.id),
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  })
-
-  const [extraEvents, setExtraEvents] = useState<unknown[]>([])
-  const [loadingPid, setLoadingPid] = useState<number | null>(null)
-
-  const events = [...((data?.data as Record<string, unknown>)?.events as unknown[] || []), ...extraEvents] as {
-    id: number; timestamp: string; event_name: string; event_category: string
-    pid: number; tid: number; process_name: string; process_exe: string
-    process_cmdline: string; parent_pid: number; parent_name: string
-    params: Record<string, unknown>
-  }[]
-
-  const focus = ((data?.data as Record<string, unknown>)?.focus_pids || {}) as Record<number, boolean>
-  if (focusPid) focus[focusPid] = true
-
-  const loadContext = async (pid: number) => {
-    setLoadingPid(pid)
-    try {
-      const res = await api.getDetectionProcessContext(detection.id, pid, true)
-      if (res.data?.events) {
-        const newEvts = res.data.events as { id: number }[]
-        if (newEvts.length === 0) return // nothing to add
-        setExtraEvents(prev => {
-          const existingIds = new Set(prev.map(e => (e as { id: number }).id))
-          const fresh = newEvts.filter(e => !existingIds.has(e.id))
-          return fresh.length > 0 ? [...prev, ...fresh] : prev
-        })
-      }
-    } finally {
-      setLoadingPid(null)
-    }
-  }
-
-  if (isLoading) return <div className="py-8 text-center text-sm text-gray-400">Loading process tree...</div>
-  if (events.length === 0) return <div className="py-8 text-center text-sm text-gray-400">No process events found for this detection. Telemetry may have expired.</div>
-
-  return (
-    <div>
-      <div className="flex justify-end mb-2">
-        <a href={`/process-tree?detection=${detection.id}${focusPid ? `&pid=${focusPid}` : ''}`}
-          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
-          Full Screen
-        </a>
-      </div>
-      <div style={{ height: 500 }}>
-        <ProcessChain events={events} focusPids={focus} onLoadContext={loadContext} loadingPid={loadingPid}
-          detectionEvents={parseEvents(detection.events) as Record<string, unknown>[]} />
-      </div>
-    </div>
-  )
-}
 
 function EventCard({ evt }: { evt: DetectionEvent }) {
   const [showRaw, setShowRaw] = useState(false)

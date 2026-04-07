@@ -11,6 +11,13 @@ interface TelemetryEvent {
   params: Record<string, unknown>
 }
 
+function parseDetectionEvents(events: unknown): Record<string, unknown>[] {
+  if (!events) return []
+  if (Array.isArray(events)) return events
+  if (typeof events === 'string') { try { return JSON.parse(events) } catch { return [] } }
+  return []
+}
+
 export default function ProcessTreePage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
@@ -111,7 +118,8 @@ export default function ProcessTreePage() {
         {isLoading ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400">Loading process tree...</div>
         ) : (
-          <ProcessChain events={allEvents} focusPids={focusPids} onLoadContext={loadContext} loadingPid={loadingPid} />
+          <ProcessChain events={allEvents} focusPids={focusPids} onLoadContext={loadContext} loadingPid={loadingPid}
+            detectionEvents={detection ? parseDetectionEvents(detection.events) : undefined} />
         )}
       </div>
     </div>
