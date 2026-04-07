@@ -117,7 +117,7 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
 // ═══════════════════════════════════════════════════
 
 function CategoryNode({ data }: { data: Record<string, unknown> }) {
-  const d = data as { category: string; count: number; expanded: boolean; preview: string[]; events: { eventName: string; detail: string; timestamp: string }[] }
+  const d = data as { category: string; count: number; expanded: boolean; preview: string[]; events: { eventName: string; detail: string; timestamp: string; idx: number }[]; onSelectEvent?: (catId: string, idx: number) => void; nodeId: string }
   const c = cc(d.category)
   return (
     <div className="rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:shadow-md"
@@ -140,7 +140,9 @@ function CategoryNode({ data }: { data: Record<string, unknown> }) {
         {d.expanded && d.events && (
           <div className="mt-2 max-h-64 overflow-y-auto space-y-1 nowheel" onClick={e => e.stopPropagation()}>
             {d.events.map((evt, i) => (
-              <div key={i} className="rounded border border-gray-100 dark:border-slate-600 px-2 py-1">
+              <div key={i}
+                onClick={() => d.onSelectEvent?.(d.nodeId, evt.idx)}
+                className="rounded border border-gray-100 dark:border-slate-600 px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
                 <div className="flex items-center gap-1.5">
                   <span className={`rounded px-1 py-0.5 text-[8px] font-bold ${c.badge}`}>{evt.eventName}</span>
                   <span className="text-[8px] text-gray-400 font-mono">{evt.timestamp && new Date(evt.timestamp).toLocaleTimeString()}</span>
@@ -278,7 +280,10 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
   }, [])
 
   // Build raw nodes/edges (unpositioned)
+  const catEvtStore = useMemo(() => new Map<string, TelemetryEvent[]>(), [])
+
   const { rawNodes, rawEdges, evtMap } = useMemo(() => {
+    catEvtStore.clear()
     const allNodes: Node[] = []
     const allEdges: Edge[] = []
     const evtMap = new Map<string, TelemetryEvent>()
@@ -337,11 +342,19 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
           const catEvts = evts.filter(e => e.event_category === c)
           const preview = catEvts.slice(0, 3).map(e => evtPreview(e) || e.event_name).filter(Boolean)
           // Embed event data in the category node — no separate event graph nodes
-          const embeddedEvents = catExp ? catEvts.slice(0, 200).map(e => ({
-            eventName: e.event_name, detail: evtPreview(e), timestamp: e.timestamp,
+          const slicedEvts = catEvts.slice(0, 200)
+          const embeddedEvents = catExp ? slicedEvts.map((e, i) => ({
+            eventName: e.event_name, detail: evtPreview(e), timestamp: e.timestamp, idx: i,
           })) : []
+          // Store sliced events for detail panel lookup
+          catEvtStore.set(catId, slicedEvts)
           allNodes.push({ id: catId, type: 'categoryNode', position: { x: 0, y: 0 },
-            data: { category: c, count, expanded: catExp, preview, events: embeddedEvents } })
+            data: { category: c, count, expanded: catExp, preview, events: embeddedEvents, nodeId: catId,
+              onSelectEvent: (nid: string, idx: number) => {
+                const evts = catEvtStore.get(nid)
+                if (evts?.[idx]) setSelectedEvt(evts[idx])
+              },
+            } })
           allEdges.push({ id: `e-${procId}-${catId}`, source: procId, target: catId,
             type: 'smoothstep', style: { stroke: cc(c).edge, strokeWidth: 1.5 } })
           // Map all events for detail panel
@@ -350,7 +363,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
       }
     }
     return { rawNodes: allNodes, rawEdges: allEdges, evtMap }
-  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid, detectionEvents, loadedAncestors])
+  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid, detectionEvents, loadedAncestors, catEvtStore])
 
   // Run ELK layout async
   useEffect(() => {
