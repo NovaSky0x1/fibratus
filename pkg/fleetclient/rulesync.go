@@ -21,12 +21,12 @@ package fleetclient
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -34,147 +34,143 @@ import (
 // The path points to the directory containing the downloaded rule files.
 type RuleSyncCallback func(rulesDir string) error
 
-// PullRules downloads the current ruleset from the fleet server.
-// Returns the rules directory path, whether rules changed, and any error.
-func (c *Client) PullRules() (string, bool, error) {
+// StartRuleSync opens a persistent gRPC stream to receive rule updates
+// pushed by the server. Falls back to periodic polling on stream errors.
+func (c *Client) StartRuleSync(onUpdate RuleSyncCallback) {
+	c.mu.Lock()
+	c.ruleSyncCallback = onUpdate
+	c.mu.Unlock()
+
+	c.wg.Add(1)
+	go c.ruleStreamLoop(onUpdate)
+}
+
+// ruleStreamLoop maintains a persistent SubscribeRules stream.
+// On disconnect, it reconnects with exponential backoff.
+func (c *Client) ruleStreamLoop(onUpdate RuleSyncCallback) {
+	defer c.wg.Done()
+
+	backoff := time.Second
+	maxBackoff := 30 * time.Second
+
+	for {
+		select {
+		case <-c.stopCh:
+			return
+		default:
+		}
+
+		err := c.subscribeRules(onUpdate)
+		if err != nil {
+			log.Warnf("fleet: rule stream error: %v (reconnecting in %s)", err, backoff)
+		}
+
+		select {
+		case <-time.After(backoff):
+			backoff = backoff * 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		case <-c.stopCh:
+			return
+		}
+	}
+}
+
+// subscribeRules opens one SubscribeRules stream and processes updates until error.
+func (c *Client) subscribeRules(onUpdate RuleSyncCallback) error {
 	c.mu.RLock()
 	agentID := c.agentID
+	orgID := c.orgID
 	c.mu.RUnlock()
 
-	path := "/agent/rules"
-	url := fmt.Sprintf("%s/api/%s%s", c.baseURL, apiVersion, path)
+	// Load current rules version from disk
+	currentVersion := loadFile(filepath.Join(c.dataDir, "rules-etag"))
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	stream, err := c.agentClient.SubscribeRules(c.grpcCtx(), &pb.RuleSubscription{
+		AgentId:        agentID,
+		OrgId:          orgID,
+		CurrentVersion: currentVersion,
+	})
 	if err != nil {
-		return "", false, err
+		return fmt.Errorf("open rule stream: %w", err)
 	}
 
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("X-API-Key", c.config.APIKey)
-	if c.config.OrgID != "" {
-		req.Header.Set("X-Org-ID", c.config.OrgID)
-	}
-	if agentID != "" {
-		req.Header.Set("X-Agent-ID", agentID)
-	}
+	log.Info("fleet: rule subscription stream opened")
 
-	// Send ETag for conditional request
-	etagFile := filepath.Join(c.dataDir, "rules-etag")
-	if etag, err := os.ReadFile(etagFile); err == nil {
-		req.Header.Set("If-None-Match", string(etag))
-	}
+	for {
+		update, err := stream.Recv()
+		if err != nil {
+			return fmt.Errorf("receive rule update: %w", err)
+		}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", false, fmt.Errorf("fleet rule sync: %w", err)
+		if err := c.applyRuleUpdate(update, onUpdate); err != nil {
+			log.Errorf("fleet: failed to apply rule update: %v", err)
+		}
 	}
-	defer resp.Body.Close()
+}
 
+// applyRuleUpdate writes rules and macros to disk and triggers the callback.
+func (c *Client) applyRuleUpdate(update *pb.RuleUpdate, onUpdate RuleSyncCallback) error {
 	rulesDir := filepath.Join(c.dataDir, "rules")
-
-	// 304 Not Modified — rules haven't changed
-	if resp.StatusCode == http.StatusNotModified {
-		return rulesDir, false, nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", false, fmt.Errorf("fleet rule sync: server returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Read rule YAML from response
-	rulesYAML, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20)) // 50MB max
-	if err != nil {
-		return "", false, fmt.Errorf("fleet rule sync: read body: %w", err)
-	}
-
-	// Write rules to local cache directory
-	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
-		return "", false, fmt.Errorf("fleet rule sync: create rules dir: %w", err)
-	}
-
-	// Split macros from rules — macros start with "- macro:" and must
-	// go in a separate file so the rule compiler can load them independently.
 	macrosDir := filepath.Join(rulesDir, "Macros")
+	os.MkdirAll(rulesDir, 0o755)
 	os.MkdirAll(macrosDir, 0o755)
 
-	// Remove old fleet rule files before writing new ones (handles rule deletions)
+	// Remove old fleet rule files
 	oldRules, _ := filepath.Glob(filepath.Join(rulesDir, "fleet-rule-*.yml"))
 	for _, f := range oldRules {
 		os.Remove(f)
 	}
-	// Also clean up legacy single-file format
-	os.Remove(filepath.Join(rulesDir, "fleet-rules.yml"))
 
-	var macrosBuf bytes.Buffer
+	// Write macros
+	if len(update.MacrosYaml) > 0 {
+		if err := os.WriteFile(filepath.Join(macrosDir, "macros.yml"), update.MacrosYaml, 0o644); err != nil {
+			return fmt.Errorf("write macros: %w", err)
+		}
+		log.Infof("fleet: wrote macros (%d bytes)", len(update.MacrosYaml))
+	}
+
+	// Split rules by YAML document separator and write each as a separate file
 	var ruleDocs []string
-	docs := strings.Split(string(rulesYAML), "\n---\n")
+	docs := strings.Split(string(update.RulesYaml), "\n---\n")
 	for _, doc := range docs {
 		trimmed := strings.TrimSpace(doc)
 		if trimmed == "" {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "- macro:") {
-			macrosBuf.WriteString(doc)
-			macrosBuf.WriteString("\n")
+			// Macro snuck into rules YAML — write to macros file
+			var buf bytes.Buffer
+			buf.WriteString(doc)
+			buf.WriteString("\n")
+			os.WriteFile(filepath.Join(macrosDir, "macros.yml"), buf.Bytes(), 0o644)
 		} else if strings.HasPrefix(trimmed, "name:") {
 			ruleDocs = append(ruleDocs, doc)
 		}
 	}
 
-	if macrosBuf.Len() > 0 {
-		if err := os.WriteFile(filepath.Join(macrosDir, "macros.yml"), macrosBuf.Bytes(), 0o644); err != nil {
-			return "", false, fmt.Errorf("fleet rule sync: write macros: %w", err)
-		}
-		log.Infof("fleet: wrote macros (%d bytes)", macrosBuf.Len())
-	}
-
-	// Write each rule as a separate file — the rule compiler's LoadFilters
-	// calls decodeFilter per file and yaml.Unmarshal only parses the first
-	// YAML document, so one-rule-per-file is required.
 	for i, doc := range ruleDocs {
 		ruleFile := filepath.Join(rulesDir, fmt.Sprintf("fleet-rule-%03d.yml", i+1))
 		if err := os.WriteFile(ruleFile, []byte(doc), 0o644); err != nil {
-			return "", false, fmt.Errorf("fleet rule sync: write rule %d: %w", i+1, err)
+			return fmt.Errorf("write rule %d: %w", i+1, err)
 		}
 	}
-	log.Infof("fleet: wrote %d rule files", len(ruleDocs))
+	log.Infof("fleet: wrote %d rule files (version: %s)", len(ruleDocs), update.Version)
 
-	// Save ETag for next request
-	if etag := resp.Header.Get("ETag"); etag != "" {
-		os.WriteFile(etagFile, []byte(etag), 0o644)
+	// Save version for next reconnect
+	if update.Version != "" {
+		os.WriteFile(filepath.Join(c.dataDir, "rules-etag"), []byte(update.Version), 0o644)
 	}
 
-	log.Infof("fleet: downloaded %d bytes of rules from server", len(rulesYAML))
-	return rulesDir, true, nil
-}
-
-// StartRuleSync registers a rule sync callback that runs on every heartbeat.
-// Rules are checked every heartbeat interval (~30s) using ETag caching
-// so unchanged rules don't cause unnecessary downloads.
-func (c *Client) StartRuleSync(onUpdate RuleSyncCallback) {
-	c.mu.Lock()
-	c.ruleSyncCallback = onUpdate
-	c.mu.Unlock()
-
-	// Initial sync immediately
-	c.syncRules(onUpdate)
-}
-
-func (c *Client) syncRules(onUpdate RuleSyncCallback) {
-	rulesDir, changed, err := c.PullRules()
-	if err != nil {
-		log.Warnf("fleet: rule sync failed: %v", err)
-		return
-	}
-	if !changed {
-		return
-	}
+	// Trigger callback
 	if onUpdate != nil {
 		if err := onUpdate(rulesDir); err != nil {
-			log.Errorf("fleet: rule update callback failed: %v", err)
+			return fmt.Errorf("rule update callback: %w", err)
 		}
 	}
+
+	return nil
 }
 
 // RulesDir returns the path where fleet-synced rules are cached.

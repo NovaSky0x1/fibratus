@@ -24,12 +24,14 @@ import (
 
 	"github.com/rabbitstack/fibratus/pkg/alertsender"
 	"github.com/rabbitstack/fibratus/pkg/fleetclient"
+	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type sender struct {
 	client  *fleetclient.Client
-	queue   chan []byte
+	queue   chan *pb.DetectionReport
 	stopCh  chan struct{}
 }
 
@@ -53,7 +55,7 @@ func makeSender(config alertsender.Config) (alertsender.Sender, error) {
 	}
 	s := &sender{
 		client: client,
-		queue:  make(chan []byte, 256),
+		queue:  make(chan *pb.DetectionReport, 256),
 		stopCh: make(chan struct{}),
 	}
 	go s.run()
@@ -62,12 +64,26 @@ func makeSender(config alertsender.Config) (alertsender.Sender, error) {
 
 // Send queues the alert for async delivery — never blocks the rule engine.
 func (s *sender) Send(alert alertsender.Alert) error {
-	data, err := alert.MarshalJSON()
-	if err != nil {
-		return err
+	// Convert alertsender.Alert to protobuf DetectionReport
+	det := &pb.DetectionReport{
+		RuleId:      alert.ID,
+		RuleName:    alert.Title,
+		Title:       alert.Title,
+		Text:        alert.Text,
+		Description: alert.Description,
+		Severity:    string(alert.Severity),
+		Tags:        alert.Tags,
+		Labels:      alert.Labels,
+		Timestamp:   timestamppb.Now(),
 	}
+
+	// Serialize the alert (including events) as JSON bytes
+	if data, err := alert.MarshalJSON(); err == nil {
+		det.Events = data
+	}
+
 	select {
-	case s.queue <- data:
+	case s.queue <- det:
 	default:
 		log.Warn("fleet: detection queue full, dropping alert")
 	}
@@ -78,16 +94,16 @@ func (s *sender) Send(alert alertsender.Alert) error {
 func (s *sender) run() {
 	for {
 		select {
-		case data := <-s.queue:
-			if err := s.client.SendDetection(data); err != nil {
+		case det := <-s.queue:
+			if err := s.client.SendDetection(det); err != nil {
 				log.Warnf("fleet: failed to send detection: %v", err)
 			}
 		case <-s.stopCh:
 			// drain remaining
 			for {
 				select {
-				case data := <-s.queue:
-					s.client.SendDetection(data)
+				case det := <-s.queue:
+					s.client.SendDetection(det)
 				default:
 					return
 				}

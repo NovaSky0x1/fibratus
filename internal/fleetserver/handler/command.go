@@ -43,16 +43,26 @@ var allowedCommandTypes = map[string]bool{
 }
 
 // CommandHandler handles command queue API requests.
+// CommandPushCallback is called when a new command is created to push it
+// to the agent's gRPC command stream (if connected).
+type CommandPushCallback func(agentID, cmdID, cmdType string, payload []byte) bool
+
 type CommandHandler struct {
-	commands store.CommandStore
-	agents   store.AgentStore
-	audit    store.AuditStore
-	users    store.UserStore
+	commands     store.CommandStore
+	agents       store.AgentStore
+	audit        store.AuditStore
+	users        store.UserStore
+	onCmdCreated CommandPushCallback
 }
 
 // NewCommandHandler creates a new command handler.
 func NewCommandHandler(commands store.CommandStore, agents store.AgentStore, audit store.AuditStore, users store.UserStore) *CommandHandler {
 	return &CommandHandler{commands: commands, agents: agents, audit: audit, users: users}
+}
+
+// SetCommandPushCallback registers a callback for instant command delivery.
+func (h *CommandHandler) SetCommandPushCallback(cb CommandPushCallback) {
+	h.onCmdCreated = cb
 }
 
 // CreateCommand handles POST /api/v1/orgs/{org_id}/agents/{id}/commands
@@ -129,6 +139,14 @@ func (h *CommandHandler) CreateCommand(w http.ResponseWriter, r *http.Request) {
 
 	logAudit(r, h.audit, h.users, userID, orgID, "execute", "command", cmd.ID, req.Type,
 		map[string]interface{}{"agent_id": agentID, "agent_hostname": agent.Hostname, "command_type": req.Type})
+
+	// Try to push command directly to agent's gRPC stream
+	if h.onCmdCreated != nil {
+		if h.onCmdCreated(agentID, cmd.ID, cmd.Type, cmd.Payload) {
+			cmd.Status = fleet.CmdStatusRunning
+			h.commands.MarkRunning(r.Context(), cmd.ID)
+		}
+	}
 
 	log.WithFields(log.Fields{
 		"command": cmd.ID,

@@ -29,8 +29,10 @@ import (
 // Config holds the fleet server configuration.
 type Config struct {
 	Server        ServerConfig        `yaml:"server"`
+	GRPC          GRPCConfig          `yaml:"grpc"`
 	Database      DatabaseConfig      `yaml:"database"`
 	ClickHouse    ClickHouseConfig    `yaml:"clickhouse"`
+	NATS          NATSConfig          `yaml:"nats"`
 	Elasticsearch ElasticsearchConfig `yaml:"elasticsearch"`
 	Auth          AuthConfig          `yaml:"auth"`
 	Agent         AgentConfig         `yaml:"agent"`
@@ -144,6 +146,15 @@ func LoadConfig(path string) (*Config, error) {
 	cfg := &Config{
 		Server: ServerConfig{
 			Listen: ":8443",
+		},
+		GRPC: GRPCConfig{
+			Listen: ":8444",
+		},
+		NATS: NATSConfig{
+			Enabled: false,
+			URL:     "nats://localhost:4222",
+			Subject: "fibratus.telemetry",
+			Queue:   "fleet-consumers",
 		},
 		Database: DatabaseConfig{
 			Host:           "localhost",

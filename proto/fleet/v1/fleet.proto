@@ -1,0 +1,213 @@
+// Copyright 2021-2022 by Nedim Sabic Sabic
+// https://www.fibratus.io
+// All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+
+syntax = "proto3";
+
+package fleet.v1;
+
+option go_package = "github.com/rabbitstack/fibratus/pkg/fleet/pb";
+
+import "google/protobuf/timestamp.proto";
+
+// ═══════════════════════════════════════════════════════════════
+// Agent-facing gRPC service
+// ═══════════════════════════════════════════════════════════════
+
+service AgentService {
+  // Register registers or re-registers an agent with the fleet server.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Heartbeat sends a single heartbeat status update.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // StreamTelemetry accepts a stream of telemetry batches from the agent.
+  // The server acknowledges each batch. Uses client-streaming.
+  rpc StreamTelemetry(stream TelemetryBatch) returns (TelemetryAck);
+
+  // SendDetection reports a detection (rule match) to the server.
+  rpc SendDetection(DetectionReport) returns (DetectionAck);
+
+  // SubscribeRules opens a server-streaming channel. The server pushes
+  // full rulesets whenever rules change. The agent keeps the stream open.
+  rpc SubscribeRules(RuleSubscription) returns (stream RuleUpdate);
+
+  // CommandChannel opens a bidirectional stream for active response.
+  // Server pushes commands, agent sends back results.
+  rpc CommandChannel(stream CommandResult) returns (stream CommandPush);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Enrollment service (token-based, unauthenticated)
+// ═══════════════════════════════════════════════════════════════
+
+service EnrollmentService {
+  // Enroll authenticates an agent with an enrollment token and returns
+  // signed certificates for mTLS.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Registration
+// ═══════════════════════════════════════════════════════════════
+
+message RegisterRequest {
+  string hostname = 1;
+  string os_version = 2;
+  string engine_version = 3;
+  string agent_group = 4;
+  map<string, string> tags = 5;
+}
+
+message RegisterResponse {
+  string agent_id = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Heartbeat
+// ═══════════════════════════════════════════════════════════════
+
+message HeartbeatRequest {
+  string agent_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string rules_version = 3;
+  double cpu_pct = 4;
+  uint64 mem_mb = 5;
+  double events_per_sec = 6;
+  int32 active_rules = 7;
+}
+
+message HeartbeatResponse {
+  string status = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Telemetry streaming (agent → server)
+// ═══════════════════════════════════════════════════════════════
+
+message TelemetryEvent {
+  int64 seq = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string event_name = 3;
+  string event_category = 4;
+  uint32 pid = 5;
+  uint32 tid = 6;
+  string process_name = 7;
+  string process_exe = 8;
+  string process_cmdline = 9;
+  uint32 parent_pid = 10;
+  string parent_name = 11;
+  // Structured params, metadata, and raw event stored as JSON bytes
+  // for maximum flexibility and ClickHouse compatibility.
+  bytes params = 12;
+  bytes metadata = 13;
+  bytes raw_event = 14;
+}
+
+message TelemetryBatch {
+  string agent_id = 1;
+  string org_id = 2;
+  string hostname = 3;
+  repeated TelemetryEvent events = 4;
+}
+
+message TelemetryAck {
+  int64 accepted = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Detection reporting (agent → server)
+// ═══════════════════════════════════════════════════════════════
+
+message DetectionReport {
+  string agent_id = 1;
+  string org_id = 2;
+  string agent_hostname = 3;
+  string rule_id = 4;
+  string rule_name = 5;
+  string title = 6;
+  string text = 7;
+  string description = 8;
+  string severity = 9;
+  map<string, string> labels = 10;
+  repeated string tags = 11;
+  // Events that triggered the detection, as JSON bytes.
+  bytes events = 12;
+  google.protobuf.Timestamp timestamp = 13;
+}
+
+message DetectionAck {
+  string detection_id = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Rule streaming (server → agent)
+// ═══════════════════════════════════════════════════════════════
+
+message RuleSubscription {
+  string agent_id = 1;
+  string org_id = 2;
+  // Current rules version hash. Server sends update only if different.
+  string current_version = 3;
+}
+
+message RuleUpdate {
+  // Full ruleset YAML (one document per rule, separated by ---).
+  bytes rules_yaml = 1;
+  // Macros YAML (combined macros document).
+  bytes macros_yaml = 2;
+  // Version hash of this ruleset.
+  string version = 3;
+  // Number of rules included.
+  int32 rule_count = 4;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Command channel (bidirectional: server → agent commands,
+//                                agent → server results)
+// ═══════════════════════════════════════════════════════════════
+
+message CommandPush {
+  string id = 1;
+  string type = 2;
+  // Command payload as JSON bytes (varies by command type).
+  bytes payload = 3;
+}
+
+message CommandResult {
+  // First message on the stream identifies the agent.
+  // Subsequent messages carry command results.
+  string agent_id = 1;
+  string command_id = 2;
+  string status = 3;  // "completed" or "failed"
+  bytes result = 4;
+  string error_message = 5;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Enrollment
+// ═══════════════════════════════════════════════════════════════
+
+message EnrollRequest {
+  string token = 1;
+  string hostname = 2;
+  string os_version = 3;
+  string engine_version = 4;
+  // PEM-encoded certificate signing request.
+  string csr = 5;
+}
+
+message EnrollResponse {
+  string agent_id = 1;
+  string org_id = 2;
+  // PEM-encoded signed agent certificate.
+  string signed_cert = 3;
+  // PEM-encoded CA certificate for verifying the server.
+  string ca_cert = 4;
+}

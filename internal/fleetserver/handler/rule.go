@@ -67,17 +67,34 @@ func (h *RuleHandler) loadMacros(r *http.Request, orgID string) map[string]*qlpa
 }
 
 // RuleHandler handles rule management API requests.
+// RuleChangeCallback is called when rules are created, updated, or deleted.
+// The orgID identifies which organization's agents need a rule push.
+type RuleChangeCallback func(orgID string)
+
 type RuleHandler struct {
-	rules  store.RuleStore
-	agents store.AgentStore
-	macros store.MacroStore
-	audit  store.AuditStore
-	users  store.UserStore
+	rules          store.RuleStore
+	agents         store.AgentStore
+	macros         store.MacroStore
+	audit          store.AuditStore
+	users          store.UserStore
+	onRuleChange   RuleChangeCallback
 }
 
 // NewRuleHandler creates a new rule handler.
 func NewRuleHandler(rules store.RuleStore, agents store.AgentStore, macros store.MacroStore, audit store.AuditStore, users store.UserStore) *RuleHandler {
 	return &RuleHandler{rules: rules, agents: agents, macros: macros, audit: audit, users: users}
+}
+
+// SetRuleChangeCallback registers a callback for rule change notifications.
+func (h *RuleHandler) SetRuleChangeCallback(cb RuleChangeCallback) {
+	h.onRuleChange = cb
+}
+
+// notifyRuleChange triggers the rule push callback if set.
+func (h *RuleHandler) notifyRuleChange(orgID string) {
+	if h.onRuleChange != nil {
+		go h.onRuleChange(orgID)
+	}
 }
 
 // List handles GET /api/v1/orgs/{org_id}/rules
@@ -176,6 +193,7 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 	userID := ctxutil.UserIDFromContext(r.Context())
 	logAudit(r, h.audit, h.users, userID, orgID, "create", "rule", rule.ID, rule.Name, nil)
 	log.Infof("fleet: rule created: %s (%s) in org %s", rule.Name, rule.ID, orgID)
+	h.notifyRuleChange(orgID)
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: rule})
 }
 
@@ -282,6 +300,7 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	userID := ctxutil.UserIDFromContext(r.Context())
 	logAudit(r, h.audit, h.users, userID, orgID, "update", "rule", ruleID, rule.Name, nil)
+	h.notifyRuleChange(orgID)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: rule})
 }
 
@@ -308,6 +327,7 @@ func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logAudit(r, h.audit, h.users, userID, orgID, "delete", "rule", ruleID, name, nil)
+	h.notifyRuleChange(orgID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

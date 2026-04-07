@@ -21,10 +21,10 @@ package fleetclient
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
+	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -33,102 +33,102 @@ type CommandExecutor interface {
 	Execute(cmd *fleet.Command) (json.RawMessage, error)
 }
 
-// PollCommands fetches pending commands from the fleet server.
-func (c *Client) PollCommands() ([]*fleet.Command, error) {
-	resp, err := c.doRequestWithHeaders(http.MethodGet, "/agent/commands", nil, map[string]string{
-		"X-Agent-ID": c.AgentID(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("fleet commands: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, c.readError(resp)
-	}
-
-	var apiResp struct {
-		Data []*fleet.Command `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, fmt.Errorf("fleet commands: decode: %w", err)
-	}
-
-	return apiResp.Data, nil
-}
-
-// ReportCommandResult sends the result of a command back to the server.
-func (c *Client) ReportCommandResult(cmdID, status string, result json.RawMessage, errMsg string) error {
-	body, err := json.Marshal(fleet.CommandResultRequest{
-		Status:       status,
-		Result:       result,
-		ErrorMessage: errMsg,
-	})
-	if err != nil {
-		return fmt.Errorf("fleet report: marshal error: %w", err)
-	}
-
-	log.Debugf("fleet: reporting result for %s (status=%s, body_len=%d)", cmdID, status, len(body))
-
-	path := fmt.Sprintf("/agent/commands/%s/result", cmdID)
-	resp, err := c.doRequestWithHeaders(http.MethodPost, path, body, nil)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return c.readError(resp)
-	}
-	return nil
-}
-
-// StartCommandLoop polls for commands and executes them in the background.
+// StartCommandLoop opens a persistent gRPC bidirectional stream for commands.
+// Server pushes commands, agent sends back results.
 func (c *Client) StartCommandLoop(executor CommandExecutor) {
 	c.wg.Add(1)
-	go c.commandLoop(executor)
+	go c.commandStreamLoop(executor)
 }
 
-func (c *Client) commandLoop(executor CommandExecutor) {
+// commandStreamLoop maintains a persistent CommandChannel stream.
+func (c *Client) commandStreamLoop(executor CommandExecutor) {
 	defer c.wg.Done()
 
-	// Poll every second for commands — low latency for interactive use
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	backoff := time.Second
+	maxBackoff := 30 * time.Second
 
 	for {
 		select {
-		case <-ticker.C:
-			c.processCommands(executor)
 		case <-c.stopCh:
-			log.Info("fleet: command loop stopped")
+			return
+		default:
+		}
+
+		err := c.runCommandChannel(executor)
+		if err != nil {
+			log.Warnf("fleet: command stream error: %v (reconnecting in %s)", err, backoff)
+		}
+
+		select {
+		case <-time.After(backoff):
+			backoff = backoff * 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		case <-c.stopCh:
 			return
 		}
 	}
 }
 
-func (c *Client) processCommands(executor CommandExecutor) {
-	commands, err := c.PollCommands()
+// runCommandChannel opens one CommandChannel stream and processes commands until error.
+func (c *Client) runCommandChannel(executor CommandExecutor) error {
+	c.mu.RLock()
+	agentID := c.agentID
+	c.mu.RUnlock()
+
+	stream, err := c.agentClient.CommandChannel(c.grpcCtx())
 	if err != nil {
-		log.Warnf("fleet: failed to poll commands: %v", err)
-		return
+		return fmt.Errorf("open command channel: %w", err)
 	}
 
-	for _, cmd := range commands {
-		log.Infof("fleet: executing command %s (type: %s)", cmd.ID, cmd.Type)
+	// Send initial identification message
+	if err := stream.Send(&pb.CommandResult{
+		AgentId: agentID,
+	}); err != nil {
+		return fmt.Errorf("send command channel init: %w", err)
+	}
 
-		result, err := executor.Execute(cmd)
+	log.Info("fleet: command channel stream opened")
+
+	// Reset backoff on successful connection
+	for {
+		cmd, err := stream.Recv()
 		if err != nil {
-			log.Errorf("fleet: command %s failed: %v", cmd.ID, err)
-			if rerr := c.ReportCommandResult(cmd.ID, fleet.CmdStatusFailed, nil, err.Error()); rerr != nil {
-				log.Errorf("fleet: failed to report error for command %s: %v", cmd.ID, rerr)
-			}
-			continue
+			return fmt.Errorf("receive command: %w", err)
 		}
 
-		log.Infof("fleet: command %s completed", cmd.ID)
-		if err := c.ReportCommandResult(cmd.ID, fleet.CmdStatusCompleted, result, ""); err != nil {
-			log.Errorf("fleet: failed to report result for command %s: %v", cmd.ID, err)
+		log.Infof("fleet: received command %s (type: %s)", cmd.Id, cmd.Type)
+
+		// Convert protobuf command to fleet.Command for executor
+		fleetCmd := &fleet.Command{
+			ID:      cmd.Id,
+			Type:    cmd.Type,
+			Payload: json.RawMessage(cmd.Payload),
+		}
+
+		result, execErr := executor.Execute(fleetCmd)
+
+		// Send result back to server
+		resultMsg := &pb.CommandResult{
+			AgentId:   agentID,
+			CommandId: cmd.Id,
+		}
+
+		if execErr != nil {
+			log.Errorf("fleet: command %s failed: %v", cmd.Id, execErr)
+			resultMsg.Status = fleet.CmdStatusFailed
+			resultMsg.ErrorMessage = execErr.Error()
+		} else {
+			log.Infof("fleet: command %s completed", cmd.Id)
+			resultMsg.Status = fleet.CmdStatusCompleted
+			if result != nil {
+				resultMsg.Result = []byte(result)
+			}
+		}
+
+		if err := stream.Send(resultMsg); err != nil {
+			return fmt.Errorf("send command result: %w", err)
 		}
 	}
 }

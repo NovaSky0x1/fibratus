@@ -21,8 +21,9 @@ package fleetclient
 import (
 	"time"
 
-	"github.com/rabbitstack/fibratus/pkg/fleet"
+	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // HeartbeatCollector provides runtime metrics for inclusion in heartbeat payloads.
@@ -61,22 +62,14 @@ func (c *Client) heartbeatLoop(collector HeartbeatCollector) {
 }
 
 func (c *Client) sendHeartbeat(collector HeartbeatCollector) {
-	hb := fleet.Heartbeat{
-		Timestamp: time.Now().UTC(),
+	hb := &pb.HeartbeatRequest{
+		Timestamp: timestamppb.Now(),
 	}
 	if collector != nil {
 		hb.RulesVersion = collector.RulesVersion()
-		hb.ActiveRules = collector.ActiveRules()
+		hb.ActiveRules = int32(collector.ActiveRules())
 	}
 	if err := c.SendHeartbeat(hb); err != nil {
 		log.Warnf("fleet: heartbeat failed: %v", err)
-	}
-
-	// Check for rule updates on every heartbeat (ETag ensures no-op if unchanged)
-	c.mu.RLock()
-	cb := c.ruleSyncCallback
-	c.mu.RUnlock()
-	if cb != nil {
-		c.syncRules(cb)
 	}
 }

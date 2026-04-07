@@ -31,6 +31,8 @@ import (
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ca"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
+	natsPkg "github.com/rabbitstack/fibratus/internal/fleetserver/nats"
+	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
 	chstore "github.com/rabbitstack/fibratus/internal/fleetserver/store/clickhouse"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
@@ -41,10 +43,11 @@ import (
 	_ "github.com/ClickHouse/clickhouse-go/v2"
 )
 
-// Server is the fleet management HTTP server.
+// Server is the fleet management server (HTTP for dashboard, gRPC for agents).
 type Server struct {
 	config     *Config
 	httpServer *http.Server
+	grpcServer *GRPCServer
 	pgStore    *postgres.Store
 	apiKeys    map[string]bool
 }
@@ -160,6 +163,84 @@ func (s *Server) Run(ctx context.Context) error {
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
+
+	// ═══════════════════════════════════════════════════════════
+	// gRPC server for agent communication (protobuf/gRPC transport)
+	// ═══════════════════════════════════════════════════════════
+	clientCAs, caErr := caManager.LoadAllCACerts(context.Background())
+	if caErr != nil {
+		log.Warnf("fleet: failed to load org CAs for gRPC: %v", caErr)
+	}
+
+	grpcCfg := s.config.GRPC
+	if grpcCfg.TLSCert == "" {
+		grpcCfg.TLSCert = s.config.Server.TLSCert
+	}
+	if grpcCfg.TLSKey == "" {
+		grpcCfg.TLSKey = s.config.Server.TLSKey
+	}
+
+	grpcSrv, err := NewGRPCServer(
+		grpcCfg,
+		s.apiKeys,
+		agentStore, ruleStore, macroStore, commandStore, detStore,
+		telemetryStore, enrollStore, caManager,
+		s.config.NATS,
+		clientCAs,
+	)
+	if err != nil {
+		return fmt.Errorf("grpc server setup: %w", err)
+	}
+	s.grpcServer = grpcSrv
+
+	// Start NATS consumer if enabled
+	if s.config.NATS.Enabled {
+		natsConsumer, err := natsPkg.NewConsumer(natsPkg.ConsumerConfig{
+			URL:     s.config.NATS.URL,
+			Subject: s.config.NATS.Subject,
+			Queue:   s.config.NATS.Queue,
+		}, telemetryStore)
+		if err != nil {
+			log.Warnf("fleet: nats consumer setup failed: %v (telemetry will use direct writes)", err)
+		} else {
+			if err := natsConsumer.Start(ctx, s.config.NATS.Subject, s.config.NATS.Queue); err != nil {
+				log.Warnf("fleet: nats consumer start failed: %v", err)
+			} else {
+				defer natsConsumer.Stop()
+				log.Info("fleet: nats telemetry pipeline active")
+			}
+		}
+	}
+
+	// Wire stream callbacks: when dashboard changes rules or creates commands,
+	// push them instantly to connected agents via gRPC streams.
+	streams := grpcSrv.Streams()
+
+	ruleHandler.SetRuleChangeCallback(func(orgID string) {
+		rules, etag, err := ruleStore.GetForAgent(context.Background(), orgID, "")
+		if err != nil {
+			log.Warnf("fleet: rule push build failed: %v", err)
+			return
+		}
+		update := buildRuleUpdate(rules, etag, orgID, macroStore, context.Background())
+		streams.PushRulesToOrg(orgID, update)
+	})
+
+	commandHandler.SetCommandPushCallback(func(agentID, cmdID, cmdType string, payload []byte) bool {
+		return streams.PushCommand(agentID, &pb.CommandPush{
+			Id:      cmdID,
+			Type:    cmdType,
+			Payload: payload,
+		})
+	})
+
+	// Start gRPC server in background
+	go func() {
+		if err := grpcSrv.Serve(); err != nil {
+			log.Errorf("grpc server error: %v", err)
+		}
+	}()
+	defer grpcSrv.Stop()
 
 	// ═══════════════════════════════════════════════════════════
 	// Route setup

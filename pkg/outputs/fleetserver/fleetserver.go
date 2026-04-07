@@ -19,32 +19,34 @@
 package fleetserver
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/event"
+	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
 	"github.com/rabbitstack/fibratus/pkg/outputs"
-	"github.com/rabbitstack/fibratus/pkg/util/tls"
-	"github.com/rabbitstack/fibratus/pkg/util/version"
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var userAgent = version.ProductToken()
-
 type fleetOutput struct {
-	client    *http.Client
+	client    pb.AgentServiceClient
+	conn      *grpc.ClientConn
+	stream    pb.AgentService_StreamTelemetryClient
 	serverURL string
-	apiKey    string
-	orgID     string
 	agentID   string
+	orgID     string
+	hostname  string
 }
 
 func init() {
@@ -58,7 +60,6 @@ func initFleetServer(config outputs.Config) (outputs.OutputGroup, error) {
 	}
 
 	if cfg.ServerURL == "" {
-		// Try to load from enrollment data
 		cfg.ServerURL = loadEnrollmentFile("server-url")
 		cfg.OrgID = loadEnrollmentFile("org-id")
 		cfg.AgentID = loadEnrollmentFile("agent-id")
@@ -68,142 +69,103 @@ func initFleetServer(config outputs.Config) (outputs.OutputGroup, error) {
 		return outputs.Fail(fmt.Errorf("fleet server URL not configured and no enrollment data found"))
 	}
 
-	tlsCert := ""
-	tlsKey := ""
+	// Parse gRPC address
+	serverAddr := parseGRPCAddr(cfg.ServerURL)
+
+	// Build TLS config
+	tlsCfg := &tls.Config{
+		InsecureSkipVerify: cfg.TLSInsecureSkipVerify,
+	}
+
 	certDir := enrollmentCertDir()
 	if certDir != "" {
 		certFile := filepath.Join(certDir, "agent.crt")
 		keyFile := filepath.Join(certDir, "agent.key")
 		if fileExists(certFile) && fileExists(keyFile) {
-			tlsCert = certFile
-			tlsKey = keyFile
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err == nil {
+				tlsCfg.Certificates = []tls.Certificate{cert}
+			}
 		}
 	}
 
-	tlsConfig, err := tls.MakeConfig(tlsCert, tlsKey, cfg.TLSCA, cfg.TLSInsecureSkipVerify)
-	if err != nil {
-		return outputs.Fail(fmt.Errorf("fleet output: TLS config: %v", err))
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                30 * time.Second,
+			Timeout:             10 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallSendMsgSize(64 * 1024 * 1024),
+		),
 	}
 
-	httpClient := &http.Client{
-		Transport: &http.Transport{TLSClientConfig: tlsConfig},
-		Timeout:   30 * time.Second,
+	conn, err := grpc.NewClient(serverAddr, opts...)
+	if err != nil {
+		return outputs.Fail(fmt.Errorf("fleet output: dial %s: %v", serverAddr, err))
 	}
+
+	hostname, _ := os.Hostname()
 
 	client := &fleetOutput{
-		client:    httpClient,
-		serverURL: strings.TrimRight(cfg.ServerURL, "/"),
-		apiKey:    cfg.APIKey,
-		orgID:     cfg.OrgID,
+		client:    pb.NewAgentServiceClient(conn),
+		conn:      conn,
+		serverURL: serverAddr,
 		agentID:   cfg.AgentID,
+		orgID:     cfg.OrgID,
+		hostname:  hostname,
 	}
 
 	return outputs.Success(client), nil
 }
 
 func (f *fleetOutput) Connect() error {
-	log.Infof("fleet output: connected to %s", f.serverURL)
+	log.Infof("fleet output: connected to %s (gRPC)", f.serverURL)
 	return nil
 }
 
-func (f *fleetOutput) Close() error { return nil }
-
-// telemetryEventNames is the set of events always stored on the fleet
-// server. Everything else is only sent if it triggered a detection rule
-// or evasion flag.
-var telemetryEventNames = map[string]bool{
-	// Process lifecycle
-	"CreateProcess":    true, // process spawn — core EDR visibility
-	"TerminateProcess": true, // process exit — track process lifetimes
-	"OpenProcess":      true, // process handle open — injection detection (has callstacks)
-
-	// File system
-	"CreateFile":  true, // file creation — malware drops, staging
-	"WriteFile":   true, // file writes — payload drops, config modification
-	"DeleteFile":  true, // file deletion — covering tracks
-	"RenameFile":  true, // file renames — evasion techniques
-
-	// Registry
-	"RegSetValue":   true, // registry value writes — persistence, config changes
-	"RegCreateKey":  true, // registry key creation — persistence
-	"RegDeleteKey":  true, // registry key deletion — defense evasion
-	"RegDeleteValue": true, // registry value deletion — defense evasion
-
-	// Network
-	"Connect":  true, // outbound connections — C2, lateral movement
-	"Accept":   true, // inbound connections — backdoors, bind shells
-
-	// DNS
-	"QueryDns": true, // DNS resolution — C2/exfil domain detection
-	"ReplyDns": true, // DNS answers
-
-	// Module/DLL loads
-	"LoadImage":   true, // module loads — sideloading, injection detection
-	"UnloadImage": true, // module unloads — unhooking detection
-
-	// Thread context (injection indicator)
-	"SetThreadContext": true, // thread context manipulation — injection technique
+func (f *fleetOutput) Close() error {
+	if f.stream != nil {
+		f.stream.CloseAndRecv()
+	}
+	if f.conn != nil {
+		return f.conn.Close()
+	}
+	return nil
 }
 
-// telemetryDropNames is a fast-reject set for noisy/low-value events
-// that should never be sent, even if they have metadata attached.
+// telemetryEventNames is the set of events always stored on the fleet server.
+var telemetryEventNames = map[string]bool{
+	"CreateProcess": true, "TerminateProcess": true, "OpenProcess": true,
+	"CreateFile": true, "WriteFile": true, "DeleteFile": true, "RenameFile": true,
+	"RegSetValue": true, "RegCreateKey": true, "RegDeleteKey": true, "RegDeleteValue": true,
+	"Connect": true, "Accept": true,
+	"QueryDns": true, "ReplyDns": true,
+	"LoadImage": true, "UnloadImage": true,
+	"SetThreadContext": true,
+}
+
 var telemetryDropNames = map[string]bool{
-	// Threadpool — extremely noisy, low security value
-	"SubmitThreadpoolWork":     true,
-	"SubmitThreadpoolCallback": true,
-	"SetThreadpoolTimer":       true,
-
-	// Memory — very noisy
-	"VirtualAlloc": true,
-	"VirtualFree":  true,
-
-	// File I/O noise — read-only operations, handle lifecycle
-	"ReadFile":           true,
-	"CloseFile":          true,
-	"ReleaseFile":        true,
-	"EnumDirectory":      true,
-	"FileOpEnd":          true,
-	"FileRundown":        true,
-	"SetFileInformation": true,
-	"MapViewFile":        true,
-	"UnmapViewFile":      true,
-	"MapFileRundown":     true,
-
-	// Registry noise — read-only operations
-	"RegOpenKey":    true,
-	"RegCloseKey":   true,
-	"RegQueryKey":   true,
-	"RegQueryValue": true,
-	"RegKCBRundown": true,
-	"RegCreateKCB":  true,
-
-	// Handle lifecycle — extremely noisy
-	"CreateHandle":    true,
-	"CloseHandle":     true,
-	"DuplicateHandle": true,
-
-	// Thread lifecycle — very noisy, low value for raw telemetry
-	"CreateThread":    true,
-	"TerminateThread": true,
-	"OpenThread":      true,
-	"ThreadRundown":   true,
-
-	// Rundown/internal events
-	"ProcessRundown": true,
-	"ImageRundown":   true,
-	"StackWalk":      true,
+	"SubmitThreadpoolWork": true, "SubmitThreadpoolCallback": true, "SetThreadpoolTimer": true,
+	"VirtualAlloc": true, "VirtualFree": true,
+	"ReadFile": true, "CloseFile": true, "ReleaseFile": true, "EnumDirectory": true,
+	"FileOpEnd": true, "FileRundown": true, "SetFileInformation": true,
+	"MapViewFile": true, "UnmapViewFile": true, "MapFileRundown": true,
+	"RegOpenKey": true, "RegCloseKey": true, "RegQueryKey": true, "RegQueryValue": true,
+	"RegKCBRundown": true, "RegCreateKCB": true,
+	"CreateHandle": true, "CloseHandle": true, "DuplicateHandle": true,
+	"CreateThread": true, "TerminateThread": true, "OpenThread": true, "ThreadRundown": true,
+	"ProcessRundown": true, "ImageRundown": true, "StackWalk": true,
 	"CreateSymbolicLinkObject": true,
 }
 
-// securityRelevant filters the batch to only include events worth
-// storing on the fleet server.
 func securityRelevant(batch *event.Batch) *event.Batch {
 	filtered := make([]*event.Event, 0, len(batch.Events)/4)
 	for _, evt := range batch.Events {
 		if telemetryDropNames[evt.Name] {
 			continue
 		}
-		// Always send events with rule matches or evasion flags
 		if len(evt.Metadata) > 0 || evt.Evasions > 0 {
 			filtered = append(filtered, evt)
 			continue
@@ -215,66 +177,71 @@ func securityRelevant(batch *event.Batch) *event.Batch {
 	return &event.Batch{Events: filtered}
 }
 
-// Publish sends a batch of events to the fleet server telemetry endpoint.
-// Events are filtered to security-relevant types, serialized as JSON,
-// and gzip-compressed.
+// Publish sends a batch of events to the fleet server via gRPC streaming.
 func (f *fleetOutput) Publish(batch *event.Batch) error {
 	batch = securityRelevant(batch)
 	if len(batch.Events) == 0 {
 		return nil
 	}
-	buf := batch.MarshalJSON()
-	if len(buf) == 0 {
-		return nil
-	}
 
-	// Gzip compress
-	var compressed bytes.Buffer
-	gz := gzip.NewWriter(&compressed)
-	if _, err := gz.Write(buf); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-
-	url := fmt.Sprintf("%s/api/v1/agent/telemetry", f.serverURL)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &compressed)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	if f.apiKey != "" {
-		req.Header.Set("X-API-Key", f.apiKey)
-	}
-	// Load agent ID fresh — it may not exist at output init time since
-	// the fleet client registers after the output is created.
+	// Refresh agent ID if not set at init time
 	agentID := f.agentID
 	if agentID == "" {
 		agentID = loadEnrollmentFile("agent-id")
 	}
-	if agentID != "" {
-		req.Header.Set("X-Agent-ID", agentID)
-	}
-	if f.orgID != "" {
-		req.Header.Set("X-Org-ID", f.orgID)
+
+	// Convert events to protobuf
+	pbEvents := make([]*pb.TelemetryEvent, 0, len(batch.Events))
+	for _, evt := range batch.Events {
+		pbEvt := &pb.TelemetryEvent{
+			Seq:       int64(evt.Seq),
+			Timestamp: timestamppb.New(evt.Timestamp),
+			EventName: evt.Name,
+		}
+		if evt.PS != nil {
+			pbEvt.ProcessName = evt.PS.Name
+			pbEvt.ProcessExe = evt.PS.Exe
+			pbEvt.ProcessCmdline = evt.PS.Cmdline
+			pbEvt.Pid = uint32(evt.PS.PID)
+			if evt.PS.Parent != nil {
+				pbEvt.ParentPid = uint32(evt.PS.Parent.PID)
+				pbEvt.ParentName = evt.PS.Parent.Name
+			}
+		}
+		// Include raw JSON event for the store
+		if raw := evt.MarshalJSON(); raw != nil {
+			pbEvt.RawEvent = raw
+		}
+		if evt.Params != nil {
+			if paramsJSON, err := json.Marshal(evt.Params); err == nil {
+				pbEvt.Params = paramsJSON
+			}
+		}
+		pbEvents = append(pbEvents, pbEvt)
 	}
 
-	resp, err := f.client.Do(req)
+	telBatch := &pb.TelemetryBatch{
+		AgentId:  agentID,
+		OrgId:    f.orgID,
+		Hostname: f.hostname,
+		Events:   pbEvents,
+	}
+
+	// Open a new stream per publish batch (simple, reliable).
+	md := metadata.Pairs("x-agent-id", agentID, "x-org-id", f.orgID)
+	streamCtx := metadata.NewOutgoingContext(context.Background(), md)
+
+	stream, err := f.client.StreamTelemetry(streamCtx)
 	if err != nil {
-		return fmt.Errorf("fleet output: %w", err)
+		return fmt.Errorf("fleet output: open stream: %v", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("fleet output: server returned %d: %s", resp.StatusCode, string(body))
+	if err := stream.Send(telBatch); err != nil {
+		return fmt.Errorf("fleet output: send batch: %v", err)
+	}
+
+	if _, err := stream.CloseAndRecv(); err != nil {
+		return fmt.Errorf("fleet output: close stream: %v", err)
 	}
 
 	return nil
@@ -289,6 +256,17 @@ type Config struct {
 	AgentID              string `mapstructure:"agent-id"`
 	TLSCA                string `mapstructure:"tls-ca"`
 	TLSInsecureSkipVerify bool  `mapstructure:"tls-insecure-skip-verify"`
+}
+
+func parseGRPCAddr(serverURL string) string {
+	addr := serverURL
+	addr = strings.TrimPrefix(addr, "https://")
+	addr = strings.TrimPrefix(addr, "http://")
+	addr = strings.TrimRight(addr, "/")
+	if !strings.Contains(addr, ":") {
+		addr += ":8444"
+	}
+	return addr
 }
 
 func loadEnrollmentFile(name string) string {
