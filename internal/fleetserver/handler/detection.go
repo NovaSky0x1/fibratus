@@ -410,7 +410,7 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 	if ancestorsOnly {
 		// Walk up the tree: load parent, grandparent, great-grandparent (up to 5 levels)
 		curPID := parentPID
-		curName := parentName
+		_ = parentName // parent name used for logging only
 		for level := 0; level < 5 && curPID > 0; level++ {
 			ancestorEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
 				AgentID: det.AgentID, PID: curPID, From: from, To: to, Limit: 300,
@@ -422,7 +422,6 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 				for _, e := range ancestorEvents {
 					if e.ParentPID > 0 && e.ParentPID != curPID {
 						nextPID = e.ParentPID
-						curName = e.ParentName
 						break
 					}
 				}
