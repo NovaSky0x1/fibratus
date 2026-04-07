@@ -51,14 +51,28 @@ function parseParams(raw: unknown): Record<string, unknown> {
   return {}
 }
 
+function parseParams(raw: unknown): Record<string, unknown> {
+  if (!raw) return {}
+  if (typeof raw === 'string') { try { return JSON.parse(raw) } catch { return {} } }
+  if (typeof raw === 'object' && raw !== null) return raw as Record<string, unknown>
+  return {}
+}
+
 function evtPreview(evt: TelemetryEvent): string {
   const p = parseParams(evt.params)
+  const name = evt.event_name || ''
+
+  // DNS events are categorized as 'net' by ETW — check event name first
+  if (name === 'QueryDns' || name === 'ReplyDns') {
+    return String(p.name || p.domain || '')
+  }
+
   switch (evt.event_category) {
-    case 'file': return String(p.file_path || '')
-    case 'registry': return String(p.key_path || '')
-    case 'net': return [p.dip, p.dport].filter(Boolean).join(':')
+    case 'file': return String(p.file_path || p.file_name || '')
+    case 'registry': return String(p.key_path || p.key_name || '')
+    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || String(p.name || '')
     case 'dns': return String(p.name || '')
-    case 'image': return String(p.file_path || '')
+    case 'image': return String(p.file_path || p.file_name || '')
     case 'handle': return String(p.handle_name || '')
     default: return ''
   }
