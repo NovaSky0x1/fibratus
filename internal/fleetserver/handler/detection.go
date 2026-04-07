@@ -386,12 +386,10 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 	from := det.Timestamp.Add(-1 * time.Hour)
 	to := det.Timestamp.Add(1 * time.Hour)
 
-	// Query directly for this PID's events
+	// Find parent PID from target's events
 	targetEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-		AgentID: det.AgentID, PID: targetPID, From: from, To: to, Limit: 500,
+		AgentID: det.AgentID, PID: targetPID, From: from, To: to, Limit: 100,
 	})
-
-	// Find parent PID from target events
 	parentPID := 0
 	for _, evt := range targetEvents {
 		if evt.ParentPID > 0 && parentPID == 0 {
@@ -399,27 +397,38 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Query parent's events
-	var parentEvents []store.TelemetryEvent
-	if parentPID > 0 {
-		parentEvents, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID: det.AgentID, PID: parentPID, From: from, To: to, Limit: 500,
-		})
-		// Also check if parent has a grandparent — load one more level
-		for _, evt := range parentEvents {
-			if evt.ParentPID > 0 && evt.ParentPID != parentPID {
-				gpEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-					AgentID: det.AgentID, PID: evt.ParentPID, From: from, To: to, Limit: 200,
-				})
-				parentEvents = append(parentEvents, gpEvents...)
-				break
+	var filtered []store.TelemetryEvent
+
+	if ancestorsOnly {
+		// Only return parent + grandparent events (NOT the target itself — caller already has it)
+		if parentPID > 0 {
+			parentEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+				AgentID: det.AgentID, PID: parentPID, From: from, To: to, Limit: 500,
+			})
+			filtered = append(filtered, parentEvents...)
+			// Load grandparent too
+			for _, evt := range parentEvents {
+				if evt.ParentPID > 0 && evt.ParentPID != parentPID {
+					gpEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+						AgentID: det.AgentID, PID: evt.ParentPID, From: from, To: to, Limit: 200,
+					})
+					filtered = append(filtered, gpEvents...)
+					break
+				}
 			}
+		}
+	} else {
+		filtered = append(filtered, targetEvents...)
+		if parentPID > 0 {
+			parentEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+				AgentID: det.AgentID, PID: parentPID, From: from, To: to, Limit: 500,
+			})
+			filtered = append(filtered, parentEvents...)
 		}
 	}
 
 	// Query children (skip if ancestors-only mode)
 	children := make(map[int]bool)
-	filtered := append(targetEvents, parentEvents...)
 	if !ancestorsOnly {
 		childEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
 			AgentID: det.AgentID, ParentPID: targetPID, From: from, To: to, Limit: 500,

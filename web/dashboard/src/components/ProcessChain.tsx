@@ -275,6 +275,7 @@ function FitOnLoad({ trigger }: { trigger: number }) {
 function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }: Props) {
   const [expandedPids, setExpandedPids] = useState<Set<number>>(new Set())
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set())
+  const [loadedAncestors, setLoadedAncestors] = useState<Set<number>>(new Set())
   const [layoutTrigger, setLayoutTrigger] = useState(0)
   const [laidOut, setLaidOut] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
   const [selectedEvt, setSelectedEvt] = useState<TelemetryEvent | null>(null)
@@ -317,7 +318,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
       const procId = `p-${pid}`
       // Look up enrichment from detection events for this PID
       const detEvt = (detectionEvents || []).find(e => (e.proc as Record<string, unknown>)?.pid === pid)?.proc as Record<string, unknown> | undefined
-      const canLP = main.parent_pid > 0 && !byPid.has(main.parent_pid) && !!onLoadContext
+      const canLP = main.parent_pid > 0 && !byPid.has(main.parent_pid) && !!onLoadContext && !loadedAncestors.has(pid)
       const pidExp = expandedPids.has(pid)
 
       const catCounts = new Map<string, number>()
@@ -328,7 +329,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
         eventName: main.event_name || 'NEW_PROCESS', exe: main.process_exe, cmdline: main.process_cmdline,
         pid, ppid: main.parent_pid, parentName: main.parent_name, timestamp: main.timestamp,
         isTrigger, isOnPath: onPath.has(pid), canLoadParent: canLP, loading: loadingPid === pid,
-        onLoadParent: canLP ? () => onLoadContext!(pid) : undefined, catSummary, expanded: pidExp,
+        onLoadParent: canLP ? () => { setLoadedAncestors(prev => new Set(prev).add(pid)); onLoadContext!(pid) } : undefined, catSummary, expanded: pidExp,
         // Enrichment from detection events
         md5: detEvt?.md5 || '', sha256: detEvt?.sha256 || '',
         isSigned: detEvt?.is_signed, certSubject: detEvt?.cert_subject || '',
@@ -364,7 +365,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
       }
     }
     return { rawNodes: allNodes, rawEdges: allEdges, evtMap }
-  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid, detectionEvents])
+  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid, detectionEvents, loadedAncestors])
 
   // Run ELK layout async
   useEffect(() => {
@@ -373,12 +374,13 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
   }, [rawNodes, rawEdges])
 
   const onNodeClick = useCallback((_: unknown, node: Node) => {
+    // Always show detail panel for any node that has an event in the map
+    const evt = evtMap.get(node.id)
+    if (evt) setSelectedEvt(prev => prev?.id === evt.id ? null : evt)
+
+    // Also handle expand/collapse
     if (node.type === 'processNode') togglePid((node.data as Record<string, unknown>).pid as number)
     else if (node.type === 'categoryNode') toggleCat(node.id)
-    else if (node.type === 'eventNode') {
-      const evt = evtMap.get(node.id)
-      if (evt) setSelectedEvt(prev => prev?.id === evt.id ? null : evt)
-    }
   }, [togglePid, toggleCat, evtMap])
 
   if (laidOut.nodes.length === 0 && events.length === 0) {
