@@ -236,11 +236,11 @@ function EventRow({ evt, isFocus, isOpen, onToggle }: {
               <div className="mt-0.5 rounded bg-gray-900 px-2 py-1.5 text-gray-100 font-mono break-all whitespace-pre-wrap text-[11px]">{evt.process_cmdline}</div>
             </div>
           )}
-          {evt.params && Object.keys(evt.params).length > 0 && (
+          {(() => { const pp = parseParams(evt.params); return Object.keys(pp).length > 0 ? pp : null })() && (
             <div>
               <span className="text-gray-400 text-[11px]">Parameters</span>
               <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5">
-                {Object.entries(evt.params).map(([k, v]) => (
+                {Object.entries(parseParams(evt.params)).map(([k, v]) => (
                   <div key={k} className="min-w-0">
                     <span className="text-gray-400">{k}:</span>{' '}
                     <span className="font-mono text-gray-700 break-all">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
@@ -255,21 +255,37 @@ function EventRow({ evt, isFocus, isOpen, onToggle }: {
   )
 }
 
+function parseParams(raw: unknown): Record<string, unknown> {
+  if (!raw) return {}
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw) } catch { return {} }
+  }
+  if (typeof raw === 'object' && raw !== null) return raw as Record<string, unknown>
+  return {}
+}
+
 function summarizeEvent(evt: TelemetryEvent): string {
-  const p = evt.params || {}
+  const p = parseParams(evt.params)
   const name = evt.event_name || ''
+
+  // Also try to extract from raw_event if params is empty
+  if (Object.keys(p).length === 0 && evt.raw_event) {
+    const raw = parseParams(evt.raw_event)
+    const innerParams = parseParams(raw.params)
+    if (innerParams.name) return String(innerParams.name)
+  }
 
   // DNS events (categorized as 'net' by ETW)
   if (name === 'QueryDns' || name === 'ReplyDns') {
-    return (p.name || p.domain || '') as string
+    return String(p.name || p.domain || '')
   }
 
   switch (evt.event_category) {
-    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || (p.name as string) || ''
-    case 'dns': return (p.name || p.domain || '') as string
-    case 'file': return (p.file_name || p.file_object || '') as string
-    case 'registry': return (p.key_name || p.key || '') as string
-    case 'image': return (p.file_name || p.image_name || '') as string
+    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || String(p.name || '')
+    case 'dns': return String(p.name || p.domain || '')
+    case 'file': return String(p.file_name || p.file_object || '')
+    case 'registry': return String(p.key_name || p.key || '')
+    case 'image': return String(p.file_name || p.image_name || '')
     default: return evt.process_cmdline ? evt.process_cmdline.slice(0, 80) : ''
   }
 }
