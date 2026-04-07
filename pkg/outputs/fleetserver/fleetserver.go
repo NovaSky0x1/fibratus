@@ -264,7 +264,7 @@ func parseGRPCAddr(serverURL string) string {
 	addr = strings.TrimPrefix(addr, "http://")
 	addr = strings.TrimRight(addr, "/")
 	if !strings.Contains(addr, ":") {
-		addr += ":8444"
+		addr += ":443"
 	}
 	return addr
 }

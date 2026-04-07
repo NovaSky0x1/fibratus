@@ -136,16 +136,17 @@ func New(config Config, dataDir string) (*Client, error) {
 	return c, nil
 }
 
-// parseGRPCAddr converts a URL like "https://edr.novasky.io" to "edr.novasky.io:8444"
+// parseGRPCAddr converts a URL like "https://edr.novasky.io" to "edr.novasky.io:443"
+// gRPC traffic goes through Nginx on port 443, which proxies to the gRPC backend.
 func parseGRPCAddr(serverURL string) string {
 	addr := serverURL
 	addr = strings.TrimPrefix(addr, "https://")
 	addr = strings.TrimPrefix(addr, "http://")
 	addr = strings.TrimRight(addr, "/")
 
-	// If no port specified, use gRPC port
+	// If no port specified, use HTTPS port (Nginx terminates TLS, proxies gRPC)
 	if !strings.Contains(addr, ":") {
-		addr += ":8444"
+		addr += ":443"
 	}
 	return addr
 }
