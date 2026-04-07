@@ -124,6 +124,16 @@ export default function Agents() {
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
+  const [agentToDelete, setAgentToDelete] = useState<Agent | null>(null)
+  const queryClient = useQueryClient()
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteAgent(id),
+    onSuccess: () => {
+      setAgentToDelete(null)
+      queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null)
   const [activeTab, setActiveTab] = useState<'details' | 'response' | 'terminal' | 'files' | 'events' | 'processes' | 'history'>('details')
   const [shellType, setShellType] = useState<'cmd' | 'powershell'>('powershell')
@@ -217,11 +227,12 @@ export default function Agents() {
                 <SortableHeader label="Engine" sortKey="engine_version" sort={sort} onSort={toggleSort} />
                 <SortableHeader label="Last Heartbeat" sortKey="last_heartbeat" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Registered</th>
+                <th className="px-6 py-3 w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && sortedAgents.map((agent) => (
                 <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" onClick={() => window.location.href = `/agents/${agent.id}`}>
@@ -234,10 +245,19 @@ export default function Agents() {
                   <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{agent.engine_version}</td>
                   <td className="px-6 py-3 text-gray-500 dark:text-slate-400">{agent.last_heartbeat ? timeAgo(new Date(agent.last_heartbeat)) : 'Never'}</td>
                   <td className="px-6 py-3 text-gray-500 dark:text-slate-400">{new Date(agent.registered_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-3">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setAgentToDelete(agent) }}
+                      className="rounded p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                      title="Delete agent"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                    </button>
+                  </td>
                 </tr>
               ))}
               {!isLoading && sortedAgents.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No agents enrolled. Create an enrollment token in Settings.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No agents enrolled. Create an enrollment token in Settings.</td></tr>
               )}
             </tbody>
           </table>
@@ -252,6 +272,16 @@ export default function Agents() {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={!!agentToDelete}
+        title={`Delete ${agentToDelete?.hostname || 'agent'}?`}
+        message={`This will remove the agent from the fleet. If the agent is still running, it will be automatically uninstalled when it next connects to the server.`}
+        confirmLabel="Delete Agent"
+        onConfirm={() => agentToDelete && deleteMutation.mutate(agentToDelete.id)}
+        onCancel={() => setAgentToDelete(null)}
+      />
 
       {/* Agent detail + response slide-out */}
       <SlidePanel open={!!selectedAgent} title={selectedAgent?.hostname || 'Agent'} onClose={() => setSelectedAgent(null)} wide>

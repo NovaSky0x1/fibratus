@@ -375,6 +375,16 @@ CREATE TABLE IF NOT EXISTS heartbeat_history (
     timestamp       TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_hb_history_agent ON heartbeat_history(agent_id, timestamp DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Decommissioned agents — deleted agents that should auto-uninstall on reconnect
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS decommissioned_agents (
+    id                  TEXT PRIMARY KEY,
+    org_id              TEXT NOT NULL,
+    hostname            TEXT NOT NULL DEFAULT '',
+    decommissioned_at   TIMESTAMPTZ DEFAULT NOW()
+);
 `
 
 // Migrate runs the database schema migrations.

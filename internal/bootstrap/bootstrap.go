@@ -32,6 +32,7 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/config"
 	"github.com/rabbitstack/fibratus/pkg/filament"
 	"github.com/rabbitstack/fibratus/pkg/filter"
+	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	"github.com/rabbitstack/fibratus/pkg/fleetclient"
 	"github.com/rabbitstack/fibratus/pkg/handle"
@@ -570,6 +571,12 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	f.fleetClient = client
 
 	if err := client.Register(); err != nil {
+		if errors.Is(err, fleetclient.ErrDecommissioned) {
+			log.Warn("fleet: agent decommissioned — executing self-uninstall")
+			executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL)
+			executor.Execute(&fleet.Command{Type: fleet.CmdUninstall})
+			return fmt.Errorf("agent decommissioned by server")
+		}
 		return err
 	}
 

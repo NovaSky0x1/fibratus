@@ -170,6 +170,10 @@ func (c *Client) grpcCtxWithTimeout(timeout time.Duration) (context.Context, con
 	return context.WithTimeout(ctx, timeout)
 }
 
+// ErrDecommissioned is returned when the server indicates this agent was deleted
+// and should self-uninstall.
+var ErrDecommissioned = fmt.Errorf("agent decommissioned by server")
+
 // Register registers this agent with the fleet server.
 func (c *Client) Register() error {
 	ctx, cancel := c.grpcCtxWithTimeout(c.config.Timeout)
@@ -182,6 +186,11 @@ func (c *Client) Register() error {
 		AgentGroup:    c.config.AgentGroup,
 	})
 	if err != nil {
+		// Check if server says we're decommissioned
+		if strings.Contains(err.Error(), "DECOMMISSIONED") {
+			log.Warn("fleet: this agent has been decommissioned by the server — initiating self-uninstall")
+			return ErrDecommissioned
+		}
 		return fmt.Errorf("fleet register: %w", err)
 	}
 

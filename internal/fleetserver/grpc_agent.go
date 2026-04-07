@@ -73,11 +73,25 @@ func newAgentService(
 	}
 }
 
+// decommissionChecker is implemented by stores that track decommissioned agents.
+type decommissionChecker interface {
+	IsDecommissioned(ctx context.Context, agentID string) bool
+}
+
 // Register registers or re-registers an agent with the fleet server.
 func (s *agentService) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
 	orgID := ctxutil.OrgIDFromContext(ctx)
 	if orgID == "" {
 		orgID = "default"
+	}
+
+	// Check if this agent ID was decommissioned — tell it to uninstall
+	agentID := ctxutil.AgentIDFromContext(ctx)
+	if agentID != "" {
+		if checker, ok := s.agents.(decommissionChecker); ok && checker.IsDecommissioned(ctx, agentID) {
+			log.Infof("grpc: decommissioned agent %s attempted to register — returning uninstall signal", agentID)
+			return nil, status.Error(codes.PermissionDenied, "DECOMMISSIONED")
+		}
 	}
 
 	// Check for existing agent by hostname (upsert)

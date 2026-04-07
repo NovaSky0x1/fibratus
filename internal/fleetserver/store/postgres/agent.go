@@ -174,8 +174,25 @@ func (s *AgentStore) Update(ctx context.Context, agent *fleet.Agent) error {
 }
 
 func (s *AgentStore) Delete(ctx context.Context, orgID, id string) error {
+	// Get hostname before deleting for the decommissioned record
+	var hostname string
+	_ = s.db.QueryRowContext(ctx, `SELECT hostname FROM agents WHERE id=$1 AND org_id=$2`, id, orgID).Scan(&hostname)
+
+	// Add to decommissioned list so reconnecting agents get auto-uninstalled
+	_, _ = s.db.ExecContext(ctx,
+		`INSERT INTO decommissioned_agents (id, org_id, hostname) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+		id, orgID, hostname,
+	)
+
 	_, err := s.db.ExecContext(ctx, `DELETE FROM agents WHERE id=$1 AND org_id=$2`, id, orgID)
 	return err
+}
+
+// IsDecommissioned checks if an agent ID has been decommissioned.
+func (s *AgentStore) IsDecommissioned(ctx context.Context, agentID string) bool {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM decommissioned_agents WHERE id=$1)`, agentID).Scan(&exists)
+	return err == nil && exists
 }
 
 func (s *AgentStore) UpdateHeartbeat(ctx context.Context, orgID, id string, hb *fleet.Heartbeat) error {
