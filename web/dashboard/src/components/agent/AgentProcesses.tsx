@@ -28,6 +28,7 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
   const [search, setSearch] = useState('')
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [killingPid, setKillingPid] = useState<number | null>(null)
+  const [killedPids, setKilledPids] = useState<Set<number>>(new Set())
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const { data, isLoading, error, execute, lastUpdated } = useAgentCommand<ProcessesResponse>(
@@ -61,6 +62,7 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
       setKillingPid(pid)
       try {
         await api.createCommand(agentId, 'kill_process', { pid })
+        setKilledPids(prev => new Set(prev).add(pid))
       } finally {
         setKillingPid(null)
       }
@@ -150,10 +152,16 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-              {sorted.map((proc) => (
-                <tr key={proc.ProcessId || proc.Id} className="even:bg-gray-50 dark:even:bg-slate-800/50 hover:bg-gray-100/50 dark:hover:bg-slate-700/30">
-                  <td className="px-6 py-2 font-mono text-gray-700 dark:text-slate-300 tabular-nums">{proc.ProcessId || proc.Id}</td>
-                  <td className="px-6 py-2 font-medium text-gray-900 dark:text-slate-100">{proc.Name || proc.ProcessName}</td>
+              {sorted.map((proc) => {
+                const pid = proc.ProcessId || proc.Id || 0
+                const killed = killedPids.has(pid)
+                return (
+                <tr key={pid} className={`even:bg-gray-50 dark:even:bg-slate-800/50 hover:bg-gray-100/50 dark:hover:bg-slate-700/30 ${killed ? 'opacity-50' : ''}`}>
+                  <td className="px-6 py-2 font-mono text-gray-700 dark:text-slate-300 tabular-nums">{pid}</td>
+                  <td className="px-6 py-2 font-medium text-gray-900 dark:text-slate-100">
+                    <span className={killed ? 'line-through' : ''}>{proc.Name || proc.ProcessName}</span>
+                    {killed && <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400">KILLED</span>}
+                  </td>
                   <td className="px-6 py-2 font-mono text-gray-700 dark:text-slate-300 tabular-nums">
                     {(proc.mem_mb || 0).toFixed(1)}
                   </td>
@@ -165,16 +173,21 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
                     {proc.CommandLine || proc.cmdline || '-'}
                   </td>
                   <td className="px-6 py-2">
+                    {killed ? (
+                      <span className="text-[10px] text-red-500 dark:text-red-400">Terminated</span>
+                    ) : (
                     <button
-                      onClick={() => handleKill(proc.ProcessId || proc.Id || 0)}
-                      disabled={killingPid === (proc.ProcessId || proc.Id)}
+                      onClick={() => handleKill(pid)}
+                      disabled={killingPid === pid}
                       className="rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 px-2 py-1 text-xs font-medium text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50"
                     >
-                      {killingPid === (proc.ProcessId || proc.Id) ? '...' : 'Kill'}
+                      {killingPid === pid ? '...' : 'Kill'}
                     </button>
+                    )}
                   </td>
                 </tr>
-              ))}
+                )
+              })}
               {sorted.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">
