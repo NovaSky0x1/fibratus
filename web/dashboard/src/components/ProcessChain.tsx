@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 
 interface TelemetryEvent {
   id: number; timestamp: string; event_name: string; event_category: string
@@ -7,17 +7,21 @@ interface TelemetryEvent {
   params: Record<string, unknown>
 }
 
-interface ProcessNode {
+interface TreeNode {
   pid: number
   name: string
   exe: string
   cmdline: string
   parentPid: number
   parentName: string
-  events: TelemetryEvent[]
-  eventsByCategory: Record<string, TelemetryEvent[]>
-  childPids: number[]
+  eventName: string
+  timestamp: string
+  category: string
+  children: TreeNode[]
   isTrigger: boolean
+  isOnPath: boolean
+  collapsed: boolean
+  params: Record<string, unknown>
 }
 
 interface Props {
@@ -27,224 +31,291 @@ interface Props {
   loadingPid?: number | null
 }
 
-const catStyle: Record<string, { bg: string; text: string; border: string }> = {
-  process:  { bg: 'bg-blue-50 dark:bg-blue-950/40',    text: 'text-blue-700 dark:text-blue-400',       border: 'border-blue-200 dark:border-blue-800' },
-  file:     { bg: 'bg-amber-50 dark:bg-amber-950/40',   text: 'text-amber-700 dark:text-amber-400',     border: 'border-amber-200 dark:border-amber-800' },
-  registry: { bg: 'bg-purple-50 dark:bg-purple-950/40',  text: 'text-purple-700 dark:text-purple-400',   border: 'border-purple-200 dark:border-purple-800' },
-  net:      { bg: 'bg-emerald-50 dark:bg-emerald-950/40',text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-800' },
-  image:    { bg: 'bg-indigo-50 dark:bg-indigo-950/40',  text: 'text-indigo-700 dark:text-indigo-400',   border: 'border-indigo-200 dark:border-indigo-800' },
-  dns:      { bg: 'bg-teal-50 dark:bg-teal-950/40',     text: 'text-teal-700 dark:text-teal-400',       border: 'border-teal-200 dark:border-teal-800' },
-  thread:   { bg: 'bg-pink-50 dark:bg-pink-950/40',     text: 'text-pink-700 dark:text-pink-400',       border: 'border-pink-200 dark:border-pink-800' },
-  mem:      { bg: 'bg-rose-50 dark:bg-rose-950/40',     text: 'text-rose-700 dark:text-rose-400',       border: 'border-rose-200 dark:border-rose-800' },
-  handle:   { bg: 'bg-gray-50 dark:bg-gray-900/40',     text: 'text-gray-700 dark:text-gray-400',       border: 'border-gray-200 dark:border-gray-700' },
+const catColors: Record<string, { border: string; badge: string; line: string }> = {
+  process:  { border: 'border-l-blue-500',    badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',       line: 'bg-blue-300 dark:bg-blue-700' },
+  file:     { border: 'border-l-amber-500',   badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',   line: 'bg-amber-300 dark:bg-amber-700' },
+  registry: { border: 'border-l-purple-500',  badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300', line: 'bg-purple-300 dark:bg-purple-700' },
+  net:      { border: 'border-l-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300', line: 'bg-emerald-300 dark:bg-emerald-700' },
+  image:    { border: 'border-l-indigo-500',  badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300', line: 'bg-indigo-300 dark:bg-indigo-700' },
+  dns:      { border: 'border-l-teal-500',    badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300',       line: 'bg-teal-300 dark:bg-teal-700' },
+  thread:   { border: 'border-l-pink-500',    badge: 'bg-pink-100 text-pink-700 dark:bg-pink-900/50 dark:text-pink-300',       line: 'bg-pink-300 dark:bg-pink-700' },
+  mem:      { border: 'border-l-rose-500',    badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300',       line: 'bg-rose-300 dark:bg-rose-700' },
+  handle:   { border: 'border-l-gray-400',    badge: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',          line: 'bg-gray-300 dark:bg-gray-600' },
 }
 
-function getCatStyle(cat: string) {
-  return catStyle[cat] || catStyle.handle
-}
+function getCat(cat: string) { return catColors[cat] || catColors.handle }
 
-function evtDetail(evt: TelemetryEvent): string {
+function eventDetail(evt: TelemetryEvent): string {
   const p = evt.params || {}
   switch (evt.event_category) {
-    case 'file': return String(p.file_name || p.file_object || p.path || '')
-    case 'registry': return String(p.key_name || p.key || p.path || '')
-    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || String(p.sip || '')
+    case 'file': return String(p.file_name || p.file_object || '')
+    case 'registry': return String(p.key_name || p.key || '')
+    case 'net': return [p.dip, p.dport].filter(Boolean).join(':') || ''
     case 'dns': return String(p.name || p.domain || '')
     case 'image': return String(p.file_name || p.image_name || '')
-    case 'process': return String(p.exe || p.cmdline || '')
     default: return ''
   }
 }
 
 export default function ProcessChain({ events, focusPids, onLoadContext, loadingPid }: Props) {
-  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set())
-  const [selectedNode, setSelectedNode] = useState<number | null>(null)
+  const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  // Build process nodes from events
-  const { nodes, chain } = useMemo(() => {
-    const byPid = new Map<number, ProcessNode>()
+  // Build tree: each event becomes a node, grouped by PID then branching by child PIDs
+  const roots = useMemo(() => {
+    if (!events.length) return []
 
+    // Group events by PID
+    const byPid = new Map<number, TelemetryEvent[]>()
     for (const evt of events) {
       if (evt.pid <= 0) continue
-      let node = byPid.get(evt.pid)
-      if (!node) {
-        node = {
-          pid: evt.pid, name: evt.process_name, exe: evt.process_exe || '',
-          cmdline: evt.process_cmdline || '', parentPid: evt.parent_pid,
-          parentName: evt.parent_name || '', events: [], eventsByCategory: {},
-          childPids: [], isTrigger: !!focusPids[evt.pid],
+      const list = byPid.get(evt.pid) || []
+      list.push(evt)
+      byPid.set(evt.pid, list)
+    }
+
+    // Find parent-child relationships
+    const childrenOf = new Map<number, Set<number>>()
+    const parentOf = new Map<number, number>()
+    for (const [pid, evts] of byPid) {
+      const ppid = evts[0].parent_pid
+      if (ppid > 0 && ppid !== pid && byPid.has(ppid)) {
+        parentOf.set(pid, ppid)
+        if (!childrenOf.has(ppid)) childrenOf.set(ppid, new Set())
+        childrenOf.get(ppid)!.add(pid)
+      }
+    }
+
+    // Find focus path
+    const onPath = new Set<number>()
+    for (const pid of Object.keys(focusPids).map(Number)) {
+      onPath.add(pid)
+      let cur = pid
+      for (let i = 0; i < 20; i++) {
+        const p = parentOf.get(cur)
+        if (!p) break
+        onPath.add(p)
+        cur = p
+      }
+    }
+
+    // Build tree nodes for each PID
+    const buildPidNodes = (pid: number): TreeNode[] => {
+      const evts = byPid.get(pid) || []
+      const isTrigger = !!focusPids[pid]
+      const isPath = onPath.has(pid)
+      const kids = childrenOf.get(pid) || new Set()
+
+      // Group by event category for non-process events
+      const processEvts = evts.filter(e => e.event_category === 'process')
+      const otherByCat = new Map<string, TelemetryEvent[]>()
+      for (const e of evts) {
+        if (e.event_category === 'process') continue
+        const list = otherByCat.get(e.event_category) || []
+        list.push(e)
+        otherByCat.set(e.event_category, list)
+      }
+
+      // Root node for this PID = the process creation event or first event
+      const mainEvt = processEvts.find(e => e.event_name === 'CreateProcess') || evts[0]
+      const children: TreeNode[] = []
+
+      // Add event category nodes as children (file, reg, net, dns, etc.)
+      for (const [cat, catEvts] of otherByCat) {
+        const catNode: TreeNode = {
+          pid, name: `${cat.toUpperCase()} (${catEvts.length})`, exe: '',
+          cmdline: '', parentPid: pid, parentName: mainEvt.process_name,
+          eventName: catEvts[0].event_name, timestamp: catEvts[0].timestamp,
+          category: cat, children: [], isTrigger: false, isOnPath: isPath,
+          collapsed: !isTrigger, params: {},
         }
-        byPid.set(evt.pid, node)
+        // Each event in the category becomes a leaf node
+        for (const e of catEvts.slice(0, 30)) {
+          catNode.children.push({
+            pid: e.pid, name: eventDetail(e) || e.event_name, exe: '',
+            cmdline: '', parentPid: pid, parentName: '',
+            eventName: e.event_name, timestamp: e.timestamp,
+            category: e.event_category, children: [], isTrigger: false,
+            isOnPath: false, collapsed: false, params: e.params || {},
+          })
+        }
+        if (catEvts.length > 30) {
+          catNode.children.push({
+            pid: 0, name: `+${catEvts.length - 30} more`, exe: '',
+            cmdline: '', parentPid: 0, parentName: '',
+            eventName: '', timestamp: '', category: cat,
+            children: [], isTrigger: false, isOnPath: false,
+            collapsed: false, params: {},
+          })
+        }
+        children.push(catNode)
       }
-      node.events.push(evt)
-      if (!node.eventsByCategory[evt.event_category]) node.eventsByCategory[evt.event_category] = []
-      node.eventsByCategory[evt.event_category].push(evt)
-      if (!node.cmdline && evt.process_cmdline) node.cmdline = evt.process_cmdline
-      if (!node.exe && evt.process_exe) node.exe = evt.process_exe
+
+      // Add child process nodes
+      for (const cpid of kids) {
+        children.push(...buildPidNodes(cpid))
+      }
+
+      return [{
+        pid, name: mainEvt.process_name, exe: mainEvt.process_exe || '',
+        cmdline: mainEvt.process_cmdline || '', parentPid: mainEvt.parent_pid,
+        parentName: mainEvt.parent_name || '',
+        eventName: mainEvt.event_name || 'CreateProcess',
+        timestamp: mainEvt.timestamp, category: 'process',
+        children, isTrigger, isOnPath: isPath, collapsed: false,
+        params: {},
+      }]
     }
 
-    // Build child links
-    for (const node of byPid.values()) {
-      if (node.parentPid > 0 && byPid.has(node.parentPid) && node.parentPid !== node.pid) {
-        const parent = byPid.get(node.parentPid)!
-        if (!parent.childPids.includes(node.pid)) parent.childPids.push(node.pid)
-      }
-    }
-
-    // Build the chain: walk up from trigger to root, then down from trigger
-    const triggerPid = Object.keys(focusPids).map(Number).find(p => byPid.has(p))
-    const chain: number[] = []
-
-    if (triggerPid) {
-      // Walk up
-      const ancestors: number[] = []
-      let cur = byPid.get(triggerPid)
-      for (let i = 0; i < 20 && cur; i++) {
-        if (cur.parentPid > 0 && byPid.has(cur.parentPid) && cur.parentPid !== cur.pid) {
-          ancestors.unshift(cur.parentPid)
-          cur = byPid.get(cur.parentPid)
-        } else break
-      }
-      chain.push(...ancestors, triggerPid)
-
-      // Walk down from trigger (first level children only for now)
-      for (const cpid of byPid.get(triggerPid)?.childPids || []) {
-        chain.push(cpid)
-      }
-    } else {
-      // No trigger found — show all
-      chain.push(...byPid.keys())
-    }
-
-    return { nodes: byPid, chain }
+    // Find roots (PIDs with no parent in the data)
+    const rootPids = [...byPid.keys()].filter(pid => !parentOf.has(pid))
+    const tree: TreeNode[] = []
+    for (const pid of rootPids) tree.push(...buildPidNodes(pid))
+    return tree
   }, [events, focusPids])
 
-  // Auto-expand trigger's event categories
-  useMemo(() => {
-    const auto = new Set<string>()
-    for (const pid of Object.keys(focusPids).map(Number)) {
-      const node = nodes.get(pid)
-      if (node) {
-        for (const cat of Object.keys(node.eventsByCategory)) {
-          auto.add(`${pid}-${cat}`)
-        }
-      }
-    }
-    if (auto.size > 0 && expandedCats.size === 0) setExpandedCats(auto)
-  }, [nodes, focusPids]) // eslint-disable-line
-
-  const toggleCat = (key: string) => {
-    setExpandedCats(prev => {
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsedNodes(prev => {
       const next = new Set(prev)
-      if (next.has(key)) next.delete(key); else next.add(key)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
+  }, [])
+
+  if (roots.length === 0) {
+    return <div className="flex items-center justify-center h-48 text-sm text-gray-400 dark:text-slate-500">No process events found for this detection.</div>
   }
 
-  if (chain.length === 0) {
-    return <div className="flex items-center justify-center h-64 text-sm text-gray-400">No process events found for this detection.</div>
-  }
+  // Check if any root has a parent not in the tree (for "load parent" button)
+  const topRoot = roots[0]
+  const canLoadParent = topRoot && topRoot.parentPid > 0 && onLoadContext
 
   return (
-    <div className="overflow-auto p-4">
-      {/* Horizontal process chain */}
-      <div className="flex items-start gap-0 min-w-max">
-        {chain.map((pid, idx) => {
-          const node = nodes.get(pid)
-          if (!node) return null
-          const isSelected = selectedNode === pid
-
-          return (
-            <div key={pid} className="flex items-start">
-              {/* Connector arrow */}
-              {idx > 0 && (
-                <div className="flex items-center self-center shrink-0 mt-8">
-                  <div className="w-8 h-px bg-gray-300 dark:bg-slate-600" />
-                  <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] border-l-gray-300 dark:border-l-slate-600 -ml-px" />
-                </div>
-              )}
-
-              {/* Process node */}
-              <div className="flex flex-col items-center shrink-0">
-                <div
-                  onClick={() => setSelectedNode(isSelected ? null : pid)}
-                  className={
-                    'rounded-xl border-2 p-3 cursor-pointer transition-all w-64 ' +
-                    (node.isTrigger
-                      ? 'border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-950/30 shadow-lg shadow-red-100 dark:shadow-red-900/20'
-                      : isSelected
-                        ? 'border-fibratus-400 bg-fibratus-50/50 dark:bg-fibratus-950/20 shadow-md'
-                        : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-gray-300 dark:hover:border-slate-600 hover:shadow-md')
-                  }
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={'rounded px-1.5 py-0.5 text-[10px] font-bold ' +
-                      (node.isTrigger ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-400')}>
-                      {node.pid}
-                    </span>
-                    <span className={'font-semibold text-sm truncate ' +
-                      (node.isTrigger ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-slate-100')}>
-                      {node.name}
-                    </span>
-                    {node.isTrigger && <span className="rounded bg-red-500 text-white text-[9px] px-1.5 py-0.5 font-bold shrink-0">TRIGGER</span>}
-                  </div>
-                  {node.exe && <div className="mt-1.5 text-[10px] font-mono text-gray-400 dark:text-slate-500 truncate">{node.exe}</div>}
-
-                  {/* Event category summary chips */}
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {Object.entries(node.eventsByCategory).map(([cat, evts]) => {
-                      const s = getCatStyle(cat)
-                      const key = `${pid}-${cat}`
-                      const isExp = expandedCats.has(key)
-                      return (
-                        <button key={cat} onClick={(e) => { e.stopPropagation(); toggleCat(key) }}
-                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium border transition-colors ${s.bg} ${s.text} ${s.border} ${isExp ? 'ring-1 ring-offset-1' : 'opacity-80 hover:opacity-100'}`}>
-                          {cat} ({evts.length})
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* Walk up / children indicators */}
-                  <div className="mt-2 flex items-center gap-2 text-[10px]">
-                    {node.parentPid > 0 && !nodes.has(node.parentPid) && onLoadContext && (
-                      <button onClick={(e) => { e.stopPropagation(); onLoadContext(node.pid) }}
-                        disabled={loadingPid === node.pid}
-                        className="text-fibratus-600 hover:underline disabled:opacity-50">
-                        {loadingPid === node.pid ? 'Loading...' : 'Load parent'}
-                      </button>
-                    )}
-                    {node.childPids.length > 0 && (
-                      <span className="text-gray-400 dark:text-slate-500">{node.childPids.length} children</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Expanded event categories */}
-                {Object.entries(node.eventsByCategory).map(([cat, evts]) => {
-                  const key = `${pid}-${cat}`
-                  if (!expandedCats.has(key)) return null
-                  const s = getCatStyle(cat)
-                  return (
-                    <div key={cat} className={`mt-2 w-64 rounded-lg border ${s.border} ${s.bg} p-2 max-h-48 overflow-auto`}>
-                      <div className={`text-[10px] font-bold ${s.text} mb-1`}>{cat.toUpperCase()} — {evts.length} events</div>
-                      <div className="space-y-0.5">
-                        {evts.slice(0, 20).map(evt => (
-                          <div key={evt.id} className="text-[10px] font-mono text-gray-600 dark:text-slate-400 truncate flex gap-1">
-                            <span className={`shrink-0 ${s.text}`}>{evt.event_name}</span>
-                            <span className="text-gray-400 dark:text-slate-500 truncate">{evtDetail(evt)}</span>
-                          </div>
-                        ))}
-                        {evts.length > 20 && <div className="text-[9px] text-gray-400">+{evts.length - 20} more</div>}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
+    <div className="overflow-auto p-4 min-h-[300px]">
+      {canLoadParent && (
+        <button onClick={() => onLoadContext!(topRoot.pid)} disabled={loadingPid === topRoot.pid}
+          className="mb-3 inline-flex items-center gap-1 rounded-lg border border-dashed border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs text-gray-500 dark:text-slate-400 hover:border-gray-400 hover:text-gray-700 dark:hover:text-slate-300 disabled:opacity-50">
+          {loadingPid === topRoot.pid ? 'Loading...' : `Load parent (${topRoot.parentName || topRoot.parentPid})`}
+        </button>
+      )}
+      <div className="flex items-start">
+        {roots.map((node, i) => (
+          <NodeRenderer key={`root-${i}`} node={node} depth={0}
+            collapsedNodes={collapsedNodes} toggleCollapse={toggleCollapse}
+            selectedId={selectedId} setSelectedId={setSelectedId}
+            parentId="" index={i} />
+        ))}
       </div>
+    </div>
+  )
+}
+
+interface NodeRendererProps {
+  node: TreeNode
+  depth: number
+  collapsedNodes: Set<string>
+  toggleCollapse: (id: string) => void
+  selectedId: string | null
+  setSelectedId: (id: string | null) => void
+  parentId: string
+  index: number
+}
+
+function NodeRenderer({ node, depth, collapsedNodes, toggleCollapse, selectedId, setSelectedId, parentId, index }: NodeRendererProps) {
+  const id = `${parentId}-${node.pid}-${node.category}-${index}`
+  const cat = getCat(node.category)
+  const isCollapsed = node.collapsed ? !collapsedNodes.has(id) : collapsedNodes.has(id) // default collapsed state inverted by toggle
+  const hasChildren = node.children.length > 0
+  const isSelected = selectedId === id
+  const isProcess = node.category === 'process' && node.eventName !== ''
+  const isLeaf = !hasChildren && !isProcess
+
+  return (
+    <div className="flex items-start">
+      {/* This node */}
+      <div className="flex flex-col items-start">
+        <div
+          onClick={() => {
+            if (hasChildren) toggleCollapse(id)
+            setSelectedId(isSelected ? null : id)
+          }}
+          className={
+            'rounded-lg border-l-4 border border-gray-200 dark:border-slate-700 px-3 py-2 cursor-pointer transition-all select-none ' +
+            cat.border + ' ' +
+            (node.isTrigger
+              ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 shadow-md shadow-red-100 dark:shadow-red-900/20 '
+              : node.isOnPath
+                ? 'bg-blue-50/50 dark:bg-blue-950/20 '
+                : 'bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 ') +
+            (isSelected ? 'ring-2 ring-fibratus-400 ' : '') +
+            (isLeaf ? 'min-w-[180px] max-w-[280px] ' : 'min-w-[240px] max-w-[320px] ')
+          }
+        >
+          {/* Event badge + timestamp */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${cat.badge}`}>{node.eventName || node.name}</span>
+            {node.timestamp && <span className="text-[10px] text-gray-400 dark:text-slate-500">{new Date(node.timestamp).toLocaleTimeString()}</span>}
+            {node.isTrigger && <span className="rounded bg-red-500 text-white text-[9px] px-1.5 py-0.5 font-bold">TRIGGER</span>}
+            {hasChildren && (
+              <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-auto">
+                {isCollapsed ? `+${node.children.length}` : '−'}
+              </span>
+            )}
+          </div>
+
+          {/* Process info */}
+          {isProcess && (
+            <div className="mt-1 space-y-0.5">
+              {node.exe && <div className="text-[11px] font-mono text-gray-700 dark:text-slate-300 truncate"><span className="text-gray-400 dark:text-slate-500">exe: </span>{node.exe}</div>}
+              {node.pid > 0 && <div className="text-[11px] font-mono text-gray-500 dark:text-slate-400"><span className="text-gray-400 dark:text-slate-500">pid: </span><span className="text-red-600 dark:text-red-400 font-medium">{node.pid}</span>{node.parentPid > 0 && <span> <span className="text-gray-400 dark:text-slate-500">parent:</span> {node.parentPid}</span>}</div>}
+            </div>
+          )}
+
+          {/* Leaf event detail */}
+          {isLeaf && node.name && node.eventName && (
+            <div className="mt-0.5 text-[10px] font-mono text-gray-500 dark:text-slate-400 truncate">{node.name}</div>
+          )}
+
+          {/* Params for leaf events */}
+          {isLeaf && isSelected && node.params && Object.keys(node.params).length > 0 && (
+            <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-slate-700 space-y-0.5">
+              {Object.entries(node.params).slice(0, 8).map(([k, v]) => (
+                <div key={k} className="text-[10px] font-mono flex gap-1">
+                  <span className="text-gray-400 dark:text-slate-500 shrink-0">{k}:</span>
+                  <span className="text-gray-700 dark:text-slate-300 truncate">{String(v)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Children (branching to the right) */}
+      {hasChildren && !isCollapsed && (
+        <div className="flex items-start ml-0">
+          {/* Horizontal connector line */}
+          <div className="flex flex-col justify-center self-stretch shrink-0">
+            <div className={`w-6 h-px ${cat.line} my-auto`} />
+          </div>
+          {/* Vertical branch with children */}
+          <div className="flex flex-col gap-1.5 relative">
+            {/* Vertical line connecting children */}
+            {node.children.length > 1 && (
+              <div className={`absolute left-0 top-3 bottom-3 w-px ${cat.line}`} />
+            )}
+            {node.children.map((child, ci) => (
+              <div key={ci} className="flex items-start">
+                {/* Horizontal tick from vertical line */}
+                <div className={`w-4 h-px ${cat.line} mt-3 shrink-0`} />
+                <NodeRenderer node={child} depth={depth + 1}
+                  collapsedNodes={collapsedNodes} toggleCollapse={toggleCollapse}
+                  selectedId={selectedId} setSelectedId={setSelectedId}
+                  parentId={id} index={ci} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
