@@ -19,9 +19,12 @@
 package handler
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/skip2/go-qrcode"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
@@ -73,9 +76,18 @@ func (h *TOTPHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate QR code server-side — no client-side QR library needed.
+	// This eliminates supply chain risk from npm QR packages.
+	qrPNG, qrErr := qrcode.Encode(uri, qrcode.Medium, 200)
+	qrDataURL := ""
+	if qrErr == nil {
+		qrDataURL = "data:image/png;base64," + base64.StdEncoding.EncodeToString(qrPNG)
+	}
+
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{
 		"secret": secret,
 		"uri":    uri,
+		"qr":     qrDataURL,
 	}})
 }
 

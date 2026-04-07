@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type EnrollmentToken, type Organization, type User } from '../lib/api'
 import ConfirmDialog from '../components/ConfirmDialog'
-import QRCode from 'qrcode'
+// QR code generated server-side — no client-side QR library needed
 
 function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
@@ -638,13 +638,7 @@ function SecuritySection() {
   // QR code
   const [qrDataUrl, setQrDataUrl] = useState('')
 
-  useEffect(() => {
-    if (totpUri) {
-      QRCode.toDataURL(totpUri, { width: 200, margin: 2 }).then(url => setQrDataUrl(url)).catch(() => setQrDataUrl(''))
-    } else {
-      setQrDataUrl('')
-    }
-  }, [totpUri])
+  // QR data URL now comes from the server (no client-side QR library)
 
   // Disable flow state
   const [showDisable, setShowDisable] = useState(false)
@@ -658,10 +652,11 @@ function SecuritySection() {
         setSetupError(res.error.message)
         return
       }
-      const data = res.data as { secret: string; uri: string } | undefined
+      const data = res.data as { secret: string; uri: string; qr: string } | undefined
       if (data) {
         setTotpSecret(data.secret)
         setTotpUri(data.uri)
+        setQrDataUrl(data.qr || '')
         setSetupStep('verify')
       }
     },
