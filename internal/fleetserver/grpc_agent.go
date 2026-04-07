@@ -112,7 +112,6 @@ func (s *agentService) Register(ctx context.Context, req *pb.RegisterRequest) (*
 	}
 
 	// Create new agent
-	agentID := ctxutil.AgentIDFromContext(ctx)
 	if agentID == "" {
 		agentID = uuid.New().String()
 	}
