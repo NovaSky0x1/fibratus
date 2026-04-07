@@ -402,7 +402,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
           allEdges.push({ id: `e-${procId}-${catId}`, source: procId, target: catId, type: 'smoothstep', style: { stroke: cc(c).edge, strokeWidth: 1.5 } })
 
           if (catExp) {
-            for (const evt of evts.filter(e => e.event_category === c).slice(0, 25)) {
+            for (const evt of evts.filter(e => e.event_category === c).slice(0, 100)) {
               const evtId = `evt-${evt.id}`
               const info = evtInfo(evt)
               allNodes.push({ id: evtId, type: 'eventNode', position: { x: 0, y: 0 }, data: {

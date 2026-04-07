@@ -269,7 +269,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		pids = append(pids, pid)
 	}
 
-	// Query events for each known PID
+	// Query events for each known PID (high limit to capture all event types)
 	var filtered []store.TelemetryEvent
 	for _, pid := range pids {
 		events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
@@ -277,7 +277,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 			PID:     pid,
 			From:    from,
 			To:      to,
-			Limit:   500,
+			Limit:   5000,
 		})
 		if err != nil {
 			continue
@@ -293,7 +293,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 			ParentPID: pid,
 			From:      from,
 			To:        to,
-			Limit:     200,
+			Limit:     2000,
 		})
 		if err != nil {
 			continue
