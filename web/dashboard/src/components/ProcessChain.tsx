@@ -132,16 +132,26 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
 // ═══════════════════════════════════════════════════
 
 function CategoryNode({ data }: { data: Record<string, unknown> }) {
-  const d = data as { category: string; count: number; expanded: boolean }
+  const d = data as { category: string; count: number; expanded: boolean; preview: string[] }
   const c = cc(d.category)
   return (
     <div className="rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:shadow-md"
-      style={{ width: 180, borderLeftWidth: 4, borderLeftColor: c.accent }}>
+      style={{ width: 220, borderLeftWidth: 4, borderLeftColor: c.accent }}>
       <Handle type="target" position={Position.Left} className="!bg-transparent !border-0 !w-2 !h-2" />
       <div className="px-3 py-2">
-        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${c.badge}`}>{d.category.toUpperCase()}</span>
-        <span className="ml-2 text-[10px] text-gray-500">{d.count}</span>
-        <div className="mt-1 text-[9px] text-gray-400">{d.expanded ? '▼ collapse' : '▶ expand'}</div>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${c.badge}`}>{d.category.toUpperCase()}</span>
+          <span className="text-[10px] text-gray-500 dark:text-slate-400">{d.count} events</span>
+          <span className="ml-auto text-[9px] text-gray-400">{d.expanded ? '▼' : '▶'}</span>
+        </div>
+        {d.preview.length > 0 && (
+          <div className="mt-1.5 space-y-0.5">
+            {d.preview.map((p, i) => (
+              <div key={i} className="text-[9px] font-mono text-gray-500 dark:text-slate-400 truncate">{p}</div>
+            ))}
+            {d.count > d.preview.length && <div className="text-[8px] text-gray-400">+{d.count - d.preview.length} more</div>}
+          </div>
+        )}
       </div>
       <Handle type="source" position={Position.Right} className="!bg-transparent !border-0 !w-2 !h-2" />
     </div>
@@ -189,7 +199,7 @@ async function doLayout(nodes: Node[], edges: Edge[]): Promise<{ nodes: Node[]; 
   const elkNodes = nodes.map(n => {
     let w = 260, h = 55
     if (n.type === 'processNode') { w = 300; h = 160 }
-    else if (n.type === 'categoryNode') { w = 180; h = 55 }
+    else if (n.type === 'categoryNode') { w = 220; h = 90 }
     else { h = 50 + ((n.data as Record<string, unknown>).infoLines as string[] || []).length * 14 }
     return { id: n.id, width: w, height: Math.max(h, 50) }
   })
@@ -347,7 +357,12 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
         for (const [c, count] of catCounts) {
           const catId = `cat-${pid}-${c}`
           const catExp = expandedCats.has(catId)
-          allNodes.push({ id: catId, type: 'categoryNode', position: { x: 0, y: 0 }, data: { category: c, count, expanded: catExp } })
+          const catEvts = evts.filter(e => e.event_category === c)
+          const preview = catEvts.slice(0, 3).map(e => {
+            const info = evtInfo(e)
+            return info[0] || e.event_name
+          })
+          allNodes.push({ id: catId, type: 'categoryNode', position: { x: 0, y: 0 }, data: { category: c, count, expanded: catExp, preview } })
           allEdges.push({ id: `e-${procId}-${catId}`, source: procId, target: catId, type: 'smoothstep', style: { stroke: cc(c).edge, strokeWidth: 1.5 } })
 
           if (catExp) {
@@ -397,7 +412,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
           proOptions={{ hideAttribution: true }}
           defaultEdgeOptions={{ type: 'smoothstep' }}
         >
-          <Background color="#f0f0f0" gap={24} size={1} />
+          <Background color="transparent" gap={0} size={0} />
           <Controls position="bottom-left" showInteractive={false} />
           <MiniMap pannable zoomable position="bottom-right"
             style={{ border: '1px solid #e5e7eb', borderRadius: 8 }}
