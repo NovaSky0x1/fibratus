@@ -140,7 +140,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
-      {/* CursorGlow removed — no grid/glow effects */}
+      <CursorGlow />
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 z-20 w-64 sidebar-gradient dark:sidebar-gradient-dark flex flex-col">
         {/* Logo */}

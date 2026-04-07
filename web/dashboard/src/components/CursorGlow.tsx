@@ -23,9 +23,10 @@ export default function CursorGlow() {
       ctx.clearRect(0, 0, w, h)
 
       const dark = isDark()
-      const [cr, cg, cb] = dark ? [0, 180, 255] : [60, 120, 255]
-      const baseAlpha = dark ? 0.08 : 0.035     // always-visible grid
-      const glowAlpha = dark ? 0.6 : 0.55       // neon punch near cursor
+      if (!dark) { raf = requestAnimationFrame(draw); return } // skip rendering in light mode
+      const [cr, cg, cb] = [0, 180, 255]
+      const baseAlpha = 0.08
+      const glowAlpha = 0.6
 
       // Draw full-page grid with cursor-based brightness
       for (let x = 0; x <= w; x += GRID) {
