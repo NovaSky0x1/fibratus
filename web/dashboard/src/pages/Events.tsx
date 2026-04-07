@@ -65,19 +65,27 @@ const FIELD_SUGGESTIONS = [
   // File
   { field: 'file.name', desc: 'File name', category: 'File' },
   { field: 'file.path', desc: 'File path', category: 'File' },
-  { field: 'file.extension', desc: 'File extension', category: 'File' },
   // Registry
-  { field: 'registry.key.name', desc: 'Registry key', category: 'Registry' },
-  { field: 'registry.value', desc: 'Registry value', category: 'Registry' },
+  { field: 'registry.path', desc: 'Registry key path', category: 'Registry' },
+  { field: 'registry.key', desc: 'Registry key name', category: 'Registry' },
+  { field: 'registry.value', desc: 'Registry value name', category: 'Registry' },
   // Image/Module
-  { field: 'dll.name', desc: 'Module/DLL name', category: 'Module' },
-  { field: 'dll.path', desc: 'Module/DLL path', category: 'Module' },
-  { field: 'dll.is_signed', desc: 'Module signature status', category: 'Module' },
+  { field: 'image.name', desc: 'Module/DLL name', category: 'Module' },
+  { field: 'image.path', desc: 'Module/DLL path', category: 'Module' },
   // DNS
   { field: 'dns.name', desc: 'DNS query name', category: 'DNS' },
-  // PE
-  { field: 'pe.is_signed', desc: 'PE signed', category: 'PE' },
-  { field: 'pe.imphash', desc: 'Import hash', category: 'PE' },
+  { field: 'dns.rr', desc: 'DNS record type (A, AAAA, CNAME)', category: 'DNS' },
+  // Network
+  { field: 'net.protocol', desc: 'L4 protocol (tcp/udp)', category: 'Network' },
+  // PE / Hashes
+  { field: 'pe.sha256', desc: 'PE SHA256 hash', category: 'PE' },
+  { field: 'pe.md5', desc: 'PE MD5 hash', category: 'PE' },
+  { field: 'ps.pe.sha256', desc: 'Process PE SHA256', category: 'Process' },
+  { field: 'ps.pe.md5', desc: 'Process PE MD5', category: 'Process' },
+  // User
+  { field: 'ps.username', desc: 'Process username', category: 'Process' },
+  { field: 'ps.domain', desc: 'Process domain', category: 'Process' },
+  { field: 'ps.sid', desc: 'Process SID', category: 'Process' },
   // Agent
   { field: 'agent.hostname', desc: 'Agent hostname', category: 'Agent' },
   { field: 'agent.id', desc: 'Agent ID', category: 'Agent' },

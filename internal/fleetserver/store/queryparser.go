@@ -44,6 +44,53 @@ var fieldMapping = map[string]string{
 	"tid":             "tid",
 }
 
+// jsonFieldMapping maps Fibratus QL fields to JSON paths in raw_event.
+// These are fields stored inside the params/ps objects in raw_event JSON.
+var jsonFieldMapping = map[string][]string{
+	// DNS fields
+	"dns.name":    {"params", "name"},
+	"dns.rr":      {"params", "rr"},
+	"dns.options":  {"params", "options"},
+
+	// File fields
+	"file.name":       {"params", "file_name"},
+	"file.path":       {"params", "file_path"},
+	"file.operation":  {"params", "file_object"},
+
+	// Registry fields
+	"registry.path":     {"params", "key_name"},
+	"registry.key":      {"params", "key_name"},
+	"registry.key.name": {"params", "key_name"},
+	"registry.value":    {"params", "value_name"},
+
+	// Network fields
+	"net.dip":      {"params", "dip"},
+	"net.dport":    {"params", "dport"},
+	"net.sip":      {"params", "sip"},
+	"net.sport":    {"params", "sport"},
+	"net.protocol": {"params", "l4_proto"},
+
+	// Image/module fields
+	"image.name":     {"params", "file_name"},
+	"image.path":     {"params", "file_path"},
+	"module.name":    {"params", "file_name"},
+	"module.path":    {"params", "file_path"},
+
+	// Process fields from ps object in raw_event
+	"ps.sid":             {"ps", "sid"},
+	"ps.username":        {"ps", "username"},
+	"ps.domain":          {"ps", "domain"},
+	"ps.cmdline":         {"ps", "cmdline"},
+	"ps.parent.cmdline":  {"ps", "parent_cmdline"},
+	"ps.parent.exe":      {"ps", "parent_exe"},
+
+	// Hash fields
+	"ps.pe.sha256":       {"ps", "sha256"},
+	"ps.pe.md5":          {"ps", "md5"},
+	"pe.sha256":          {"params", "sha256"},
+	"pe.md5":             {"params", "md5"},
+}
+
 // tokenType for the simple QL parser
 type tokenType int
 
@@ -335,8 +382,17 @@ func buildComparison(field, op, value, dbType string, argIdx int) (string, []int
 		}
 	}
 
-	// JSON field query — search in raw_event or params
-	jsonPath := fieldToJSONPath(field)
+	// JSON field query — use known mapping or fall back to dotted path
+	var jsonPath string
+	if mapped, ok := jsonFieldMapping[field]; ok {
+		parts := make([]string, len(mapped))
+		for i, p := range mapped {
+			parts[i] = "'" + p + "'"
+		}
+		jsonPath = strings.Join(parts, ", ")
+	} else {
+		jsonPath = fieldToJSONPath(field)
+	}
 	ph := placeholder()
 	if dbType == "clickhouse" {
 		return fmt.Sprintf("JSONExtractString(raw_event, %s) = %s", jsonPath, ph), []interface{}{value}, argIdx
@@ -348,7 +404,25 @@ func buildComparison(field, op, value, dbType string, argIdx int) (string, []int
 func buildInClause(field, op string, values []string, dbType string, argIdx int) (string, []interface{}, int) {
 	col, isColumn := fieldMapping[field]
 	if !isColumn {
-		// Fallback to raw_event search
+		// Check JSON field mapping
+		if mapped, ok := jsonFieldMapping[field]; ok && dbType == "clickhouse" {
+			parts := make([]string, len(mapped))
+			for i, p := range mapped {
+				parts[i] = "'" + p + "'"
+			}
+			jsonPath := strings.Join(parts, ", ")
+			var orParts []string
+			var args []interface{}
+			for _, v := range values {
+				orParts = append(orParts, fmt.Sprintf("JSONExtractString(raw_event, %s) = ?", jsonPath))
+				args = append(args, v)
+			}
+			if op == "not in" {
+				return "NOT (" + strings.Join(orParts, " OR ") + ")", args, argIdx
+			}
+			return "(" + strings.Join(orParts, " OR ") + ")", args, argIdx
+		}
+		// Fallback to raw_event text search
 		var orParts []string
 		var args []interface{}
 		for _, v := range values {
