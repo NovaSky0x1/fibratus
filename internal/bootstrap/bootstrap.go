@@ -589,38 +589,38 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	}
 	client.StartHeartbeat(collector)
 
-	// Start rule sync — rules arrive via gRPC stream. Write to a
-	// protected location and restart the service to compile them.
-	// The rules are DPAPI-encrypted in transit and written with
-	// restricted ACLs. On restart, LoadFilters reads them normally.
+	// Start rule sync — rules are loaded into DPAPI-encrypted memory,
+	// never written to disk. On update, rules are fed directly to the
+	// rule engine compiler from memory.
 	client.StartRuleSync(func(ruleDocs [][]byte, macrosYAML []byte) error {
-		log.Infof("fleet: %d rules received from server, writing to protected store and restarting...", len(ruleDocs))
+		log.Infof("fleet: %d rules received in encrypted memory, compiling...", len(ruleDocs))
 
-		exe, _ := os.Executable()
-		rulesDir := filepath.Join(filepath.Dir(exe), "..", "data", "rules")
-		macrosDir := filepath.Join(rulesDir, "Macros")
-		os.MkdirAll(rulesDir, 0o700)
-		os.MkdirAll(macrosDir, 0o700)
-
-		// Remove old rule files
-		oldRules, _ := filepath.Glob(filepath.Join(rulesDir, "fleet-rule-*.yml"))
-		for _, f := range oldRules {
-			os.Remove(f)
-		}
-
-		// Write macros
+		// Load macros from memory first (rules may reference them)
 		if len(macrosYAML) > 0 {
-			os.WriteFile(filepath.Join(macrosDir, "macros.yml"), macrosYAML, 0o600)
+			if err := cfg.Filters.LoadMacrosFromMemory(macrosYAML); err != nil {
+				log.Warnf("fleet: failed to load macros from memory: %v", err)
+			}
 		}
 
-		// Write each rule as a separate file
-		for i, doc := range ruleDocs {
-			ruleFile := filepath.Join(rulesDir, fmt.Sprintf("fleet-rule-%03d.yml", i+1))
-			os.WriteFile(ruleFile, doc, 0o600)
+		// Load rules from memory
+		if err := cfg.Filters.LoadFiltersFromMemory(ruleDocs); err != nil {
+			log.Errorf("fleet: load rules from memory failed: %v", err)
+			return fmt.Errorf("fleet: load rules from memory: %w", err)
 		}
 
-		log.Infof("fleet: wrote %d rule files, restarting service to compile...", len(ruleDocs))
-		restartService()
+		// Recompile the rule engine with new in-memory rules
+		if f.engine == nil {
+			log.Warn("fleet: rule engine not initialized yet — rules loaded but not compiled")
+			return nil
+		}
+
+		result, err := f.engine.Compile()
+		if err != nil {
+			log.Errorf("fleet: rule compile error: %v", err)
+			return err
+		}
+		log.Infof("fleet: rules compiled from encrypted memory — %d rules active", result.NumberRules)
+
 		return nil
 	})
 
