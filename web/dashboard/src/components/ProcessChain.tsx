@@ -46,15 +46,8 @@ function cc(c: string) { return cat[c] || cat.handle }
 
 function parseParams(raw: unknown): Record<string, unknown> {
   if (!raw) return {}
-  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>
   if (typeof raw === 'string') { try { return JSON.parse(raw) } catch { return {} } }
-  return {}
-}
-
-function parseParams(raw: unknown): Record<string, unknown> {
-  if (!raw) return {}
-  if (typeof raw === 'string') { try { return JSON.parse(raw) } catch { return {} } }
-  if (typeof raw === 'object' && raw !== null) return raw as Record<string, unknown>
+  if (typeof raw === 'object' && !Array.isArray(raw) && raw !== null) return raw as Record<string, unknown>
   return {}
 }
 
