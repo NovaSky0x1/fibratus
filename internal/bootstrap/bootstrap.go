@@ -645,15 +645,12 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 			return nil
 		}
 
-		log.Infof("fleet: pre-compile state — filters=%d, macros exist=%v",
-			len(cfg.GetFilters()), cfg.Filters.GetMacro("query_dns") != nil)
 		result, err := f.engine.Compile()
 		if err != nil {
 			log.Errorf("fleet: rule compile error: %v", err)
 			return err
 		}
-		log.Infof("fleet: rules compiled from encrypted memory — %d rules active, filters_empty=%v",
-			result.NumberRules, len(cfg.GetFilters()))
+		log.Infof("fleet: rules compiled from encrypted memory — %d rules active", result.NumberRules)
 
 		return nil
 	})
