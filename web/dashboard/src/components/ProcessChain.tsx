@@ -118,7 +118,9 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
 
 function CategoryNode({ data }: { data: Record<string, unknown> }) {
   const d = data as { category: string; count: number; expanded: boolean; preview: string[]; events: { eventName: string; detail: string; timestamp: string; idx: number }[]; onSelectEvent?: (catId: string, idx: number) => void; nodeId: string }
+  const [search, setSearch] = useState('')
   const c = cc(d.category)
+  const filteredEvents = search ? d.events.filter(e => (e.detail + ' ' + e.eventName).toLowerCase().includes(search.toLowerCase())) : d.events
   return (
     <div className="rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:shadow-md"
       style={{ width: d.expanded ? 320 : 220, borderLeftWidth: 4, borderLeftColor: c.accent }}>
@@ -138,8 +140,15 @@ function CategoryNode({ data }: { data: Record<string, unknown> }) {
           </div>
         )}
         {d.expanded && d.events && (
-          <div className="mt-2 max-h-64 overflow-y-auto space-y-1 nowheel" onClick={e => e.stopPropagation()}>
-            {d.events.map((evt, i) => (
+          <div className="mt-2" onClick={e => e.stopPropagation()}>
+            <input
+              value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={`Search ${d.count} events...`}
+              className="w-full rounded border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 px-2 py-1 text-[9px] font-mono text-gray-700 dark:text-slate-300 mb-1.5 focus:outline-none focus:border-fibratus-400 nowheel"
+            />
+            {search && <div className="text-[8px] text-gray-400 mb-1">{filteredEvents.length} of {d.events.length} shown</div>}
+          <div className="max-h-64 overflow-y-auto space-y-1 nowheel">
+            {filteredEvents.map((evt, i) => (
               <div key={i}
                 onClick={() => d.onSelectEvent?.(d.nodeId, evt.idx)}
                 className="rounded border border-gray-100 dark:border-slate-600 px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
@@ -150,6 +159,7 @@ function CategoryNode({ data }: { data: Record<string, unknown> }) {
                 {evt.detail && <div className="mt-0.5 text-[9px] font-mono text-gray-600 dark:text-slate-300 break-all leading-tight">{evt.detail}</div>}
               </div>
             ))}
+          </div>
           </div>
         )}
       </div>
@@ -342,7 +352,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
           const catEvts = evts.filter(e => e.event_category === c)
           const preview = catEvts.slice(0, 3).map(e => evtPreview(e) || e.event_name).filter(Boolean)
           // Embed event data in the category node — no separate event graph nodes
-          const slicedEvts = catEvts.slice(0, 200)
+          const slicedEvts = catEvts
           const embeddedEvents = catExp ? slicedEvts.map((e, i) => ({
             eventName: e.event_name, detail: evtPreview(e), timestamp: e.timestamp, idx: i,
           })) : []
