@@ -385,43 +385,51 @@ func (h *DetectionHandler) ProcessContext(w http.ResponseWriter, r *http.Request
 	from := det.Timestamp.Add(-1 * time.Hour)
 	to := det.Timestamp.Add(1 * time.Hour)
 
-	allEvents, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-		AgentID: det.AgentID,
-		From:    from,
-		To:      to,
-		Limit:   5000,
+	// Query directly for this PID's events
+	targetEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+		AgentID: det.AgentID, PID: targetPID, From: from, To: to, Limit: 500,
 	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
 
-	// Collect: the target PID, its parent, and its children.
+	// Find parent PID from target events
 	parentPID := 0
-	children := make(map[int]bool)
-	for _, evt := range allEvents {
-		if evt.PID == targetPID && evt.ParentPID > 0 && parentPID == 0 {
+	for _, evt := range targetEvents {
+		if evt.ParentPID > 0 && parentPID == 0 {
 			parentPID = evt.ParentPID
 		}
-		if evt.ParentPID == targetPID && evt.PID != targetPID {
+	}
+
+	// Query parent's events
+	var parentEvents []store.TelemetryEvent
+	if parentPID > 0 {
+		parentEvents, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: det.AgentID, PID: parentPID, From: from, To: to, Limit: 500,
+		})
+		// Also check if parent has a grandparent — load one more level
+		for _, evt := range parentEvents {
+			if evt.ParentPID > 0 && evt.ParentPID != parentPID {
+				gpEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+					AgentID: det.AgentID, PID: evt.ParentPID, From: from, To: to, Limit: 200,
+				})
+				parentEvents = append(parentEvents, gpEvents...)
+				break
+			}
+		}
+	}
+
+	// Query children
+	childEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+		AgentID: det.AgentID, ParentPID: targetPID, From: from, To: to, Limit: 500,
+	})
+
+	children := make(map[int]bool)
+	for _, evt := range childEvents {
+		if evt.PID != targetPID {
 			children[evt.PID] = true
 		}
 	}
 
-	relevant := map[int]bool{targetPID: true}
-	if parentPID > 0 {
-		relevant[parentPID] = true
-	}
-	for pid := range children {
-		relevant[pid] = true
-	}
-
-	filtered := make([]store.TelemetryEvent, 0)
-	for _, evt := range allEvents {
-		if relevant[evt.PID] {
-			filtered = append(filtered, evt)
-		}
-	}
+	filtered := append(targetEvents, parentEvents...)
+	filtered = append(filtered, childEvents...)
 
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{
