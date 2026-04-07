@@ -53,7 +53,8 @@ export default function AgentNetwork({ agentId }: { agentId: string }) {
     'get_network',
   )
 
-  const connections = data?.connections || []
+  const raw = data?.connections
+  const connections: Connection[] = Array.isArray(raw) ? raw : raw ? [raw as unknown as Connection] : []
   const filtered = connections.filter((c) => matchesFilter(c.State, stateFilter))
 
   const { sorted, sort, toggleSort } = useTableSort(filtered, 'State', 'asc')

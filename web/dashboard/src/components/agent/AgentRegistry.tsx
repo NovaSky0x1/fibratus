@@ -33,8 +33,8 @@ export default function AgentRegistry({ agentId }: { agentId: string }) {
     payload,
   )
 
-  const keys = data?.keys || []
-  const values = data?.values || []
+  const rk = data?.keys; const keys: RegistryKey[] = Array.isArray(rk) ? rk : rk ? [rk as unknown as RegistryKey] : []
+  const rv = data?.values; const values: RegistryValue[] = Array.isArray(rv) ? rv : rv ? [rv as unknown as RegistryValue] : []
 
   // Re-execute when path changes after initial mount (hook handles first execution)
   useEffect(() => {

@@ -37,7 +37,7 @@ export default function AgentServices({ agentId }: { agentId: string }) {
     'get_services',
   )
 
-  const services = data?.services || []
+  const _svc: any = data?.services; const services = Array.isArray(_svc) ? _svc : _svc ? [_svc] : []
   const filtered = search
     ? services.filter(
         (s) =>

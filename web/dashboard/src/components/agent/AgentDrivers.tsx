@@ -33,7 +33,7 @@ export default function AgentDrivers({ agentId }: { agentId: string }) {
     'get_drivers',
   )
 
-  const drivers = data?.drivers || []
+  const _drv: any = data?.drivers; const drivers = Array.isArray(_drv) ? _drv : _drv ? [_drv] : []
   const { sorted, sort, toggleSort } = useTableSort(drivers, 'Name', 'asc')
 
   return (

@@ -24,7 +24,7 @@ export default function AgentSoftware({ agentId }: { agentId: string }) {
     'get_software',
   )
 
-  const software = data?.software || []
+  const _sw: any = data?.software; const software = Array.isArray(_sw) ? _sw : _sw ? [_sw] : []
   const filtered = search
     ? software.filter(
         (s) =>

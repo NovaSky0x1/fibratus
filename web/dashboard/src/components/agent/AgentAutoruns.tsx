@@ -72,9 +72,9 @@ export default function AgentAutoruns({ agentId }: { agentId: string }) {
     'get_autoruns',
   )
 
-  const runKeys = data?.run_keys || []
-  const tasks = data?.scheduled_tasks || []
-  const startupItems = data?.startup_folder || []
+  const rk = data?.run_keys; const runKeys: RunKey[] = Array.isArray(rk) ? rk : rk ? [rk as unknown as RunKey] : []
+  const ts = data?.scheduled_tasks; const tasks: ScheduledTask[] = Array.isArray(ts) ? ts : ts ? [ts as unknown as ScheduledTask] : []
+  const sf = data?.startup_folder; const startupItems: StartupItem[] = Array.isArray(sf) ? sf : sf ? [sf as unknown as StartupItem] : []
 
   return (
     <div className="flex flex-col gap-4">

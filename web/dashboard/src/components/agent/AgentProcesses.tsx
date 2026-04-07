@@ -45,7 +45,7 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
     }
   }, [autoRefresh, execute])
 
-  const processes = data?.processes || []
+  const raw = data?.processes; const processes: Process[] = Array.isArray(raw) ? raw : raw ? [raw as unknown as Process] : []
   const filtered = search
     ? processes.filter(
         (p) =>

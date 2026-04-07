@@ -64,8 +64,8 @@ export default function AgentUsers({ agentId }: { agentId: string }) {
     'get_users',
   )
 
-  const localUsers = data?.local_users || []
-  const adminGroup = data?.admin_group || []
+  const _lu: any = data?.local_users; const localUsers = Array.isArray(_lu) ? _lu : _lu ? [_lu] : []
+  const _ag: any = data?.admin_group; const adminGroup = Array.isArray(_ag) ? _ag : _ag ? [_ag] : []
   const sessions = useMemo(() => parseSessions(data?.sessions || ''), [data?.sessions])
 
   return (

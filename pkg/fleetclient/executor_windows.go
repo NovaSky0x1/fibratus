@@ -648,16 +648,22 @@ func runPowerShellLong(psCmd string, timeoutSec int) (string, error) {
 }
 
 // safeJSON wraps a raw JSON string, returning an empty array if invalid.
+// safeJSON wraps raw JSON, ensuring it's always a valid JSON array.
+// PowerShell's ConvertTo-Json returns a bare object (not array) when
+// there's only one result — this normalizes that to an array.
 func safeJSON(s string) json.RawMessage {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "null" {
 		return json.RawMessage("[]")
 	}
-	// Ensure it's valid JSON
-	if json.Valid([]byte(s)) {
-		return json.RawMessage(s)
+	if !json.Valid([]byte(s)) {
+		return json.RawMessage("[]")
 	}
-	return json.RawMessage("[]")
+	// If it's a single object (starts with {), wrap in array
+	if s[0] == '{' {
+		return json.RawMessage("[" + s + "]")
+	}
+	return json.RawMessage(s)
 }
 
 // errStr returns an error string or empty string if nil.
