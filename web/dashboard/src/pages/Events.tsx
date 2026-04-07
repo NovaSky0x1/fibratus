@@ -138,7 +138,7 @@ interface ActiveFilter {
   value: string
 }
 
-export default function Events() {
+export default function Events({ agentId }: { agentId?: string } = {}) {
   // Query state
   const [queryInput, setQueryInput] = useState('')
   const [activeQuery, setActiveQuery] = useState('')
@@ -352,6 +352,7 @@ export default function Events() {
         params.from = range.from
         params.to = range.to
       }
+      if (agentId) params.agent_id = agentId
       return api.getOrgTelemetry(params)
     },
     refetchInterval: liveMode ? 3000 : false,

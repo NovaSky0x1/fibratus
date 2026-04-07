@@ -137,7 +137,7 @@ func (f *fleetOutput) Close() error {
 
 // telemetryEventNames is the set of events always stored on the fleet server.
 var telemetryEventNames = map[string]bool{
-	"CreateProcess": true, "TerminateProcess": true, "OpenProcess": true,
+	"CreateProcess": true, "TerminateProcess": true,
 	"CreateFile": true, "WriteFile": true, "DeleteFile": true, "RenameFile": true,
 	"RegSetValue": true, "RegCreateKey": true, "RegDeleteKey": true, "RegDeleteValue": true,
 	"Connect": true, "Accept": true,
@@ -147,6 +147,7 @@ var telemetryEventNames = map[string]bool{
 }
 
 var telemetryDropNames = map[string]bool{
+	"OpenProcess": true, // extremely noisy — 200K+/5min, not useful for fleet telemetry
 	"SubmitThreadpoolWork": true, "SubmitThreadpoolCallback": true, "SetThreadpoolTimer": true,
 	"VirtualAlloc": true, "VirtualFree": true,
 	"ReadFile": true, "CloseFile": true, "ReleaseFile": true, "EnumDirectory": true,
