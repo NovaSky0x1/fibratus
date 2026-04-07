@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type EnrollmentToken, type Organization, type User } from '../lib/api'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -630,7 +630,7 @@ function SecuritySection() {
   // Setup flow state
   const [setupStep, setSetupStep] = useState<'idle' | 'setup' | 'verify' | 'done'>('idle')
   const [totpSecret, setTotpSecret] = useState('')
-  const [totpUri, setTotpUri] = useState('')
+  // totpUri removed — QR code generated server-side
   const [verifyCode, setVerifyCode] = useState('')
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [setupError, setSetupError] = useState('')
@@ -655,7 +655,7 @@ function SecuritySection() {
       const data = res.data as { secret: string; uri: string; qr: string } | undefined
       if (data) {
         setTotpSecret(data.secret)
-        setTotpUri(data.uri)
+
         setQrDataUrl(data.qr || '')
         setSetupStep('verify')
       }
@@ -698,7 +698,7 @@ function SecuritySection() {
   const resetSetup = () => {
     setSetupStep('idle')
     setTotpSecret('')
-    setTotpUri('')
+    setQrDataUrl('')
     setVerifyCode('')
     setRecoveryCodes([])
     setSetupError('')
