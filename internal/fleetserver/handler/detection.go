@@ -259,9 +259,9 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	log.Infof("fleet: process tree for detection %s: triggerPIDs=%v ancestryPIDs=%v events_raw_len=%d", det.ID, triggerPIDs, ancestryPIDs, len(det.Events))
 
 	// Query telemetry directly for the known PIDs from the detection.
-	// This avoids the 5000-event limit issue where relevant PIDs get lost.
-	from := det.Timestamp.Add(-1 * time.Hour)
-	to := det.Timestamp.Add(1 * time.Hour)
+	// Narrow window: 5 minutes before to 1 minute after the detection.
+	from := det.Timestamp.Add(-5 * time.Minute)
+	to := det.Timestamp.Add(1 * time.Minute)
 
 	// Collect all known PIDs from the detection
 	pids := make([]int, 0, len(ancestryPIDs))
@@ -277,7 +277,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 			PID:     pid,
 			From:    from,
 			To:      to,
-			Limit:   5000,
+			Limit:   500,
 		})
 		if err != nil {
 			continue
@@ -293,7 +293,7 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 			ParentPID: pid,
 			From:      from,
 			To:        to,
-			Limit:     2000,
+			Limit:     200,
 		})
 		if err != nil {
 			continue
