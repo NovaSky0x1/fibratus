@@ -171,11 +171,11 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
 // ═══════════════════════════════════════════════════
 
 function CategoryNode({ data }: { data: Record<string, unknown> }) {
-  const d = data as { category: string; count: number; expanded: boolean; preview: string[] }
+  const d = data as { category: string; count: number; expanded: boolean; preview: string[]; events: { eventName: string; detail: string; timestamp: string }[] }
   const c = cc(d.category)
   return (
     <div className="rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:shadow-md"
-      style={{ width: 220, borderLeftWidth: 4, borderLeftColor: c.accent }}>
+      style={{ width: d.expanded ? 320 : 220, borderLeftWidth: 4, borderLeftColor: c.accent }}>
       <Handle type="target" position={Position.Left} className="!bg-transparent !border-0 !w-2 !h-2" />
       <div className="px-3 py-2">
         <div className="flex items-center gap-2">
@@ -183,12 +183,25 @@ function CategoryNode({ data }: { data: Record<string, unknown> }) {
           <span className="text-[10px] text-gray-500 dark:text-slate-400">{d.count} events</span>
           <span className="ml-auto text-[9px] text-gray-400">{d.expanded ? '▼' : '▶'}</span>
         </div>
-        {d.preview.length > 0 && (
+        {!d.expanded && d.preview.length > 0 && (
           <div className="mt-1.5 space-y-0.5">
             {d.preview.map((p, i) => (
               <div key={i} className="text-[9px] font-mono text-gray-500 dark:text-slate-400 truncate">{p}</div>
             ))}
             {d.count > d.preview.length && <div className="text-[8px] text-gray-400">+{d.count - d.preview.length} more</div>}
+          </div>
+        )}
+        {d.expanded && d.events && (
+          <div className="mt-2 max-h-64 overflow-y-auto space-y-1 nowheel" onClick={e => e.stopPropagation()}>
+            {d.events.map((evt, i) => (
+              <div key={i} className="rounded border border-gray-100 dark:border-slate-600 px-2 py-1">
+                <div className="flex items-center gap-1.5">
+                  <span className={`rounded px-1 py-0.5 text-[8px] font-bold ${c.badge}`}>{evt.eventName}</span>
+                  <span className="text-[8px] text-gray-400 font-mono">{evt.timestamp && new Date(evt.timestamp).toLocaleTimeString()}</span>
+                </div>
+                {evt.detail && <div className="mt-0.5 text-[9px] font-mono text-gray-600 dark:text-slate-300 break-all leading-tight">{evt.detail}</div>}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -226,7 +239,7 @@ function EventNode({ data }: { data: Record<string, unknown> }) {
   )
 }
 
-const nodeTypes = { processNode: ProcessNode, categoryNode: CategoryNode, eventNode: EventNode }
+const nodeTypes = { processNode: ProcessNode, categoryNode: CategoryNode }
 
 // ═══════════════════════════════════════════════════
 // ELK Layout
@@ -238,7 +251,11 @@ async function doLayout(nodes: Node[], edges: Edge[]): Promise<{ nodes: Node[]; 
   const elkNodes = nodes.map(n => {
     let w = 260, h = 55
     if (n.type === 'processNode') { w = 300; h = 160 }
-    else if (n.type === 'categoryNode') { w = 220; h = 90 }
+    else if (n.type === 'categoryNode') {
+      const expanded = (n.data as Record<string, unknown>).expanded
+      w = expanded ? 320 : 220
+      h = expanded ? 300 : 90
+    }
     else { h = 50 + ((n.data as Record<string, unknown>).infoLines as string[] || []).length * 14 }
     return { id: n.id, width: w, height: Math.max(h, 50) }
   })
@@ -400,20 +417,16 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
           const catExp = expandedCats.has(catId)
           const catEvts = evts.filter(e => e.event_category === c)
           const preview = catEvts.slice(0, 3).map(e => evtPreview(e) || e.event_name).filter(Boolean)
-          allNodes.push({ id: catId, type: 'categoryNode', position: { x: 0, y: 0 }, data: { category: c, count, expanded: catExp, preview } })
-          allEdges.push({ id: `e-${procId}-${catId}`, source: procId, target: catId, type: 'smoothstep', style: { stroke: cc(c).edge, strokeWidth: 1.5 } })
-
-          if (catExp) {
-            for (const evt of evts.filter(e => e.event_category === c).slice(0, 100)) {
-              const evtId = `evt-${evt.id}`
-              const info = evtInfo(evt)
-              allNodes.push({ id: evtId, type: 'eventNode', position: { x: 0, y: 0 }, data: {
-                eventName: evt.event_name, category: c, timestamp: evt.timestamp, infoLines: info,
-              }})
-              allEdges.push({ id: `e-${catId}-${evtId}`, source: catId, target: evtId, type: 'smoothstep', style: { stroke: cc(c).edge, strokeWidth: 1 } })
-              evtMap.set(evtId, evt)
-            }
-          }
+          // Embed event data in the category node — no separate event graph nodes
+          const embeddedEvents = catExp ? catEvts.slice(0, 200).map(e => ({
+            eventName: e.event_name, detail: evtPreview(e), timestamp: e.timestamp,
+          })) : []
+          allNodes.push({ id: catId, type: 'categoryNode', position: { x: 0, y: 0 },
+            data: { category: c, count, expanded: catExp, preview, events: embeddedEvents } })
+          allEdges.push({ id: `e-${procId}-${catId}`, source: procId, target: catId,
+            type: 'smoothstep', style: { stroke: cc(c).edge, strokeWidth: 1.5 } })
+          // Map all events for detail panel
+          for (const evt of catEvts) evtMap.set(`${catId}-${evt.id}`, evt)
         }
       }
     }
