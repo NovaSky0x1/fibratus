@@ -26,8 +26,25 @@ interface DetectionEvent {
 
 function parseEvents(events: unknown): DetectionEvent[] {
   if (!events) return []
+  // Already an array of events
   if (Array.isArray(events)) return events as DetectionEvent[]
-  if (typeof events === 'string') { try { return JSON.parse(events) } catch { return [] } }
+  // JSON string — parse it
+  if (typeof events === 'string') {
+    try {
+      const parsed = JSON.parse(events)
+      if (Array.isArray(parsed)) return parsed
+      // Single alert object with nested events: {id, text, events: [...]}
+      if (parsed && Array.isArray(parsed.events)) return parsed.events
+      return [parsed]
+    } catch { return [] }
+  }
+  // Single alert object with nested events
+  if (typeof events === 'object' && events !== null) {
+    const obj = events as Record<string, unknown>
+    if (Array.isArray(obj.events)) return obj.events as DetectionEvent[]
+    // Single event object — wrap in array
+    return [events as DetectionEvent]
+  }
   return []
 }
 
