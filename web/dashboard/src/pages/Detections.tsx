@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type Detection, type Rule } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
@@ -40,6 +40,7 @@ export default function Detections() {
   const [selectedDet, setSelectedDet] = useState<Detection | null>(null)
   const [detailView, setDetailView] = useState<DetailView>('detail')
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const { data, isLoading } = useQuery({
     queryKey: ['detections', page, severityFilter],
@@ -69,6 +70,24 @@ export default function Detections() {
   const total = data?.meta?.total ?? 0
   const perPage = data?.meta?.per_page ?? 50
   const totalPages = Math.ceil(total / perPage)
+
+  // Sync selected detection with URL ?id= param
+  const urlDetId = searchParams.get('id')
+  useEffect(() => {
+    if (urlDetId && !selectedDet && allDetections.length > 0) {
+      const found = allDetections.find(d => d.id === urlDetId)
+      if (found) setSelectedDet(found)
+    }
+  }, [urlDetId, allDetections, selectedDet])
+
+  const selectDetection = (det: Detection | null) => {
+    setSelectedDet(det)
+    if (det) {
+      setSearchParams({ id: det.id }, { replace: true })
+    } else {
+      setSearchParams({}, { replace: true })
+    }
+  }
 
   const selectedEvents = selectedDet ? parseEvents(selectedDet.events) : []
   const focusProc = selectedEvents[0]?.proc
@@ -114,7 +133,7 @@ export default function Detections() {
               {isLoading && <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>}
               {!isLoading && sortedDetections.map(det => (
                 <tr key={det.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30"
-                  onClick={() => { setSelectedDet(det); setDetailView('detail') }}>
+                  onClick={() => { selectDetection(det); setDetailView('detail') }}>
                   <td className="px-6 py-3">
                     <div className="font-medium text-gray-900 dark:text-slate-100">{det.title || det.rule_name}</div>
                     {det.text && <div className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">{det.text}</div>}
@@ -145,7 +164,7 @@ export default function Detections() {
       </div>
 
       {/* Detection detail panel */}
-      <SlidePanel open={!!selectedDet} title="Detection" onClose={() => setSelectedDet(null)} wide>
+      <SlidePanel open={!!selectedDet} title="Detection" onClose={() => selectDetection(null)} wide>
         {selectedDet && (
           <div>
             {/* View tabs */}
