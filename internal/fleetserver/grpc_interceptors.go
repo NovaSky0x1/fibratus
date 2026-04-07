@@ -20,7 +20,6 @@ package fleetserver
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc"
