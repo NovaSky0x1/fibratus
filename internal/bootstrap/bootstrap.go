@@ -234,11 +234,13 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 		// configured to only collect events for rules known at startup (0 rules).
 		if cfg.Fleet.Enabled {
 			// Set rs to nil so the ETW source skips ALL drop mask logic.
-			// When e.r is nil, no events are dropped — everything flows through.
-			// Rules arrive async via gRPC and compile later; the engine
-			// evaluates on its side which events match.
 			rs = nil
-			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks)")
+			// Disable stack enrichment in fleet mode — it holds CreateProcess,
+			// LoadImage, and other critical events in a decorator queue for up
+			// to 10 seconds waiting for StackWalk events. For fleet telemetry
+			// we need all events to flow immediately.
+			cfg.EventSource.StackEnrichment = false
+			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks, no stack enrichment delay)")
 		}
 	} else {
 		log.Info("rule engine is disabled")
