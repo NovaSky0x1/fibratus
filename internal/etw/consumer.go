@@ -21,6 +21,7 @@ package etw
 import (
 	"github.com/rabbitstack/fibratus/internal/etw/processors"
 	"github.com/rabbitstack/fibratus/pkg/config"
+	log "github.com/sirupsen/logrus"
 	"github.com/rabbitstack/fibratus/pkg/event"
 	"github.com/rabbitstack/fibratus/pkg/filter"
 	"github.com/rabbitstack/fibratus/pkg/ps"
@@ -51,8 +52,10 @@ func NewConsumer(
 	evts chan *event.Event,
 	processors processors.Chain,
 ) *Consumer {
+	enqueueAll := config.ForwardMode || config.IsCaptureSet() || config.Fleet.Enabled
+	log.Infof("consumer: enqueueAlways=%v (forward=%v capture=%v fleet=%v)", enqueueAll, config.ForwardMode, config.IsCaptureSet(), config.Fleet.Enabled)
 	return &Consumer{
-		q:          event.NewQueueWithChannel(evts, config.EventSource.StackEnrichment, config.ForwardMode || config.IsCaptureSet() || config.Fleet.Enabled),
+		q:          event.NewQueueWithChannel(evts, config.EventSource.StackEnrichment, enqueueAll),
 		sequencer:  sequencer,
 		processors: processors,
 		psnap:      psnap,
