@@ -357,53 +357,50 @@ func (e *WindowsExecutor) collectInfo(cmd *fleet.Command) (json.RawMessage, erro
 	return result, nil
 }
 
-// uninstall removes Fibratus using the MSI uninstaller for full cleanup.
+// uninstall removes Fibratus completely from the endpoint.
+// Strategy: force-kill the process first (ETW sessions prevent clean stop),
+// then remove the service, run MSI uninstall, and clean up remaining files.
 func (e *WindowsExecutor) uninstall(cmd *fleet.Command) (json.RawMessage, error) {
-	// Find the MSI product code from the registry
-	psCmd := `$pc = (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object { $_.GetValue("DisplayName") -like "*Fibratus*" }).PSChildName; if ($pc) { Write-Output $pc } else { Write-Output "NOT_FOUND" }`
-	productCode, err := runPowerShell(psCmd)
-	productCode = strings.TrimSpace(productCode)
-
-	if err != nil || productCode == "" || productCode == "NOT_FOUND" {
-		// Fallback: try 64-bit registry path
-		psCmd = `$pc = (Get-ChildItem "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object { $_.GetValue("DisplayName") -like "*Fibratus*" }).PSChildName; if ($pc) { Write-Output $pc } else { Write-Output "NOT_FOUND" }`
-		productCode, err = runPowerShell(psCmd)
-		productCode = strings.TrimSpace(productCode)
-	}
-
-	if err != nil || productCode == "" || productCode == "NOT_FOUND" {
-		// Last resort: manual service removal
-		runCmd("sc", "stop", "fibratus")
-		time.Sleep(2 * time.Second)
-		runCmd("sc", "delete", "fibratus")
-		exe, _ := os.Executable()
-		dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
-		os.RemoveAll(dataDir)
-
-		result, _ := json.Marshal(map[string]interface{}{
-			"uninstalled": true,
-			"method":      "manual",
-			"message":     "MSI product code not found. Service removed manually.",
-		})
-		return result, nil
-	}
-
-	// Run MSI uninstall silently
-	out, err := runCmd("msiexec", "/x", productCode, "/quiet", "/norestart")
-	if err != nil {
-		return nil, fmt.Errorf("msi uninstall failed: %s: %v", out, err)
-	}
-
-	// Clean up enrollment data directory (MSI doesn't remove this)
 	exe, _ := os.Executable()
-	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
-	os.RemoveAll(dataDir)
+	installDir := filepath.Dir(filepath.Dir(exe)) // C:\Program Files\Fibratus
+	dataDir := filepath.Join(installDir, "data")
+	method := "manual"
+
+	// 1. Force-kill the fibratus process (ourselves) in a detached process
+	//    so the uninstall can proceed. Use a PowerShell script that:
+	//    - Kills fibratus
+	//    - Deletes the service
+	//    - Runs MSI uninstall if available
+	//    - Cleans up remaining files
+	cleanupScript := fmt.Sprintf(`
+Start-Sleep 2
+Stop-Process -Name fibratus -Force -ErrorAction SilentlyContinue
+Start-Sleep 1
+sc.exe delete fibratus 2>$null
+$pc = (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -EA 0 | Where-Object { $_.GetValue("DisplayName") -like "*Fibratus*" }).PSChildName
+if ($pc) { msiexec /x $pc /quiet /norestart 2>$null; Start-Sleep 3 }
+Remove-Item -Recurse -Force "%s" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "%s" -ErrorAction SilentlyContinue
+# Remove PATH entry
+$path = [Environment]::GetEnvironmentVariable("PATH", "Machine")
+$newPath = ($path -split ";" | Where-Object { $_ -notlike "*Fibratus*" }) -join ";"
+[Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
+`, strings.ReplaceAll(installDir, `\`, `\\`), strings.ReplaceAll(dataDir, `\`, `\\`))
+
+	// Write cleanup script to temp
+	scriptPath := filepath.Join(os.TempDir(), "fibratus-uninstall.ps1")
+	os.WriteFile(scriptPath, []byte(cleanupScript), 0o644)
+
+	// Launch cleanup script detached — it will kill us and clean up
+	c := exec.Command("powershell", "-NoProfile", "-NonInteractive",
+		"-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+		"-File", scriptPath)
+	c.Start() // fire and forget — don't wait
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"uninstalled":  true,
-		"method":       "msi",
-		"product_code": productCode,
-		"message":      "Fibratus uninstalled via MSI. Full cleanup complete.",
+		"uninstalled": true,
+		"method":      method,
+		"message":     "Uninstall initiated. Cleanup script will force-kill, remove service, run MSI uninstall, and delete files.",
 	})
 	return result, nil
 }

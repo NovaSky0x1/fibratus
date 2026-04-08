@@ -166,10 +166,14 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
     setUninstallResult(null)
     try {
       await cmdMutation.mutateAsync({ type: 'uninstall' })
-      setUninstallResult({ success: true, message: 'Uninstall command sent. Agent will be removed from the endpoint.' })
+      // Also delete the agent from the server DB and decommission the ID
+      await api.deleteAgent(agentId)
+      setUninstallResult({ success: true, message: 'Agent uninstalled and removed. Redirecting...' })
       setUninstallConfirm(false)
+      // Redirect to agents list after 2 seconds
+      setTimeout(() => { window.location.href = '/agents' }, 2000)
     } catch (e) {
-      setUninstallResult({ success: false, message: e instanceof Error ? e.message : 'Failed to send uninstall command' })
+      setUninstallResult({ success: false, message: e instanceof Error ? e.message : 'Failed to uninstall agent' })
     }
   }
 
