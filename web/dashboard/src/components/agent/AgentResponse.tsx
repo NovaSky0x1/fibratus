@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, Agent } from '../../lib/api'
 import {
-  ShieldAlert, Skull, HardDrive, ScanSearch, Info, Trash2,
-  Loader2, CheckCircle2, XCircle, Shield, ShieldOff
+  ShieldAlert, Skull, HardDrive, ScanSearch,
+  Loader2, CheckCircle2, XCircle
 } from 'lucide-react'
 
 interface ActionResult {
@@ -16,26 +16,16 @@ function ActionCard({
   title,
   description,
   children,
-  danger = false,
 }: {
   icon: React.ReactNode
   title: string
   description: string
   children: React.ReactNode
-  danger?: boolean
 }) {
   return (
-    <div className={`rounded-xl border p-5 ${
-      danger
-        ? 'border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20'
-        : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800'
-    } shadow-sm dark:shadow-slate-900/50`}>
+    <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50 p-5">
       <div className="flex items-start gap-3 mb-4">
-        <div className={`p-2 rounded-lg ${
-          danger
-            ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'
-            : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400'
-        }`}>
+        <div className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
@@ -66,19 +56,12 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
   const queryClient = useQueryClient()
 
   // Per-action state
-  const [tamperResult, setTamperResult] = useState<ActionResult | null>(null)
-  const [tamperToggling, setTamperToggling] = useState(false)
-  const [isolationResult, setIsolationResult] = useState<ActionResult | null>(null)
-  const [whitelistIps, setWhitelistIps] = useState('')
   const [killPid, setKillPid] = useState('')
   const [killResult, setKillResult] = useState<ActionResult | null>(null)
   const [captureActive, setCaptureActive] = useState(false)
   const [captureResult, setCaptureResult] = useState<ActionResult | null>(null)
   const [yaraPid, setYaraPid] = useState('')
   const [yaraResult, setYaraResult] = useState<ActionResult | null>(null)
-  const [collectResult, setCollectResult] = useState<ActionResult | null>(null)
-  const [uninstallConfirm, setUninstallConfirm] = useState(false)
-  const [uninstallResult, setUninstallResult] = useState<ActionResult | null>(null)
 
   const cmdMutation = useMutation({
     mutationFn: async ({ type, payload }: { type: string; payload?: Record<string, unknown> }) => {
@@ -90,43 +73,6 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
       queryClient.invalidateQueries({ queryKey: ['agent-commands', agentId] })
     },
   })
-
-  const handleTamperToggle = async () => {
-    setTamperResult(null)
-    setTamperToggling(true)
-    const newState = !agent.tamper_protection
-    try {
-      await api.setTamperProtection(agentId, newState)
-      await cmdMutation.mutateAsync({ type: 'set_tamper_protection', payload: { enabled: newState } })
-      setTamperResult({ success: true, message: newState ? 'Tamper protection enabled.' : 'Tamper protection disabled.' })
-      queryClient.invalidateQueries({ queryKey: ['agent', agentId] })
-    } catch (e) {
-      setTamperResult({ success: false, message: e instanceof Error ? e.message : 'Failed to toggle tamper protection' })
-    } finally {
-      setTamperToggling(false)
-    }
-  }
-
-  const handleIsolate = async () => {
-    setIsolationResult(null)
-    const ips = whitelistIps.split(',').map(s => s.trim()).filter(Boolean)
-    try {
-      await cmdMutation.mutateAsync({ type: 'isolate', payload: ips.length > 0 ? { whitelist_ips: ips } : undefined })
-      setIsolationResult({ success: true, message: 'Network isolation command sent. Agent will be isolated shortly.' })
-    } catch (e) {
-      setIsolationResult({ success: false, message: e instanceof Error ? e.message : 'Failed to send isolation command' })
-    }
-  }
-
-  const handleUnisolate = async () => {
-    setIsolationResult(null)
-    try {
-      await cmdMutation.mutateAsync({ type: 'unisolate' })
-      setIsolationResult({ success: true, message: 'Unisolation command sent. Network access will be restored shortly.' })
-    } catch (e) {
-      setIsolationResult({ success: false, message: e instanceof Error ? e.message : 'Failed to send unisolation command' })
-    }
-  }
 
   const handleKillProcess = async () => {
     const pid = parseInt(killPid, 10)
@@ -172,31 +118,6 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
     }
   }
 
-  const handleCollectInfo = async () => {
-    setCollectResult(null)
-    try {
-      await cmdMutation.mutateAsync({ type: 'collect_info' })
-      setCollectResult({ success: true, message: 'System info collection initiated. Check command history for results.' })
-    } catch (e) {
-      setCollectResult({ success: false, message: e instanceof Error ? e.message : 'Failed to collect system info' })
-    }
-  }
-
-  const handleUninstall = async () => {
-    setUninstallResult(null)
-    try {
-      await cmdMutation.mutateAsync({ type: 'uninstall' })
-      // Also delete the agent from the server DB and decommission the ID
-      await api.deleteAgent(agentId)
-      setUninstallResult({ success: true, message: 'Agent uninstalled and removed. Redirecting...' })
-      setUninstallConfirm(false)
-      // Redirect to agents list after 2 seconds
-      setTimeout(() => { window.location.href = '/agents' }, 2000)
-    } catch (e) {
-      setUninstallResult({ success: false, message: e instanceof Error ? e.message : 'Failed to uninstall agent' })
-    }
-  }
-
   const isPending = cmdMutation.isPending
 
   return (
@@ -204,93 +125,12 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
       {/* Header */}
       <div className="flex items-center gap-2">
         <ShieldAlert className="w-4 h-4 text-gray-500 dark:text-slate-400" />
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Active Response</h3>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Incident Response</h3>
         <span className="text-xs text-gray-400 dark:text-slate-500 ml-auto font-mono">{agent.hostname}</span>
       </div>
 
       {/* Action grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Tamper Protection */}
-        <ActionCard
-          icon={<Shield className="w-4 h-4" />}
-          title="Tamper Protection"
-          description="Prevent unauthorized modification or termination of the agent"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
-                (agent.tamper_protection
-                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
-              }>
-                {agent.tamper_protection ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-            <button
-              role="switch"
-              aria-checked={agent.tamper_protection}
-              onClick={handleTamperToggle}
-              disabled={tamperToggling || isPending}
-              className={'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-fibratus-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed ' +
-                (agent.tamper_protection ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600')
-              }
-            >
-              <span
-                className={'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
-                  (agent.tamper_protection ? 'translate-x-5' : 'translate-x-0')
-                }
-              />
-            </button>
-          </div>
-          <ResultBanner result={tamperResult} />
-        </ActionCard>
-
-        {/* Network Isolation */}
-        <ActionCard
-          icon={<ShieldAlert className="w-4 h-4" />}
-          title="Network Isolation"
-          description="Isolate or restore the endpoint's network connectivity via WFP"
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
-              (agent.isolated
-                ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
-            }>
-              {agent.isolated ? 'Isolated' : 'Connected'}
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleIsolate}
-              disabled={isPending || agent.isolated}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 transition-colors"
-            >
-              {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />}
-              Isolate
-            </button>
-            <button
-              onClick={handleUnisolate}
-              disabled={isPending || !agent.isolated}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 disabled:opacity-50 transition-colors"
-            >
-              {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldOff className="w-3.5 h-3.5" />}
-              Unisolate
-            </button>
-          </div>
-          <div className="mt-3">
-            <label className="block text-xs text-gray-500 dark:text-slate-400 mb-1">Additional whitelist IPs (comma-separated)</label>
-            <input
-              type="text"
-              value={whitelistIps}
-              onChange={e => setWhitelistIps(e.target.value)}
-              placeholder="10.0.0.5, 192.168.1.100"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-xs font-mono text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
-            />
-          </div>
-          <ResultBanner result={isolationResult} />
-        </ActionCard>
-
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Kill Process */}
         <ActionCard
           icon={<Skull className="w-4 h-4" />}
@@ -373,69 +213,6 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
             </button>
           </div>
           <ResultBanner result={yaraResult} />
-        </ActionCard>
-
-        {/* Collect System Info */}
-        <ActionCard
-          icon={<Info className="w-4 h-4" />}
-          title="Collect System Info"
-          description="Gather OS details, running processes, network config, and installed software"
-        >
-          <button
-            onClick={handleCollectInfo}
-            disabled={isPending}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 disabled:opacity-50 transition-colors"
-          >
-            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Info className="w-3.5 h-3.5" />}
-            Collect Info
-          </button>
-          <ResultBanner result={collectResult} />
-        </ActionCard>
-
-        {/* Uninstall Agent */}
-        <ActionCard
-          icon={<Trash2 className="w-4 h-4" />}
-          title="Uninstall Agent"
-          description="Permanently remove the Fibratus agent from this endpoint"
-          danger
-        >
-          {agent.tamper_protection ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400">
-              <Shield className="w-3.5 h-3.5 shrink-0" />
-              <p className="text-xs font-medium">Tamper protection must be disabled before uninstalling.</p>
-            </div>
-          ) : !uninstallConfirm ? (
-            <button
-              onClick={() => setUninstallConfirm(true)}
-              disabled={isPending}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Uninstall Agent
-            </button>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                Are you sure? This will permanently remove the agent from {agent.hostname}. This action cannot be undone.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleUninstall}
-                  disabled={isPending}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                >
-                  {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Confirm Uninstall'}
-                </button>
-                <button
-                  onClick={() => setUninstallConfirm(false)}
-                  className="flex-1 px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-          <ResultBanner result={uninstallResult} />
         </ActionCard>
       </div>
     </div>

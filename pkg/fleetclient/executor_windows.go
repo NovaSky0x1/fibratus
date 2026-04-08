@@ -89,6 +89,8 @@ func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
 		return e.yaraScan(cmd)
 	case fleet.CmdSetTamperProtection:
 		return e.setTamperProtection(cmd)
+	case fleet.CmdLogoffUser:
+		return e.logoffUser(cmd)
 	default:
 		return nil, fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
@@ -354,18 +356,26 @@ func (e *WindowsExecutor) collectInfo(cmd *fleet.Command) (json.RawMessage, erro
 	// Get logged in users
 	users, _ := runCmd("query", "user")
 
+	// Get registered antivirus products
+	avProducts, _ := runPowerShellLong(`Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -EA 0 | Select displayName, @{N='enabled';E={$_.productState -band 0x1000}}, @{N='up_to_date';E={$_.productState -band 0x10}} | ConvertTo-Json -Compress`, 10)
+
+	// Detect installed RMM tools by checking for known service/process names
+	rmmCheck, _ := runPowerShellLong(`$rmms = @('AteraAgent','ConnectWiseControl','ScreenConnect','TeamViewer','AnyDesk','LogMeIn','Splashtop','Datto','NinjaRMM','NinjaOne','Syncro','Kaseya','Atera','Action1','N-able','SolarWinds','Pulseway','ManageEngine','Bomgar','BeyondTrust','Huntress','Level','Mesh Agent','RustDesk','SimpleHelp','FixMe.IT','ISL Online','Zoho Assist','GoToAssist','RemotePC','TacticalRMM','pdq','Addigy','Automox','JumpCloud','Fleet','Kandji','Mosyle','Jamf','Fleetsmith','Workspace ONE'); $found = @(); foreach ($name in $rmms) { $svc = Get-Service -Name "*$name*" -EA 0; $proc = Get-Process -Name "*$name*" -EA 0; if ($svc -or $proc) { $found += @{name=$name; service=($svc|Select -First 1).DisplayName; running=($proc -ne $null)} } }; $found | ConvertTo-Json -Compress`, 15)
+
 	result, _ := json.Marshal(map[string]interface{}{
-		"hostname":     hostname,
-		"os":           runtime.GOOS,
-		"arch":         runtime.GOARCH,
-		"cpus":         runtime.NumCPU(),
-		"system_info":  truncate(systemInfo, 5000),
-		"processes":    truncate(processes, 10000),
-		"network":      truncate(netstat, 5000),
-		"services":     truncate(services, 10000),
-		"software":     truncate(software, 5000),
-		"ip_config":    truncate(ipconfig, 3000),
-		"logged_users": truncate(users, 1000),
+		"hostname":          hostname,
+		"os":                runtime.GOOS,
+		"arch":              runtime.GOARCH,
+		"cpus":              runtime.NumCPU(),
+		"system_info":       systemInfo,
+		"processes":         processes,
+		"network":           netstat,
+		"services":          services,
+		"software":          software,
+		"ip_config":         ipconfig,
+		"logged_users":      users,
+		"security_software": avProducts,
+		"installed_rmms":    rmmCheck,
 	})
 	return result, nil
 }
@@ -684,6 +694,82 @@ func errStr(err error) string {
 		return err.Error()
 	}
 	return ""
+}
+
+// setTamperProtection enables or disables tamper protection.
+func (e *WindowsExecutor) setTamperProtection(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		Enabled bool `json:"enabled"`
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	if e.protector == nil {
+		return nil, fmt.Errorf("tamper protector not initialized")
+	}
+
+	var err error
+	if payload.Enabled {
+		err = e.protector.EnableProtection()
+	} else {
+		err = e.protector.DisableProtection()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tamper protection: %v", err)
+	}
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"tamper_protection": payload.Enabled,
+	})
+	return result, nil
+}
+
+// logoffUser terminates a user session by session ID.
+func (e *WindowsExecutor) logoffUser(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		SessionID string `json:"session_id"`
+		Username  string `json:"username"`
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	if payload.SessionID == "" && payload.Username == "" {
+		return nil, fmt.Errorf("session_id or username required")
+	}
+
+	var out string
+	var err error
+	if payload.SessionID != "" {
+		out, err = runCmd("logoff", payload.SessionID)
+	} else {
+		// Find session ID by username
+		sessions, _ := runCmd("query", "user")
+		for _, line := range strings.Split(sessions, "\n") {
+			if strings.Contains(strings.ToLower(line), strings.ToLower(payload.Username)) {
+				fields := strings.Fields(line)
+				for _, f := range fields {
+					if _, e := fmt.Sscanf(f, "%d", new(int)); e == nil {
+						out, err = runCmd("logoff", f)
+						break
+					}
+				}
+				break
+			}
+		}
+		if out == "" {
+			return nil, fmt.Errorf("session not found for user %s", payload.Username)
+		}
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("logoff failed: %s: %v", out, err)
+	}
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"logged_off": true,
+		"session_id": payload.SessionID,
+		"username":   payload.Username,
+		"message":    strings.TrimSpace(out),
+	})
+	return result, nil
 }
 
 func runCmd(name string, args ...string) (string, error) {

@@ -254,6 +254,7 @@ const (
 	CmdStopCapture         = "stop_capture"
 	CmdYaraScan            = "yara_scan"
 	CmdSetTamperProtection = "set_tamper_protection"
+	CmdLogoffUser          = "logoff_user"
 )
 
 // Command status values
