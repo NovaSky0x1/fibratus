@@ -60,6 +60,26 @@ function truncate(s: string, max: number): string {
 }
 
 // ═════════════════════════════════════════════════
+// Quick filter presets based on Fibratus QL
+// ═════════════════════════════════════════════════
+
+const quickFilters = [
+  { label: 'All Events', filter: '', desc: 'Capture everything (high volume)' },
+  { label: 'Process Activity', filter: 'spawn_process or terminate_process', desc: 'Process creation and termination' },
+  { label: 'Suspicious Spawns', filter: "spawn_process and (ps.parent.name imatches '(?i)winword|excel|powerpnt|outlook|acrobat' or ps.name imatches '(?i)cmd|powershell|pwsh|wscript|cscript|mshta|certutil|bitsadmin|rundll32')", desc: 'Child processes from Office, script engines, LOLBins' },
+  { label: 'PowerShell', filter: "spawn_process and ps.name imatches '(?i)powershell|pwsh'", desc: 'PowerShell execution' },
+  { label: 'Network Connections', filter: 'connect_process or accept_process', desc: 'Outbound and inbound TCP/UDP' },
+  { label: 'DNS Queries', filter: 'query_dns', desc: 'All DNS lookups' },
+  { label: 'File Mutations', filter: 'create_file or delete_file or rename_file', desc: 'File creates, deletes, renames' },
+  { label: 'Registry Changes', filter: 'set_reg_value or create_reg_key or delete_reg_key', desc: 'Registry writes and key operations' },
+  { label: 'DLL Loads', filter: 'load_image', desc: 'Module/DLL loading events' },
+  { label: 'Credential Access', filter: "spawn_process and ps.cmdline imatches '(?i)lsass|sam|ntds|credential|mimikatz|sekurlsa|logonpasswords'", desc: 'LSASS access and credential tools' },
+  { label: 'Defense Evasion', filter: "spawn_process and ps.name imatches '(?i)reg|attrib|icacls|takeown|sc|bcdedit|wevtutil'", desc: 'Common defense evasion binaries' },
+  { label: 'Lateral Movement', filter: "spawn_process and ps.name imatches '(?i)psexec|wmic|winrm|mstsc|net'", desc: 'Remote execution and admin tools' },
+  { label: 'Persistence', filter: "set_reg_value and kevt.arg[key_name] imatches '(?i)run|runonce|startup|services|shell'", desc: 'Registry persistence mechanisms' },
+]
+
+// ═════════════════════════════════════════════════
 // Main component
 // ═════════════════════════════════════════════════
 
@@ -67,7 +87,8 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
   const queryClient = useQueryClient()
   const [view, setView] = useState<'control' | 'live' | 'history' | 'browse'>('control')
   const [filterInput, setFilterInput] = useState('')
-  const [durationMin, setDurationMin] = useState(5)
+  const [durationMin, setDurationMin] = useState(0) // 0 = unlimited
+  const [showQuickFilters, setShowQuickFilters] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null)
@@ -165,7 +186,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     mutationFn: async () => {
       const res = await api.createCapture(agentId, {
         filter: filterInput || undefined,
-        duration_sec: durationMin * 60,
+        duration_sec: durationMin > 0 ? durationMin * 60 : 0,
       })
       if (res.error) throw new Error(res.error.message)
       return res.data
@@ -308,10 +329,18 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
           <div className="p-6 space-y-5">
             {/* Filter */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1.5">
-                <Filter className="w-3 h-3 inline mr-1" />
-                Filter Expression
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-gray-700 dark:text-slate-300">
+                  <Filter className="w-3 h-3 inline mr-1" />
+                  Filter Expression
+                </label>
+                <button
+                  onClick={() => setShowQuickFilters(!showQuickFilters)}
+                  className="text-[10px] text-fibratus-500 hover:text-fibratus-400 font-medium"
+                >
+                  {showQuickFilters ? 'Hide presets' : 'Quick filters'}
+                </button>
+              </div>
               <input
                 type="text" value={filterInput} onChange={e => setFilterInput(e.target.value)}
                 placeholder="e.g., spawn_process and ps.name imatches '(?i)cmd|powershell'"
@@ -320,6 +349,32 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
               <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Fibratus QL syntax. Empty = capture all events (high volume).</p>
             </div>
 
+            {/* Quick filter presets */}
+            {showQuickFilters && (
+              <div className="rounded-lg border border-slate-700 bg-slate-900/50 overflow-hidden">
+                <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-slate-500 font-medium border-b border-slate-700/50">
+                  Quick Filter Presets
+                </div>
+                <div className="max-h-64 overflow-y-auto divide-y divide-slate-800/50">
+                  {quickFilters.map((qf, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setFilterInput(qf.filter); setShowQuickFilters(false) }}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800/50 transition-colors group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-slate-200 group-hover:text-fibratus-400">{qf.label}</span>
+                        <span className="text-[10px] text-slate-600">{qf.desc}</span>
+                      </div>
+                      {qf.filter && (
+                        <div className="mt-0.5 text-[10px] font-mono text-slate-500 truncate">{qf.filter}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Duration */}
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1.5">
@@ -327,6 +382,15 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                 Duration
               </label>
               <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={() => setDurationMin(0)}
+                  className={'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ' +
+                    (durationMin === 0
+                      ? 'border-fibratus-500 bg-fibratus-50 dark:bg-fibratus-900/30 text-fibratus-700 dark:text-fibratus-400'
+                      : 'border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700')
+                  }
+                >
+                  Manual
+                </button>
                 {[1, 5, 15, 30, 60].map(m => (
                   <button key={m} onClick={() => setDurationMin(m)}
                     className={'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ' +
@@ -339,6 +403,9 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                   </button>
                 ))}
               </div>
+              <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">
+                {durationMin === 0 ? 'Capture runs until you manually stop it.' : `Auto-stops after ${durationMin} minute${durationMin > 1 ? 's' : ''}.`}
+              </p>
             </div>
 
             {/* Start */}
