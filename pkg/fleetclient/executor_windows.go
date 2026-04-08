@@ -696,33 +696,6 @@ func errStr(err error) string {
 	return ""
 }
 
-// setTamperProtection enables or disables tamper protection.
-func (e *WindowsExecutor) setTamperProtection(cmd *fleet.Command) (json.RawMessage, error) {
-	var payload struct {
-		Enabled bool `json:"enabled"`
-	}
-	json.Unmarshal(cmd.Payload, &payload)
-
-	if e.protector == nil {
-		return nil, fmt.Errorf("tamper protector not initialized")
-	}
-
-	var err error
-	if payload.Enabled {
-		err = e.protector.EnableProtection()
-	} else {
-		err = e.protector.DisableProtection()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("tamper protection: %v", err)
-	}
-
-	result, _ := json.Marshal(map[string]interface{}{
-		"tamper_protection": payload.Enabled,
-	})
-	return result, nil
-}
-
 // logoffUser terminates a user session by session ID.
 func (e *WindowsExecutor) logoffUser(cmd *fleet.Command) (json.RawMessage, error) {
 	var payload struct {
