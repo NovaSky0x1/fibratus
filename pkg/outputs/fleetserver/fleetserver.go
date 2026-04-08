@@ -274,6 +274,39 @@ var securityFileExtensions = map[string]bool{
 	".desktop": true, ".service": true, ".timer": true,
 	".automount": true, ".plist": true, ".job": true,
 	".task": true, ".ics": true,
+
+	// C/C++ source and build artifacts
+	".c": true, ".cpp": true, ".cc": true, ".cxx": true,
+	".h": true, ".hpp": true, ".hxx": true,
+	".o": true, ".obj": true, ".lib": true, ".a": true,
+	".so": true, ".dylib": true,
+	".makefile": true, ".cmake": true, ".sln": true, ".vcxproj": true,
+
+	// C2 frameworks / red team
+	".cna": true, ".profile": true, ".beacon": true,
+	".malleable": true, ".cobaltstrike": true,
+
+	// AutoIt / AutoHotkey (common in malware)
+	".au3": true, ".ahk": true, ".a3x": true,
+
+	// WMI persistence
+	".mof": true,
+
+	// Compiled HTML Help (malware vector)
+	".chm": true,
+
+	// PowerShell constrained language bypass
+	".psrc": true, ".pssc": true,
+
+	// OneNote
+	".onepkg": true,
+
+	// Electron / Node
+	".asar": true,
+
+	// Windows settings / ClickOnce execution vectors
+	".settingcontent-ms": true, ".diagcab": true,
+	".appref-ms": true, ".idt": true,
 }
 
 func hasSecurityExtension(name string) bool {
