@@ -350,8 +350,8 @@ func (e *WindowsExecutor) collectInfo(cmd *fleet.Command) (json.RawMessage, erro
 	// Get installed software
 	software, _ := runCmd("wmic", "product", "get", "Name,Version", "/format:csv")
 
-	// Get IP configuration
-	ipconfig, _ := runCmd("ipconfig", "/all")
+	// Get network adapters as structured JSON
+	ipconfig, _ := runPowerShellLong(`@(Get-NetAdapter -EA 0|%{$ip=Get-NetIPAddress -InterfaceIndex $_.ifIndex -EA 0;$dns=Get-DnsClientServerAddress -InterfaceIndex $_.ifIndex -EA 0;@{name=$_.Name;description=$_.InterfaceDescription;status=$_.Status;mac=$_.MacAddress;speed_mbps=[math]::Round($_.LinkSpeed.Replace(' Gbps','000').Replace(' Mbps','').Replace(' Kbps',''),0);ipv4=@($ip|?{$_.AddressFamily -eq 'IPv4'}|%{$_.IPAddress});ipv6=@($ip|?{$_.AddressFamily -eq 'IPv6'}|%{$_.IPAddress});dns=@($dns|%{$_.ServerAddresses}|Select -Unique);dhcp=$_.Dhcp}})|ConvertTo-Json -Depth 3 -Compress`, 15)
 
 	// Get logged in users
 	users, _ := runCmd("query", "user")
@@ -360,7 +360,7 @@ func (e *WindowsExecutor) collectInfo(cmd *fleet.Command) (json.RawMessage, erro
 	avProducts, _ := runPowerShellLong(`Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -EA 0 | Select displayName, @{N='enabled';E={$_.productState -band 0x1000}}, @{N='up_to_date';E={$_.productState -band 0x10}} | ConvertTo-Json -Compress`, 10)
 
 	// Detect installed RMM tools by checking for known service/process names
-	rmmCheck, _ := runPowerShellLong(`$rmms = @('AteraAgent','ConnectWiseControl','ScreenConnect','TeamViewer','AnyDesk','LogMeIn','Splashtop','Datto','NinjaRMM','NinjaOne','Syncro','Kaseya','Atera','Action1','N-able','SolarWinds','Pulseway','ManageEngine','Bomgar','BeyondTrust','Huntress','Level','Mesh Agent','RustDesk','SimpleHelp','FixMe.IT','ISL Online','Zoho Assist','GoToAssist','RemotePC','TacticalRMM','pdq','Addigy','Automox','JumpCloud','Fleet','Kandji','Mosyle','Jamf','Fleetsmith','Workspace ONE'); $found = @(); foreach ($name in $rmms) { $svc = Get-Service -Name "*$name*" -EA 0; $proc = Get-Process -Name "*$name*" -EA 0; if ($svc -or $proc) { $found += @{name=$name; service=($svc|Select -First 1).DisplayName; running=($proc -ne $null)} } }; $found | ConvertTo-Json -Compress`, 15)
+	rmmCheck, _ := runPowerShellLong(`$rmms=@('AteraAgent','ConnectWiseControl','ScreenConnect','TeamViewer','AnyDesk','LogMeIn','Splashtop','Datto','NinjaRMM','NinjaOne','Syncro','Kaseya','Action1','N-able','SolarWinds','Pulseway','ManageEngine','Bomgar','BeyondTrust','Huntress','Level','MeshAgent','RustDesk','SimpleHelp','GoToAssist','RemotePC','TacticalRMM','pdq','Automox','JumpCloud');$found=@();foreach($n in $rmms){$svc=Get-Service -Name "*$n*" -EA 0|Select -First 1;$proc=Get-Process -Name "*$n*" -EA 0|Select -First 1;if($svc -or $proc){$found+=@{name=$n;service=if($svc){$svc.DisplayName}else{''};status=if($svc){$svc.Status.ToString()}else{'Running'};running=[bool]$proc}}}; @($found)|ConvertTo-Json -Depth 2 -Compress`, 15)
 
 	result, _ := json.Marshal(map[string]interface{}{
 		"hostname":          hostname,

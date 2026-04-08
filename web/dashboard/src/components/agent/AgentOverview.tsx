@@ -408,12 +408,44 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
                 <p className="text-sm font-mono text-gray-900 dark:text-slate-100">{sysInfo.os}</p>
               </div>
             </div>
-            {sysInfo.ip_config && (
-              <div>
-                <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">IP Configuration</span>
-                <pre className="mt-1 text-[11px] font-mono text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-900 rounded-lg p-3 max-h-64 overflow-auto whitespace-pre-wrap">{sysInfo.ip_config}</pre>
-              </div>
-            )}
+            {sysInfo.ip_config && (() => {
+              let adapters: Array<{name: string; description: string; status: string; mac: string; speed_mbps: number; ipv4: string[]; ipv6: string[]; dns: string[]; dhcp: string}> = []
+              try { const p = JSON.parse(sysInfo.ip_config); adapters = Array.isArray(p) ? p : p ? [p] : [] } catch { /* raw text fallback below */ }
+              return adapters.length > 0 ? (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Network Adapters</span>
+                  <div className="mt-2 space-y-3">
+                    {adapters.map((a, i) => (
+                      <div key={i} className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{a.name}</span>
+                            <span className="ml-2 text-xs text-gray-500 dark:text-slate-400">{a.description}</span>
+                          </div>
+                          <span className={'inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ' +
+                            (a.status === 'Up' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                              : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+                          }>{a.status}</span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs">
+                          {a.mac && <div><span className="text-gray-400 dark:text-slate-500">MAC</span> <span className="font-mono text-gray-700 dark:text-slate-300">{a.mac}</span></div>}
+                          {a.ipv4?.length > 0 && <div><span className="text-gray-400 dark:text-slate-500">IPv4</span> <span className="font-mono text-gray-700 dark:text-slate-300">{a.ipv4.join(', ')}</span></div>}
+                          {a.ipv6?.length > 0 && <div className="col-span-2"><span className="text-gray-400 dark:text-slate-500">IPv6</span> <span className="font-mono text-gray-700 dark:text-slate-300 break-all">{a.ipv6.join(', ')}</span></div>}
+                          {a.dns?.length > 0 && <div><span className="text-gray-400 dark:text-slate-500">DNS</span> <span className="font-mono text-gray-700 dark:text-slate-300">{a.dns.join(', ')}</span></div>}
+                          {a.dhcp && <div><span className="text-gray-400 dark:text-slate-500">DHCP</span> <span className="font-mono text-gray-700 dark:text-slate-300">{a.dhcp}</span></div>}
+                          {a.speed_mbps > 0 && <div><span className="text-gray-400 dark:text-slate-500">Speed</span> <span className="font-mono text-gray-700 dark:text-slate-300">{a.speed_mbps >= 1000 ? (a.speed_mbps/1000)+'Gbps' : a.speed_mbps+'Mbps'}</span></div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">IP Configuration</span>
+                  <pre className="mt-1 text-[11px] font-mono text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-900 rounded-lg p-3 max-h-64 overflow-auto whitespace-pre-wrap">{sysInfo.ip_config}</pre>
+                </div>
+              )
+            })()}
             {sysInfo.logged_users && (
               <div>
                 <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Logged In Users</span>
@@ -443,18 +475,66 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
                 </div>
               </div>
             )}
-            {sysInfo.security_software && (
-              <div>
-                <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Security Software</span>
-                <pre className="mt-1 text-[11px] font-mono text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-900 rounded-lg p-3 max-h-48 overflow-auto whitespace-pre-wrap">{sysInfo.security_software}</pre>
-              </div>
-            )}
-            {sysInfo.installed_rmms && (
-              <div>
-                <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Installed RMMs</span>
-                <pre className="mt-1 text-[11px] font-mono text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-900 rounded-lg p-3 max-h-48 overflow-auto whitespace-pre-wrap">{sysInfo.installed_rmms}</pre>
-              </div>
-            )}
+            {sysInfo.security_software && sysInfo.security_software !== '[]' && sysInfo.security_software !== 'null' && (() => {
+              let avs: Array<{displayName: string; enabled: number; up_to_date: number}> = []
+              try { const p = JSON.parse(sysInfo.security_software); avs = Array.isArray(p) ? p : p ? [p] : [] } catch {}
+              return avs.length > 0 ? (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Security Software</span>
+                  <div className="mt-2 space-y-2">
+                    {avs.map((av, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-slate-900 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <Shield className="w-4 h-4 text-emerald-500" />
+                          <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{av.displayName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={'inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ' +
+                            (av.enabled ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400')
+                          }>{av.enabled ? 'Enabled' : 'Disabled'}</span>
+                          <span className={'inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ' +
+                            (av.up_to_date ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400')
+                          }>{av.up_to_date ? 'Up to date' : 'Out of date'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null
+            })()}
+            {sysInfo.installed_rmms && sysInfo.installed_rmms !== '[]' && sysInfo.installed_rmms !== 'null' && (() => {
+              let rmms: Array<{name: string; service: string; status: string; running: boolean}> = []
+              try { const p = JSON.parse(sysInfo.installed_rmms); rmms = Array.isArray(p) ? p : p ? [p] : [] } catch {}
+              return rmms.length > 0 ? (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Installed RMM Tools</span>
+                  <div className="mt-2 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 dark:bg-slate-900">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Name</th>
+                          <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Service</th>
+                          <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                        {rmms.map((rmm, i) => (
+                          <tr key={i}>
+                            <td className="px-4 py-2 font-medium text-gray-900 dark:text-slate-100">{rmm.name}</td>
+                            <td className="px-4 py-2 text-gray-600 dark:text-slate-400 font-mono text-xs">{rmm.service || '-'}</td>
+                            <td className="px-4 py-2">
+                              <span className={'inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ' +
+                                (rmm.running ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+                              }>{rmm.running ? 'Running' : rmm.status || 'Installed'}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null
+            })()}
           </div>
         )}
         {!sysInfo && !sysInfoLoading && (
