@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api, Agent, Detection, Command } from '../../lib/api'
 import { RefreshCw, Shield, Wifi, WifiOff, Info } from 'lucide-react'
 import SeverityBadge from '../SeverityBadge'
@@ -15,7 +15,6 @@ function timeAgo(date: Date): string {
 }
 
 export default function AgentOverview({ agent }: { agent: Agent }) {
-  const queryClient = useQueryClient()
 
   const { data: detRes, isLoading: detLoading, refetch: refetchDet } = useQuery({
     queryKey: ['agent-detections-recent', agent.id],
