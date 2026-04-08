@@ -210,7 +210,7 @@ var securityFileExtensions = map[string]bool{
 	".jnlp": true, ".jsp": true,
 
 	// .NET
-	".cs": true, ".csx": true, ".cshtml": true, ".dll": true,
+	".cs": true, ".csx": true, ".cshtml": true,
 	".nupkg": true, ".csproj": true,
 
 	// Web / markup that can execute
