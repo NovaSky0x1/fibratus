@@ -212,6 +212,11 @@ func securityRelevant(batch *event.Batch) *event.Batch {
 		}
 		// CreateFile/WriteFile: only for security-relevant file extensions
 		if evt.Name == "CreateFile" || evt.Name == "WriteFile" {
+			// Only forward file mutations (create/overwrite/supersede), not opens
+			disp := evt.GetParamAsString("create_disposition")
+			if disp == "OPEN" || disp == "" {
+				continue // skip file opens — too noisy (23K+/min)
+			}
 			fp := evt.GetParamAsString("file_path")
 			if fp == "" {
 				fp = evt.GetParamAsString("file_name")
