@@ -21,7 +21,7 @@ import AgentCommandHistory from '../components/agent/AgentCommandHistory'
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const [activeSection, setActiveSection] = useState('overview')
+  const [activeSection, setActiveSection] = useState('response')
 
   const { data: agentResp, isLoading, error } = useQuery({
     queryKey: ['agent', id],

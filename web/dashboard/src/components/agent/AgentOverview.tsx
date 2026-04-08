@@ -120,6 +120,30 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
               {agent.last_heartbeat ? timeAgo(new Date(agent.last_heartbeat)) : 'Never'}
             </p>
           </div>
+          <div className="rounded-lg bg-gray-50 dark:bg-slate-900 px-4 py-3">
+            <span className="text-xs text-gray-500 dark:text-slate-400">Tamper Protection</span>
+            <p className="mt-0.5">
+              <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+                (agent.tamper_protection
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+              }>
+                {agent.tamper_protection ? 'Active' : 'Inactive'}
+              </span>
+            </p>
+          </div>
+          <div className="rounded-lg bg-gray-50 dark:bg-slate-900 px-4 py-3">
+            <span className="text-xs text-gray-500 dark:text-slate-400">Network</span>
+            <p className="mt-0.5">
+              <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+                (agent.isolated
+                  ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400')
+              }>
+                {agent.isolated ? 'Isolated' : 'Connected'}
+              </span>
+            </p>
+          </div>
         </div>
       </div>
 

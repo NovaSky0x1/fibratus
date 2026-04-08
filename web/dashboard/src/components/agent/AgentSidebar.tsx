@@ -33,6 +33,14 @@ export interface SectionGroup {
 
 export const sectionGroups: SectionGroup[] = [
   {
+    label: 'RESPOND',
+    items: [
+      { id: 'response', label: 'Response', icon: Zap },
+      { id: 'terminal', label: 'Terminal', icon: Terminal },
+      { id: 'history', label: 'History', icon: Clock },
+    ],
+  },
+  {
     label: 'MONITOR',
     items: [
       { id: 'overview', label: 'Overview', icon: Activity },
@@ -57,14 +65,6 @@ export const sectionGroups: SectionGroup[] = [
     items: [
       { id: 'files', label: 'Files', icon: FolderOpen },
       { id: 'registry', label: 'Registry', icon: Database },
-    ],
-  },
-  {
-    label: 'RESPOND',
-    items: [
-      { id: 'terminal', label: 'Terminal', icon: Terminal },
-      { id: 'response', label: 'Response', icon: Zap },
-      { id: 'history', label: 'History', icon: Clock },
     ],
   },
 ]
