@@ -33,6 +33,12 @@ export interface SectionGroup {
 
 export const sectionGroups: SectionGroup[] = [
   {
+    label: '',
+    items: [
+      { id: 'overview', label: 'Overview', icon: Activity },
+    ],
+  },
+  {
     label: 'RESPOND',
     items: [
       { id: 'response', label: 'Response', icon: Zap },
@@ -43,7 +49,6 @@ export const sectionGroups: SectionGroup[] = [
   {
     label: 'MONITOR',
     items: [
-      { id: 'overview', label: 'Overview', icon: Activity },
       { id: 'events', label: 'Events', icon: Radio },
       { id: 'detections', label: 'Detections', icon: Shield },
     ],
