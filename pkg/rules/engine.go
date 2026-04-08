@@ -65,6 +65,11 @@ type Engine struct {
 	compiler *compiler
 
 	matchFunc RuleMatchFunc
+
+	// fleetMode when true, all events are enqueued to output regardless
+	// of rule match. Rules still evaluate for detection alerts, but
+	// the enqueue decision is always true for fleet telemetry.
+	fleetMode bool
 }
 
 type ruleMatch struct {
@@ -217,6 +222,12 @@ func (e *Engine) RegisterMatchFunc(fn RuleMatchFunc) {
 	e.matchFunc = fn
 }
 
+// SetFleetMode enables fleet telemetry mode: all events are enqueued
+// to the output regardless of rule match. Detections still fire normally.
+func (e *Engine) SetFleetMode(enabled bool) {
+	e.fleetMode = enabled
+}
+
 func (*Engine) CanEnqueue() bool { return true }
 
 // ProcessEvent processes the system event against compiled filters.
@@ -263,6 +274,11 @@ func (e *Engine) ProcessEvent(evt *event.Event) (bool, error) {
 		}
 	}
 
+	// In fleet mode, always enqueue events to output for telemetry
+	// even if no rule matched. Detections still fire via processActions above.
+	if e.fleetMode {
+		return true, nil
+	}
 	return matches, nil
 }
 

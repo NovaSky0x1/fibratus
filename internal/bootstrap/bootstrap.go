@@ -212,6 +212,9 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 		}
 
 		engine = rules.NewEngine(psnap, cfg)
+		if cfg.Fleet.Enabled {
+			engine.SetFleetMode(true)
+		}
 		var err error
 		rs, err = engine.Compile()
 		if err != nil {
