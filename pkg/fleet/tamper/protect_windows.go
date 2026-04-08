@@ -264,12 +264,8 @@ func setDirSecurity(dir, sddl string) error {
 	if err != nil {
 		return err
 	}
-	dirPtr, err := windows.UTF16PtrFromString(dir)
-	if err != nil {
-		return err
-	}
 	return windows.SetNamedSecurityInfo(
-		dirPtr,
+		dir,
 		windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, dacl, nil,
@@ -361,12 +357,8 @@ func setRegistrySecurity(path, sddl string) error {
 	if err != nil {
 		return err
 	}
-	pathPtr, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return err
-	}
 	return windows.SetNamedSecurityInfo(
-		pathPtr,
+		path,
 		windows.SE_REGISTRY_KEY,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, dacl, nil,
