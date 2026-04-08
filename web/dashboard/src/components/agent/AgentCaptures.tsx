@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, Command } from '../../lib/api'
-import { HardDrive, Play, Square, Download, RefreshCw, Clock, Filter, Loader2 } from 'lucide-react'
+import { HardDrive, Play, Square, Download, Clock, Filter, Loader2 } from 'lucide-react'
 
 interface CaptureState {
   active: boolean
