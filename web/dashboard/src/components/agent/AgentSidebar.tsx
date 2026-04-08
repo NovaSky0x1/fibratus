@@ -43,6 +43,7 @@ export const sectionGroups: SectionGroup[] = [
     items: [
       { id: 'response', label: 'Response', icon: Zap },
       { id: 'terminal', label: 'Terminal', icon: Terminal },
+      { id: 'captures', label: 'Captures', icon: HardDrive },
       { id: 'history', label: 'History', icon: Clock },
     ],
   },
