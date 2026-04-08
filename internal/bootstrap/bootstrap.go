@@ -592,7 +592,7 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	if err := client.Register(); err != nil {
 		if errors.Is(err, fleetclient.ErrDecommissioned) {
 			log.Warn("fleet: agent decommissioned — executing self-uninstall")
-			executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL)
+			executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL, nil, nil)
 			executor.Execute(&fleet.Command{Type: fleet.CmdUninstall})
 			return fmt.Errorf("agent decommissioned by server")
 		}
@@ -651,7 +651,32 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	})
 
 	// Start command polling — agent checks for pending commands every 5 seconds
-	executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL)
+	// Create WFP isolator and tamper protector
+	wfpIsolator := tamper.NewWFPIsolator()
+	protector := tamper.NewProtector(
+		filepath.Dir(filepath.Dir(exe)), // install dir
+		dataDir,
+		"fibratus",
+	)
+
+	// Re-apply persisted tamper protection state from before reboot
+	protector.LoadPersistedState()
+
+	// Re-apply isolation if persisted
+	if isoState, err := os.ReadFile(filepath.Join(dataDir, "isolation-state")); err == nil {
+		if strings.TrimSpace(string(isoState)) == "isolated" {
+			serverHost := strings.TrimPrefix(cfg.Fleet.ServerURL, "https://")
+			serverHost = strings.TrimPrefix(serverHost, "http://")
+			serverHost = strings.Split(serverHost, ":")[0]
+			if err := wfpIsolator.Isolate(serverHost, nil); err != nil {
+				log.Warnf("fleet: failed to re-apply WFP isolation: %v", err)
+			} else {
+				log.Info("fleet: WFP network isolation re-applied from persisted state")
+			}
+		}
+	}
+
+	executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL, wfpIsolator, protector)
 	client.StartCommandLoop(executor)
 
 	log.Infof("fleet: connected to %s", cfg.Fleet.ServerURL)

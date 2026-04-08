@@ -85,6 +85,9 @@ message HeartbeatRequest {
 
 message HeartbeatResponse {
   string status = 1;
+  bool tamper_protection = 2;
+  bool isolated = 3;
+  repeated string isolation_whitelist = 4;
 }
 
 // ═══════════════════════════════════════════════════════════════

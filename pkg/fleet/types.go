@@ -32,8 +32,10 @@ type Account struct {
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
 	Plan            string    `json:"plan"`
-	Require2FA      bool      `json:"require_2fa"`
-	OrgCount        int       `json:"org_count,omitempty"`
+	Require2FA              bool     `json:"require_2fa"`
+	TamperProtectionEnabled bool     `json:"tamper_protection_enabled"`
+	IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
+	OrgCount                int      `json:"org_count,omitempty"`
 	UserCount       int       `json:"user_count,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -152,10 +154,12 @@ type Agent struct {
 	GroupID       string            `json:"group_id,omitempty"`
 	GroupName     string            `json:"group_name,omitempty"`
 	Tags          map[string]string `json:"tags,omitempty"`
-	Status        AgentStatus       `json:"status"`
-	LastHeartbeat time.Time         `json:"last_heartbeat"`
-	RegisteredAt  time.Time         `json:"registered_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
+	Status           AgentStatus       `json:"status"`
+	LastHeartbeat    time.Time         `json:"last_heartbeat"`
+	RegisteredAt     time.Time         `json:"registered_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
+	TamperProtection bool              `json:"tamper_protection"`
+	Isolated         bool              `json:"isolated"`
 }
 
 // Heartbeat contains periodic status information sent by an agent.
@@ -246,9 +250,10 @@ const (
 	CmdGetRegistry  = "get_registry"
 
 	// Capture and scanning commands
-	CmdStartCapture = "start_capture"
-	CmdStopCapture  = "stop_capture"
-	CmdYaraScan     = "yara_scan"
+	CmdStartCapture        = "start_capture"
+	CmdStopCapture         = "stop_capture"
+	CmdYaraScan            = "yara_scan"
+	CmdSetTamperProtection = "set_tamper_protection"
 )
 
 // Command status values

@@ -31,16 +31,19 @@ import (
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
+	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 )
 
 // WindowsExecutor executes fleet commands on Windows endpoints.
 type WindowsExecutor struct {
 	serverURL string
+	wfp       *tamper.WFPIsolator
+	protector *tamper.Protector
 }
 
 // NewWindowsExecutor creates a new Windows command executor.
-func NewWindowsExecutor(serverURL string) *WindowsExecutor {
-	return &WindowsExecutor{serverURL: serverURL}
+func NewWindowsExecutor(serverURL string, wfp *tamper.WFPIsolator, protector *tamper.Protector) *WindowsExecutor {
+	return &WindowsExecutor{serverURL: serverURL, wfp: wfp, protector: protector}
 }
 
 // Execute dispatches and runs a command based on its type.
@@ -84,76 +87,86 @@ func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
 		return e.stopCapture(cmd)
 	case fleet.CmdYaraScan:
 		return e.yaraScan(cmd)
+	case fleet.CmdSetTamperProtection:
+		return e.setTamperProtection(cmd)
 	default:
 		return nil, fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
 }
 
-// isolate blocks all network traffic except communication with the fleet server.
-// Uses Windows Firewall (netsh advfirewall) to create blocking rules with an
-// exception for the fleet server IP.
+// isolate blocks all network traffic using WFP (Windows Filtering Platform)
+// kernel-level filters. Much harder to bypass than netsh firewall rules.
 func (e *WindowsExecutor) isolate(cmd *fleet.Command) (json.RawMessage, error) {
-	// Extract fleet server hostname for the allow rule
+	var payload struct {
+		WhitelistIPs []string `json:"whitelist_ips"`
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	// Resolve fleet server IP
 	serverHost := strings.TrimPrefix(e.serverURL, "https://")
 	serverHost = strings.TrimPrefix(serverHost, "http://")
 	serverHost = strings.Split(serverHost, ":")[0]
 	serverHost = strings.Split(serverHost, "/")[0]
 
-	commands := []string{
-		// Block all outbound
-		`netsh advfirewall firewall add rule name="Fibratus Isolation - Block Outbound" dir=out action=block enable=yes profile=any`,
-		// Block all inbound
-		`netsh advfirewall firewall add rule name="Fibratus Isolation - Block Inbound" dir=in action=block enable=yes profile=any`,
-		// Allow fleet server outbound
-		fmt.Sprintf(`netsh advfirewall firewall add rule name="Fibratus Isolation - Allow Fleet" dir=out action=allow remoteip=%s enable=yes profile=any`, serverHost),
-		// Allow fleet server inbound
-		fmt.Sprintf(`netsh advfirewall firewall add rule name="Fibratus Isolation - Allow Fleet In" dir=in action=allow remoteip=%s enable=yes profile=any`, serverHost),
-		// Allow DNS (needed to resolve fleet server hostname)
-		`netsh advfirewall firewall add rule name="Fibratus Isolation - Allow DNS" dir=out action=allow protocol=udp remoteport=53 enable=yes profile=any`,
-		// Allow loopback
-		`netsh advfirewall firewall add rule name="Fibratus Isolation - Allow Loopback" dir=out action=allow remoteip=127.0.0.1 enable=yes profile=any`,
+	if err := e.wfp.Isolate(serverHost, payload.WhitelistIPs); err != nil {
+		return nil, fmt.Errorf("wfp isolate: %v", err)
 	}
 
-	var results []string
-	for _, c := range commands {
-		out, err := runCmd("cmd", "/C", c)
-		if err != nil {
-			results = append(results, fmt.Sprintf("FAILED: %s: %v", c, err))
-		} else {
-			results = append(results, fmt.Sprintf("OK: %s", strings.TrimSpace(out)))
-		}
-	}
+	// Persist isolation state
+	exe, _ := os.Executable()
+	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+	os.WriteFile(filepath.Join(dataDir, "isolation-state"), []byte("isolated"), 0o600)
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"isolated": true,
-		"server":   serverHost,
-		"details":  results,
+		"isolated":      true,
+		"method":        "wfp",
+		"server":        serverHost,
+		"whitelist_ips": payload.WhitelistIPs,
 	})
 	return result, nil
 }
 
-// unisolate removes all Fibratus isolation firewall rules.
+// unisolate removes WFP isolation filters, restoring normal network access.
 func (e *WindowsExecutor) unisolate(cmd *fleet.Command) (json.RawMessage, error) {
-	rules := []string{
-		"Fibratus Isolation - Block Outbound",
-		"Fibratus Isolation - Block Inbound",
-		"Fibratus Isolation - Allow Fleet",
-		"Fibratus Isolation - Allow Fleet In",
-		"Fibratus Isolation - Allow DNS",
-		"Fibratus Isolation - Allow Loopback",
+	if err := e.wfp.Unisolate(); err != nil {
+		return nil, fmt.Errorf("wfp unisolate: %v", err)
 	}
 
-	var removed int
-	for _, name := range rules {
-		_, err := runCmd("netsh", "advfirewall", "firewall", "delete", "rule", fmt.Sprintf("name=%s", name))
-		if err == nil {
-			removed++
-		}
+	// Clear persisted isolation state
+	exe, _ := os.Executable()
+	dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+	os.Remove(filepath.Join(dataDir, "isolation-state"))
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"isolated": false,
+		"method":   "wfp",
+	})
+	return result, nil
+}
+
+// setTamperProtection enables or disables tamper protection.
+func (e *WindowsExecutor) setTamperProtection(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		Enabled bool `json:"enabled"`
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	if e.protector == nil {
+		return nil, fmt.Errorf("tamper protector not initialized")
+	}
+
+	var err error
+	if payload.Enabled {
+		err = e.protector.EnableProtection()
+	} else {
+		err = e.protector.DisableProtection()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tamper protection: %v", err)
 	}
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"isolated":      false,
-		"rules_removed": removed,
+		"tamper_protection": payload.Enabled,
 	})
 	return result, nil
 }
