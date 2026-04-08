@@ -245,10 +245,13 @@ func (x *HeartbeatRequest) GetActiveRules() int32 {
 }
 
 type HeartbeatResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Status             string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	TamperProtection   bool                   `protobuf:"varint,2,opt,name=tamper_protection,json=tamperProtection,proto3" json:"tamper_protection,omitempty"`
+	Isolated           bool                   `protobuf:"varint,3,opt,name=isolated,proto3" json:"isolated,omitempty"`
+	IsolationWhitelist []string               `protobuf:"bytes,4,rep,name=isolation_whitelist,json=isolationWhitelist,proto3" json:"isolation_whitelist,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *HeartbeatResponse) Reset() {
@@ -286,6 +289,27 @@ func (x *HeartbeatResponse) GetStatus() string {
 		return x.Status
 	}
 	return ""
+}
+
+func (x *HeartbeatResponse) GetTamperProtection() bool {
+	if x != nil {
+		return x.TamperProtection
+	}
+	return false
+}
+
+func (x *HeartbeatResponse) GetIsolated() bool {
+	if x != nil {
+		return x.Isolated
+	}
+	return false
+}
+
+func (x *HeartbeatResponse) GetIsolationWhitelist() []string {
+	if x != nil {
+		return x.IsolationWhitelist
+	}
+	return nil
 }
 
 type TelemetryEvent struct {
@@ -1179,9 +1203,12 @@ const file_fleet_v1_fleet_proto_rawDesc = "" +
 	"\acpu_pct\x18\x04 \x01(\x01R\x06cpuPct\x12\x15\n" +
 	"\x06mem_mb\x18\x05 \x01(\x04R\x05memMb\x12$\n" +
 	"\x0eevents_per_sec\x18\x06 \x01(\x01R\feventsPerSec\x12!\n" +
-	"\factive_rules\x18\a \x01(\x05R\vactiveRules\"+\n" +
+	"\factive_rules\x18\a \x01(\x05R\vactiveRules\"\xa5\x01\n" +
 	"\x11HeartbeatResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\"\xc4\x03\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12+\n" +
+	"\x11tamper_protection\x18\x02 \x01(\bR\x10tamperProtection\x12\x1a\n" +
+	"\bisolated\x18\x03 \x01(\bR\bisolated\x12/\n" +
+	"\x13isolation_whitelist\x18\x04 \x03(\tR\x12isolationWhitelist\"\xc4\x03\n" +
 	"\x0eTelemetryEvent\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x03R\x03seq\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1d\n" +
