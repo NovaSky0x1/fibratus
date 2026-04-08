@@ -173,20 +173,107 @@ var telemetryDropNames = map[string]bool{
 
 // securityFileExtensions are file extensions worth storing for investigations.
 var securityFileExtensions = map[string]bool{
+	// Windows executables and libraries
 	".exe": true, ".dll": true, ".sys": true, ".drv": true,
-	".lnk": true, ".scr": true, ".pif": true, ".com": true,
-	".ps1": true, ".psm1": true, ".psd1": true,
-	".bat": true, ".cmd": true, ".vbs": true, ".vbe": true,
-	".js": true, ".jse": true, ".wsh": true, ".wsf": true,
-	".hta": true, ".msi": true, ".msp": true, ".mst": true,
-	".cpl": true, ".inf": true, ".reg": true,
-	".jar": true, ".class": true,
-	".doc": true, ".docx": true, ".docm": true,
-	".xls": true, ".xlsx": true, ".xlsm": true,
-	".ppt": true, ".pptx": true, ".pptm": true,
+	".ocx": true, ".cpl": true, ".scr": true, ".com": true,
+	".pif": true, ".lnk": true, ".url": true, ".appx": true,
+	".msix": true, ".appxbundle": true,
+
+	// Installers and packages
+	".msi": true, ".msp": true, ".mst": true, ".msm": true,
+	".cab": true, ".deb": true, ".rpm": true, ".pkg": true,
+	".dmg": true, ".snap": true, ".flatpak": true,
+
+	// Scripts — Windows
+	".bat": true, ".cmd": true, ".ps1": true, ".psm1": true,
+	".psd1": true, ".vbs": true, ".vbe": true, ".js": true,
+	".jse": true, ".wsh": true, ".wsf": true, ".wsc": true,
+	".hta": true, ".inf": true, ".reg": true, ".sct": true,
+
+	// Scripts — Python
+	".py": true, ".pyw": true, ".pyc": true, ".pyo": true,
+	".pyd": true, ".pyz": true, ".pyzw": true, ".egg": true,
+	".whl": true,
+
+	// Scripts — Other languages
+	".rb": true, ".pl": true, ".pm": true, ".sh": true,
+	".bash": true, ".zsh": true, ".fish": true, ".csh": true,
+	".lua": true, ".tcl": true, ".r": true, ".go": true,
+	".rs": true, ".swift": true, ".kt": true, ".scala": true,
+	".groovy": true, ".gradle": true,
+
+	// Notebooks and data science
+	".ipynb": true, ".rmd": true, ".qmd": true,
+
+	// Java / JVM
+	".jar": true, ".class": true, ".war": true, ".ear": true,
+	".jnlp": true, ".jsp": true,
+
+	// .NET
+	".cs": true, ".csx": true, ".cshtml": true, ".dll": true,
+	".nupkg": true, ".csproj": true,
+
+	// Web / markup that can execute
+	".html": true, ".htm": true, ".xhtml": true, ".svg": true,
+	".xml": true, ".xsl": true, ".xslt": true, ".asp": true,
+	".aspx": true, ".php": true, ".ejs": true, ".ts": true,
+	".tsx": true, ".jsx": true, ".mjs": true, ".cjs": true,
+	".json": true, ".yaml": true, ".yml": true, ".toml": true,
+
+	// Office documents (macro-capable)
+	".doc": true, ".docx": true, ".docm": true, ".dotm": true,
+	".xls": true, ".xlsx": true, ".xlsm": true, ".xltm": true,
+	".xlam": true, ".xlsb": true,
+	".ppt": true, ".pptx": true, ".pptm": true, ".potm": true,
+	".ppam": true, ".ppsm": true, ".sldm": true,
+	".pub": true, ".one": true, ".onenote": true,
+	".accdb": true, ".accde": true, ".mdb": true,
+
+	// OpenDocument (macro-capable)
+	".odt": true, ".ods": true, ".odp": true, ".odg": true,
+
+	// PDF and rich text
+	".pdf": true, ".rtf": true, ".xps": true,
+
+	// Disk images and virtual disks
 	".iso": true, ".img": true, ".vhd": true, ".vhdx": true,
-	".zip": true, ".7z": true, ".rar": true, ".cab": true,
-	".pdf": true, ".rtf": true,
+	".vmdk": true, ".vdi": true, ".qcow2": true, ".wim": true,
+
+	// Archives
+	".zip": true, ".7z": true, ".rar": true, ".tar": true,
+	".gz": true, ".bz2": true, ".xz": true, ".zst": true,
+	".tgz": true, ".tbz2": true, ".lzma": true, ".lz": true,
+	".arj": true, ".ace": true, ".zoo": true,
+
+	// Crypto and credentials
+	".pfx": true, ".p12": true, ".cer": true, ".crt": true,
+	".pem": true, ".key": true, ".der": true, ".jks": true,
+	".keystore": true, ".kdb": true, ".kdbx": true,
+	".rdp": true, ".rdg": true, ".ppk": true,
+
+	// Database
+	".sql": true, ".sqlite": true, ".db": true, ".mdf": true,
+	".ldf": true, ".bak": true,
+
+	// Configuration
+	".conf": true, ".cfg": true, ".ini": true, ".env": true,
+	".htaccess": true, ".htpasswd": true, ".gitconfig": true,
+
+	// Containers and IaC
+	".dockerfile": true, ".tf": true, ".tfvars": true,
+	".vagrantfile": true, ".ansible": true,
+
+	// Memory and forensic artifacts
+	".dmp": true, ".mdmp": true, ".hdmp": true, ".etl": true,
+	".evtx": true, ".evt": true, ".pcap": true, ".pcapng": true,
+
+	// Firmware and UEFI
+	".efi": true, ".rom": true, ".bin": true, ".fw": true,
+
+	// Shortcut and autorun
+	".desktop": true, ".service": true, ".timer": true,
+	".automount": true, ".plist": true, ".job": true,
+	".task": true, ".ics": true,
 }
 
 func hasSecurityExtension(name string) bool {
