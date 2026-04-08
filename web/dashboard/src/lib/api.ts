@@ -58,6 +58,8 @@ export interface Agent {
   group_name: string
   tags: Record<string, string>
   status: 'online' | 'offline' | 'stale'
+  tamper_protection: boolean
+  isolated: boolean
   last_heartbeat: string
   registered_at: string
 }
@@ -258,6 +260,11 @@ export const api = {
   },
   getAgent: (id: string) => fetchApi<Agent>(orgPath(`/agents/${id}`)),
   deleteAgent: (id: string) => fetchApi<void>(orgPath(`/agents/${id}`), { method: 'DELETE' }),
+  setTamperProtection: (agentId: string, enabled: boolean) =>
+    fetchApi<void>(orgPath(`/agents/${agentId}/tamper-protection`), {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
 
   // Users
   getUsers: () => fetchApi<User[]>(orgPath('/users')),
@@ -393,9 +400,9 @@ export const api = {
     fetchApi<unknown>(orgPath(`/github-sync/${id}/trigger`), { method: 'POST' }),
 
   // Account Settings
-  getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string }>('/account/settings'),
-  updateAccountSettings: (data: { require_2fa: boolean }) =>
-    fetchApi<{ require_2fa: boolean }>('/account/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string; tamper_protection_enabled: boolean; isolation_whitelist: string[] }>('/account/settings'),
+  updateAccountSettings: (data: { require_2fa?: boolean; tamper_protection_enabled?: boolean; isolation_whitelist?: string[] }) =>
+    fetchApi<{ require_2fa: boolean; tamper_protection_enabled: boolean; isolation_whitelist: string[] }>('/account/settings', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Admin (root only)
   adminGetAccounts: () => fetchApi<unknown[]>('/admin/accounts'),

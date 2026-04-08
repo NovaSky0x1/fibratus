@@ -66,7 +66,10 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
   const queryClient = useQueryClient()
 
   // Per-action state
+  const [tamperResult, setTamperResult] = useState<ActionResult | null>(null)
+  const [tamperToggling, setTamperToggling] = useState(false)
   const [isolationResult, setIsolationResult] = useState<ActionResult | null>(null)
+  const [whitelistIps, setWhitelistIps] = useState('')
   const [killPid, setKillPid] = useState('')
   const [killResult, setKillResult] = useState<ActionResult | null>(null)
   const [captureActive, setCaptureActive] = useState(false)
@@ -88,10 +91,27 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
     },
   })
 
+  const handleTamperToggle = async () => {
+    setTamperResult(null)
+    setTamperToggling(true)
+    const newState = !agent.tamper_protection
+    try {
+      await api.setTamperProtection(agentId, newState)
+      await cmdMutation.mutateAsync({ type: 'set_tamper_protection', payload: { enabled: newState } })
+      setTamperResult({ success: true, message: newState ? 'Tamper protection enabled.' : 'Tamper protection disabled.' })
+      queryClient.invalidateQueries({ queryKey: ['agent', agentId] })
+    } catch (e) {
+      setTamperResult({ success: false, message: e instanceof Error ? e.message : 'Failed to toggle tamper protection' })
+    } finally {
+      setTamperToggling(false)
+    }
+  }
+
   const handleIsolate = async () => {
     setIsolationResult(null)
+    const ips = whitelistIps.split(',').map(s => s.trim()).filter(Boolean)
     try {
-      await cmdMutation.mutateAsync({ type: 'isolate' })
+      await cmdMutation.mutateAsync({ type: 'isolate', payload: ips.length > 0 ? { whitelist_ips: ips } : undefined })
       setIsolationResult({ success: true, message: 'Network isolation command sent. Agent will be isolated shortly.' })
     } catch (e) {
       setIsolationResult({ success: false, message: e instanceof Error ? e.message : 'Failed to send isolation command' })
@@ -190,16 +210,60 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
 
       {/* Action grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Network Isolation */}
+        {/* Tamper Protection */}
         <ActionCard
           icon={<Shield className="w-4 h-4" />}
-          title="Network Isolation"
-          description="Isolate or restore the endpoint's network connectivity"
+          title="Tamper Protection"
+          description="Prevent unauthorized modification or termination of the agent"
         >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+                (agent.tamper_protection
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+              }>
+                {agent.tamper_protection ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <button
+              role="switch"
+              aria-checked={agent.tamper_protection}
+              onClick={handleTamperToggle}
+              disabled={tamperToggling || isPending}
+              className={'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-fibratus-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed ' +
+                (agent.tamper_protection ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600')
+              }
+            >
+              <span
+                className={'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
+                  (agent.tamper_protection ? 'translate-x-5' : 'translate-x-0')
+                }
+              />
+            </button>
+          </div>
+          <ResultBanner result={tamperResult} />
+        </ActionCard>
+
+        {/* Network Isolation */}
+        <ActionCard
+          icon={<ShieldAlert className="w-4 h-4" />}
+          title="Network Isolation"
+          description="Isolate or restore the endpoint's network connectivity via WFP"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+              (agent.isolated
+                ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+            }>
+              {agent.isolated ? 'Isolated' : 'Connected'}
+            </span>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleIsolate}
-              disabled={isPending}
+              disabled={isPending || agent.isolated}
               className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 transition-colors"
             >
               {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />}
@@ -207,12 +271,22 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
             </button>
             <button
               onClick={handleUnisolate}
-              disabled={isPending}
+              disabled={isPending || !agent.isolated}
               className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 disabled:opacity-50 transition-colors"
             >
               {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldOff className="w-3.5 h-3.5" />}
               Unisolate
             </button>
+          </div>
+          <div className="mt-3">
+            <label className="block text-xs text-gray-500 dark:text-slate-400 mb-1">Additional whitelist IPs (comma-separated)</label>
+            <input
+              type="text"
+              value={whitelistIps}
+              onChange={e => setWhitelistIps(e.target.value)}
+              placeholder="10.0.0.5, 192.168.1.100"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-xs font-mono text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            />
           </div>
           <ResultBanner result={isolationResult} />
         </ActionCard>
@@ -325,7 +399,12 @@ export default function AgentResponse({ agentId, agent }: { agentId: string; age
           description="Permanently remove the Fibratus agent from this endpoint"
           danger
         >
-          {!uninstallConfirm ? (
+          {agent.tamper_protection ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400">
+              <Shield className="w-3.5 h-3.5 shrink-0" />
+              <p className="text-xs font-medium">Tamper protection must be disabled before uninstalling.</p>
+            </div>
+          ) : !uninstallConfirm ? (
             <button
               onClick={() => setUninstallConfirm(true)}
               disabled={isPending}

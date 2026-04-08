@@ -187,6 +187,11 @@ export default function Settings() {
       </div>
 
       {/* ──────────────────────────────────────────── */}
+      {/* Tamper Protection & Isolation Whitelist */}
+      {/* ──────────────────────────────────────────── */}
+      <ProtectionSettingsSection />
+
+      {/* ──────────────────────────────────────────── */}
       {/* Enrollment Tokens Section */}
       {/* ──────────────────────────────────────────── */}
       <div className="mt-8">
@@ -606,6 +611,146 @@ export default function Settings() {
         }}
         onCancel={() => setDeleteOrgTarget(null)}
       />
+    </div>
+  )
+}
+
+function ProtectionSettingsSection() {
+  const queryClient = useQueryClient()
+
+  const { data: settingsData } = useQuery({
+    queryKey: ['account-settings'],
+    queryFn: () => api.getAccountSettings(),
+  })
+  const settings = settingsData?.data as { tamper_protection_enabled: boolean; isolation_whitelist: string[] } | undefined
+  const tamperEnabled = settings?.tamper_protection_enabled ?? false
+  const whitelist = settings?.isolation_whitelist ?? []
+
+  const [newWhitelistEntry, setNewWhitelistEntry] = useState('')
+  const [tamperToggling, setTamperToggling] = useState(false)
+
+  const tamperMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.updateAccountSettings({ tamper_protection_enabled: enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-settings'] })
+    },
+  })
+
+  const whitelistMutation = useMutation({
+    mutationFn: (updatedList: string[]) => api.updateAccountSettings({ isolation_whitelist: updatedList }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-settings'] })
+    },
+  })
+
+  const handleTamperToggle = async () => {
+    setTamperToggling(true)
+    try {
+      await tamperMutation.mutateAsync(!tamperEnabled)
+    } finally {
+      setTamperToggling(false)
+    }
+  }
+
+  const handleAddWhitelist = () => {
+    const entry = newWhitelistEntry.trim()
+    if (!entry || whitelist.includes(entry)) return
+    whitelistMutation.mutate([...whitelist, entry])
+    setNewWhitelistEntry('')
+  }
+
+  const handleRemoveWhitelist = (entry: string) => {
+    whitelistMutation.mutate(whitelist.filter(e => e !== entry))
+  }
+
+  return (
+    <div className="mt-8 space-y-8">
+      {/* Tamper Protection */}
+      <div>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Tamper Protection</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            Prevent unauthorized modification, termination, or uninstallation of the agent on endpoints.
+          </p>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Enable tamper protection for all agents</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                When enabled, all agents will have tamper protection active. Individual agent toggles will be locked.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={tamperEnabled}
+              onClick={handleTamperToggle}
+              disabled={tamperToggling || tamperMutation.isPending}
+              className={'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-fibratus-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed ' +
+                (tamperEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600')
+              }
+            >
+              <span
+                className={'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
+                  (tamperEnabled ? 'translate-x-5' : 'translate-x-0')
+                }
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Isolation Whitelist */}
+      <div>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Isolation Whitelist</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            These IPs/CIDRs will always be allowed during network isolation (e.g., RMM servers, jump boxes).
+          </p>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newWhitelistEntry}
+              onChange={e => setNewWhitelistEntry(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddWhitelist() }}
+              placeholder="IP address or CIDR (e.g., 10.0.0.5 or 192.168.1.0/24)"
+              className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2 text-sm font-mono text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            />
+            <button
+              onClick={handleAddWhitelist}
+              disabled={!newWhitelistEntry.trim() || whitelistMutation.isPending}
+              className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+            >
+              Add
+            </button>
+          </div>
+
+          {whitelist.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {whitelist.map((entry) => (
+                <div key={entry} className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 px-4 py-2.5">
+                  <code className="text-sm font-mono text-gray-900 dark:text-slate-100">{entry}</code>
+                  <button
+                    onClick={() => handleRemoveWhitelist(entry)}
+                    disabled={whitelistMutation.isPending}
+                    className="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-gray-400 dark:text-slate-500">
+              No whitelist entries configured. The fleet server will always be allowed automatically.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
