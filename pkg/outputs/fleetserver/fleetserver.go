@@ -212,7 +212,11 @@ func securityRelevant(batch *event.Batch) *event.Batch {
 		}
 		// CreateFile/WriteFile: only for security-relevant file extensions
 		if evt.Name == "CreateFile" || evt.Name == "WriteFile" {
-			if fn := evt.GetParamAsString("file_name"); fn != "" && hasSecurityExtension(fn) {
+			fp := evt.GetParamAsString("file_path")
+			if fp == "" {
+				fp = evt.GetParamAsString("file_name")
+			}
+			if fp != "" && hasSecurityExtension(fp) {
 				filtered = append(filtered, evt)
 			}
 			continue
