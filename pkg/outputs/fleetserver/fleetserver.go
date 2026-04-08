@@ -137,17 +137,28 @@ func (f *fleetOutput) Close() error {
 
 // telemetryEventNames is the set of events always stored on the fleet server.
 var telemetryEventNames = map[string]bool{
+	// Process lifecycle — critical for process tree and detection context
 	"CreateProcess": true, "TerminateProcess": true,
-	"CreateFile": true, "WriteFile": true, "DeleteFile": true, "RenameFile": true,
+	// File mutations — creates/writes are too noisy (40K+/min from system services),
+	// only deletions and renames are forwarded; creates/writes still sent if they
+	// trigger a detection (metadata check below)
+	"DeleteFile": true, "RenameFile": true,
+	// Registry mutations — all are security-relevant
 	"RegSetValue": true, "RegCreateKey": true, "RegDeleteKey": true, "RegDeleteValue": true,
+	// Network — connections are security-relevant
 	"Connect": true, "Accept": true,
+	// DNS — critical for threat hunting
 	"QueryDns": true, "ReplyDns": true,
+	// Module loads — DLL sideloading, injection detection
 	"LoadImage": true, "UnloadImage": true,
+	// Thread context manipulation — injection technique indicator
 	"SetThreadContext": true,
 }
 
 var telemetryDropNames = map[string]bool{
-	"OpenProcess": true, // extremely noisy — 200K+/5min, not useful for fleet telemetry
+	"OpenProcess": true, // extremely noisy — 200K+/5min
+	"CreateFile":  true, // extremely noisy — 40K+/min from system services
+	"WriteFile":   true, // extremely noisy — paired with CreateFile
 	"SubmitThreadpoolWork": true, "SubmitThreadpoolCallback": true, "SetThreadpoolTimer": true,
 	"VirtualAlloc": true, "VirtualFree": true,
 	"ReadFile": true, "CloseFile": true, "ReleaseFile": true, "EnumDirectory": true,
