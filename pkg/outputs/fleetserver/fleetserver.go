@@ -157,8 +157,7 @@ var telemetryEventNames = map[string]bool{
 
 var telemetryDropNames = map[string]bool{
 	"OpenProcess": true, // extremely noisy — 200K+/5min
-	"CreateFile":  true, // extremely noisy — 40K+/min from system services
-	"WriteFile":   true, // extremely noisy — paired with CreateFile
+	// CreateFile/WriteFile handled specially in securityRelevant() — only security extensions
 	"SubmitThreadpoolWork": true, "SubmitThreadpoolCallback": true, "SetThreadpoolTimer": true,
 	"VirtualAlloc": true, "VirtualFree": true,
 	"ReadFile": true, "CloseFile": true, "ReleaseFile": true, "EnumDirectory": true,
@@ -172,14 +171,50 @@ var telemetryDropNames = map[string]bool{
 	"CreateSymbolicLinkObject": true,
 }
 
+// securityFileExtensions are file extensions worth storing for investigations.
+var securityFileExtensions = map[string]bool{
+	".exe": true, ".dll": true, ".sys": true, ".drv": true,
+	".lnk": true, ".scr": true, ".pif": true, ".com": true,
+	".ps1": true, ".psm1": true, ".psd1": true,
+	".bat": true, ".cmd": true, ".vbs": true, ".vbe": true,
+	".js": true, ".jse": true, ".wsh": true, ".wsf": true,
+	".hta": true, ".msi": true, ".msp": true, ".mst": true,
+	".cpl": true, ".inf": true, ".reg": true,
+	".jar": true, ".class": true,
+	".doc": true, ".docx": true, ".docm": true,
+	".xls": true, ".xlsx": true, ".xlsm": true,
+	".ppt": true, ".pptx": true, ".pptm": true,
+	".iso": true, ".img": true, ".vhd": true, ".vhdx": true,
+	".zip": true, ".7z": true, ".rar": true, ".cab": true,
+	".pdf": true, ".rtf": true,
+}
+
+func hasSecurityExtension(name string) bool {
+	name = strings.ToLower(name)
+	for ext := range securityFileExtensions {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 func securityRelevant(batch *event.Batch) *event.Batch {
 	filtered := make([]*event.Event, 0, len(batch.Events)/4)
 	for _, evt := range batch.Events {
 		if telemetryDropNames[evt.Name] {
 			continue
 		}
+		// Always forward events with rule matches or evasion flags
 		if len(evt.Metadata) > 0 || evt.Evasions > 0 {
 			filtered = append(filtered, evt)
+			continue
+		}
+		// CreateFile/WriteFile: only for security-relevant file extensions
+		if evt.Name == "CreateFile" || evt.Name == "WriteFile" {
+			if fn := evt.GetParamAsString("file_name"); fn != "" && hasSecurityExtension(fn) {
+				filtered = append(filtered, evt)
+			}
 			continue
 		}
 		if telemetryEventNames[evt.Name] {
