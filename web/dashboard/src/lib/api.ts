@@ -172,6 +172,38 @@ export interface Account {
   created_at: string
 }
 
+export interface Capture {
+  id: string
+  org_id: string
+  agent_id: string
+  agent_hostname: string
+  filter: string
+  status: 'active' | 'completed' | 'failed' | 'cancelled'
+  event_count: number
+  duration_sec: number
+  created_by: string
+  started_at: string
+  completed_at: string | null
+}
+
+export interface CaptureEvent {
+  id: number
+  capture_id: string
+  org_id: string
+  seq: number
+  timestamp: string
+  event_name: string
+  event_category: string
+  pid: number
+  process_name: string
+  process_exe: string
+  process_cmdline: string
+  parent_pid: number
+  parent_name: string
+  params: Record<string, unknown>
+  raw_event: unknown
+}
+
 export interface EnrollmentToken {
   id: string
   name: string
@@ -371,6 +403,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ type, payload: payload || {} }),
     }),
+
+  // Captures
+  listCaptures: (agentId: string) =>
+    fetchApi<Capture[]>(orgPath(`/agents/${agentId}/captures`)),
+  createCapture: (agentId: string, data: { filter?: string; duration_sec?: number }) =>
+    fetchApi<Capture>(orgPath(`/agents/${agentId}/captures`), { method: 'POST', body: JSON.stringify(data) }),
+  getCapture: (captureId: string) =>
+    fetchApi<Capture>(orgPath(`/captures/${captureId}`)),
+  getCaptureEvents: (captureId: string, params?: Record<string, string>) => {
+    const q = new URLSearchParams(params || {}).toString()
+    return fetchApi<CaptureEvent[]>(orgPath(`/captures/${captureId}/events?${q}`))
+  },
+  stopCapture: (captureId: string) =>
+    fetchApi<Capture>(orgPath(`/captures/${captureId}/stop`), { method: 'POST' }),
+  deleteCapture: (captureId: string) =>
+    fetchApi<void>(orgPath(`/captures/${captureId}`), { method: 'DELETE' }),
 
   // Macros
   getMacros: () => fetchApi<Macro[]>(orgPath('/macros')),

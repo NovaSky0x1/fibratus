@@ -330,6 +330,7 @@ type TelemetryEvent struct {
 	Params        []byte `protobuf:"bytes,12,opt,name=params,proto3" json:"params,omitempty"`
 	Metadata      []byte `protobuf:"bytes,13,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	RawEvent      []byte `protobuf:"bytes,14,opt,name=raw_event,json=rawEvent,proto3" json:"raw_event,omitempty"`
+	CaptureId     string `protobuf:"bytes,15,opt,name=capture_id,json=captureId,proto3" json:"capture_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -460,6 +461,13 @@ func (x *TelemetryEvent) GetRawEvent() []byte {
 		return x.RawEvent
 	}
 	return nil
+}
+
+func (x *TelemetryEvent) GetCaptureId() string {
+	if x != nil {
+		return x.CaptureId
+	}
+	return ""
 }
 
 type TelemetryBatch struct {

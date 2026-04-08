@@ -393,6 +393,49 @@ CREATE TABLE IF NOT EXISTS decommissioned_agents (
     hostname            TEXT NOT NULL DEFAULT '',
     decommissioned_at   TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- Kernel captures: live event capture sessions from agents
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS captures (
+    id              TEXT PRIMARY KEY,
+    org_id          TEXT NOT NULL,
+    agent_id        TEXT NOT NULL,
+    agent_hostname  TEXT DEFAULT '',
+    filter          TEXT DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'active',
+    event_count     BIGINT DEFAULT 0,
+    duration_sec    INT DEFAULT 0,
+    created_by      TEXT DEFAULT '',
+    started_at      TIMESTAMPTZ DEFAULT NOW(),
+    completed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_captures_org_agent ON captures(org_id, agent_id);
+CREATE INDEX IF NOT EXISTS idx_captures_status ON captures(org_id, status);
+
+CREATE TABLE IF NOT EXISTS capture_events (
+    id              BIGSERIAL PRIMARY KEY,
+    capture_id      TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
+    org_id          TEXT NOT NULL,
+    seq             BIGINT DEFAULT 0,
+    timestamp       TIMESTAMPTZ NOT NULL,
+    event_name      TEXT NOT NULL,
+    event_category  TEXT DEFAULT '',
+    pid             BIGINT DEFAULT 0,
+    process_name    TEXT DEFAULT '',
+    process_exe     TEXT DEFAULT '',
+    process_cmdline TEXT DEFAULT '',
+    parent_pid      BIGINT DEFAULT 0,
+    parent_name     TEXT DEFAULT '',
+    params          JSONB DEFAULT '{}',
+    raw_event       JSONB DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_capture_events_capture ON capture_events(capture_id);
+CREATE INDEX IF NOT EXISTS idx_capture_events_ts ON capture_events(capture_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_capture_events_name ON capture_events(capture_id, event_name);
 `
 
 // Migrate runs the database schema migrations.

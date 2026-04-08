@@ -136,6 +136,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Create stores for new features
 	macroStore := postgres.NewMacroStore(db)
 	auditStore := postgres.NewAuditStore(db)
+	captureStore := postgres.NewCaptureStore(db)
 
 	// Auto-seed macros from filesystem for each org that has no macros in DB
 	seedMacrosFromFile(ctx, macroStore, orgStore, db)
@@ -160,6 +161,7 @@ func (s *Server) Run(ctx context.Context) error {
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
 	dbAdminHandler := handler.NewDBAdminHandler(db, chDB)
 	groupHandler := handler.NewGroupHandler(groupStore)
+	captureHandler := handler.NewCaptureHandler(captureStore, agentStore, commandStore, auditStore, userStore)
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
@@ -184,7 +186,7 @@ func (s *Server) Run(ctx context.Context) error {
 		grpcCfg,
 		s.apiKeys,
 		agentStore, ruleStore, macroStore, commandStore, detStore,
-		telemetryStore, enrollStore, caManager,
+		telemetryStore, captureStore, enrollStore, caManager,
 		s.config.NATS,
 		clientCAs,
 	)
@@ -226,13 +228,15 @@ func (s *Server) Run(ctx context.Context) error {
 		streams.PushRulesToOrg(orgID, update)
 	})
 
-	commandHandler.SetCommandPushCallback(func(agentID, cmdID, cmdType string, payload []byte) bool {
+	cmdPushCallback := func(agentID, cmdID, cmdType string, payload []byte) bool {
 		return streams.PushCommand(agentID, &pb.CommandPush{
 			Id:      cmdID,
 			Type:    cmdType,
 			Payload: payload,
 		})
-	})
+	}
+	commandHandler.SetCommandPushCallback(cmdPushCallback)
+	captureHandler.SetCommandPushCallback(cmdPushCallback)
 
 	// Start gRPC server in background
 	go func() {
@@ -344,6 +348,10 @@ func (s *Server) Run(ctx context.Context) error {
 			commandHandler.ListCommands(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodPost:
 			requirePermission(fleetauth.PermExecuteCommands, commandHandler.CreateCommand)(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/captures") && r.Method == http.MethodGet:
+			captureHandler.ListCaptures(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/captures") && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermExecuteCommands, captureHandler.CreateCapture)(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodGet:
 			agentHandler.Get(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodDelete:
@@ -396,6 +404,16 @@ func (s *Server) Run(ctx context.Context) error {
 			telemetryHandler.GetFieldValues(w, r)
 		case subpath == "/telemetry/process-tree" && r.Method == http.MethodGet:
 			telemetryHandler.ProcessTree(w, r)
+
+		// Captures (capture-scoped: /captures/{id}/...)
+		case strings.HasPrefix(subpath, "/captures/") && strings.HasSuffix(subpath, "/events") && r.Method == http.MethodGet:
+			captureHandler.GetCaptureEvents(w, r)
+		case strings.HasPrefix(subpath, "/captures/") && strings.HasSuffix(subpath, "/stop") && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermExecuteCommands, captureHandler.StopCapture)(w, r)
+		case strings.HasPrefix(subpath, "/captures/") && r.Method == http.MethodGet:
+			captureHandler.GetCapture(w, r)
+		case strings.HasPrefix(subpath, "/captures/") && r.Method == http.MethodDelete:
+			requirePermission(fleetauth.PermExecuteCommands, captureHandler.DeleteCapture)(w, r)
 
 		// Macros
 		case subpath == "/macros" && r.Method == http.MethodGet:

@@ -67,6 +67,7 @@ func NewGRPCServer(
 	commands store.CommandStore,
 	detections store.DetectionStore,
 	telemetry store.TelemetryStore,
+	captures store.CaptureStore,
 	tokens store.EnrollmentTokenStore,
 	caManager *ca.Manager,
 	natsCfg NATSConfig,
@@ -128,7 +129,7 @@ func NewGRPCServer(
 	srv := grpc.NewServer(opts...)
 
 	// Register services
-	agentSvc := newAgentService(agents, rules, macros, commands, detections, telemetry, streams, natsProd)
+	agentSvc := newAgentService(agents, rules, macros, commands, detections, telemetry, captures, streams, natsProd)
 	enrollSvc := newEnrollmentService(tokens, agents, caManager)
 
 	pb.RegisterAgentServiceServer(srv, agentSvc)

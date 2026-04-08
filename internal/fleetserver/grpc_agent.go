@@ -46,6 +46,7 @@ type agentService struct {
 	commands   store.CommandStore
 	detections store.DetectionStore
 	telemetry  store.TelemetryStore
+	captures   store.CaptureStore
 	streams    *StreamManager
 	natsProd *natsPkg.Producer // nil if NATS disabled (direct store writes)
 }
@@ -58,6 +59,7 @@ func newAgentService(
 	commands store.CommandStore,
 	detections store.DetectionStore,
 	telemetry store.TelemetryStore,
+	captures store.CaptureStore,
 	streams *StreamManager,
 	natsProducer *natsPkg.Producer,
 ) *agentService {
@@ -68,6 +70,7 @@ func newAgentService(
 		commands:   commands,
 		detections: detections,
 		telemetry:  telemetry,
+		captures:   captures,
 		streams:    streams,
 		natsProd: natsProducer,
 	}
@@ -184,8 +187,35 @@ func (s *agentService) StreamTelemetry(stream pb.AgentService_StreamTelemetrySer
 			return status.Errorf(codes.Internal, "receive telemetry: %v", err)
 		}
 
+		// Separate capture events from normal telemetry
+		var captureEvents = make(map[string][]json.RawMessage) // captureID → events
+		var telEvents []json.RawMessage
+
+		for _, evt := range batch.Events {
+			if len(evt.RawEvent) == 0 {
+				continue
+			}
+			if evt.CaptureId != "" {
+				captureEvents[evt.CaptureId] = append(captureEvents[evt.CaptureId], json.RawMessage(evt.RawEvent))
+			} else {
+				telEvents = append(telEvents, json.RawMessage(evt.RawEvent))
+			}
+		}
+
+		// Ingest capture events into capture store
+		if s.captures != nil {
+			for capID, evts := range captureEvents {
+				if err := s.captures.IngestEvents(stream.Context(), capID, batch.OrgId, evts); err != nil {
+					log.Warnf("grpc: capture event ingest error (capture %s): %v", capID, err)
+				}
+				if err := s.captures.IncrementEventCount(stream.Context(), capID, len(evts)); err != nil {
+					log.Warnf("grpc: capture count update error (capture %s): %v", capID, err)
+				}
+			}
+		}
+
+		// Ingest normal telemetry
 		if s.natsProd != nil {
-			// Publish to NATS — consumer handles ClickHouse ingest
 			data, err := proto.Marshal(batch)
 			if err != nil {
 				log.Warnf("grpc: failed to marshal telemetry batch: %v", err)
@@ -194,24 +224,15 @@ func (s *agentService) StreamTelemetry(stream pb.AgentService_StreamTelemetrySer
 			if pubErr := s.natsProd.Publish(data); pubErr != nil {
 				log.Warnf("grpc: nats publish error: %v", pubErr)
 			}
-		} else {
-			// Direct store write (no Kafka)
-			rawEvents := make([]json.RawMessage, 0, len(batch.Events))
-			for _, evt := range batch.Events {
-				if len(evt.RawEvent) > 0 {
-					rawEvents = append(rawEvents, json.RawMessage(evt.RawEvent))
+		} else if len(telEvents) > 0 {
+			hostname := batch.Hostname
+			if hostname == "" {
+				if agent, err := s.agents.Get(stream.Context(), batch.OrgId, batch.AgentId); err == nil {
+					hostname = agent.Hostname
 				}
 			}
-			if len(rawEvents) > 0 {
-				hostname := batch.Hostname
-				if hostname == "" {
-					if agent, err := s.agents.Get(stream.Context(), batch.OrgId, batch.AgentId); err == nil {
-						hostname = agent.Hostname
-					}
-				}
-				if err := s.telemetry.BulkIngest(stream.Context(), batch.OrgId, batch.AgentId, hostname, rawEvents); err != nil {
-					log.Warnf("grpc: telemetry ingest error: %v", err)
-				}
+			if err := s.telemetry.BulkIngest(stream.Context(), batch.OrgId, batch.AgentId, hostname, telEvents); err != nil {
+				log.Warnf("grpc: telemetry ingest error: %v", err)
 			}
 		}
 

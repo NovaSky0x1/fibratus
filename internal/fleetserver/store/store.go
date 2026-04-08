@@ -173,6 +173,48 @@ type UserGroupStore interface {
 	GetUserGroups(ctx context.Context, userID string) ([]fleet.UserGroupMembership, error)
 }
 
+// CaptureStore manages kernel capture session persistence.
+type CaptureStore interface {
+	Create(ctx context.Context, cap *fleet.Capture) error
+	Get(ctx context.Context, orgID, id string) (*fleet.Capture, error)
+	ListByAgent(ctx context.Context, orgID, agentID string) ([]*fleet.Capture, error)
+	Update(ctx context.Context, cap *fleet.Capture) error
+	Delete(ctx context.Context, orgID, id string) error
+	IngestEvents(ctx context.Context, captureID, orgID string, events []json.RawMessage) error
+	GetEvents(ctx context.Context, captureID string, opts CaptureEventSearchOpts) ([]CaptureEvent, int, error)
+	IncrementEventCount(ctx context.Context, captureID string, count int) error
+}
+
+// CaptureEvent represents a single kernel event within a capture session.
+type CaptureEvent struct {
+	ID             int64           `json:"id"`
+	CaptureID      string          `json:"capture_id"`
+	OrgID          string          `json:"org_id"`
+	Seq            int64           `json:"seq"`
+	Timestamp      time.Time       `json:"timestamp"`
+	EventName      string          `json:"event_name"`
+	EventCategory  string          `json:"event_category"`
+	PID            int             `json:"pid"`
+	ProcessName    string          `json:"process_name"`
+	ProcessExe     string          `json:"process_exe"`
+	ProcessCmdline string          `json:"process_cmdline"`
+	ParentPID      int             `json:"parent_pid"`
+	ParentName     string          `json:"parent_name"`
+	Params         json.RawMessage `json:"params"`
+	RawEvent       json.RawMessage `json:"raw_event"`
+}
+
+// CaptureEventSearchOpts defines search filters for capture events.
+type CaptureEventSearchOpts struct {
+	EventName   string
+	ProcessName string
+	PID         int
+	Search      string // full text search
+	AfterId     int64  // cursor-based pagination: return events with id > AfterId
+	Limit       int
+	Offset      int
+}
+
 // TelemetryStore manages telemetry event persistence and search.
 type TelemetryStore interface {
 	BulkIngest(ctx context.Context, orgID, agentID, hostname string, events []json.RawMessage) error

@@ -111,6 +111,9 @@ message TelemetryEvent {
   bytes params = 12;
   bytes metadata = 13;
   bytes raw_event = 14;
+  // Non-empty when this event belongs to an active kernel capture session.
+  // Server routes such events to the capture_events table.
+  string capture_id = 15;
 }
 
 message TelemetryBatch {

@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/event"
@@ -353,10 +354,71 @@ func securityRelevant(batch *event.Batch) *event.Batch {
 	return &event.Batch{Events: filtered}
 }
 
+// captureState tracks the active capture session for event forking.
+var captureState struct {
+	sync.RWMutex
+	active   bool
+	id       string
+	filterFn func(*event.Event) bool // nil = capture all events
+}
+
+// SetCaptureState activates capture mode. Matching events will be tagged
+// with the capture ID and bypass the security-relevance filter.
+// filterFn is optional — nil means capture all events.
+func SetCaptureState(captureID string, filterFn func(*event.Event) bool) {
+	captureState.Lock()
+	defer captureState.Unlock()
+	captureState.active = true
+	captureState.id = captureID
+	captureState.filterFn = filterFn
+	log.Infof("fleet output: capture %s activated", captureID)
+}
+
+// ClearCaptureState deactivates capture mode.
+func ClearCaptureState() {
+	captureState.Lock()
+	defer captureState.Unlock()
+	if captureState.active {
+		log.Infof("fleet output: capture %s deactivated", captureState.id)
+	}
+	captureState.active = false
+	captureState.id = ""
+	captureState.filterFn = nil
+}
+
+// GetCaptureID returns the active capture ID (empty if no capture active).
+func GetCaptureID() string {
+	captureState.RLock()
+	defer captureState.RUnlock()
+	if captureState.active {
+		return captureState.id
+	}
+	return ""
+}
+
 // Publish sends a batch of events to the fleet server via gRPC streaming.
 func (f *fleetOutput) Publish(batch *event.Batch) error {
-	batch = securityRelevant(batch)
-	if len(batch.Events) == 0 {
+	// Snapshot capture state once per batch
+	captureState.RLock()
+	capActive := captureState.active
+	capID := captureState.id
+	capFilter := captureState.filterFn
+	captureState.RUnlock()
+
+	// Build capture events from the unfiltered batch
+	var captureEvents []*event.Event
+	if capActive {
+		for _, evt := range batch.Events {
+			if capFilter == nil || capFilter(evt) {
+				captureEvents = append(captureEvents, evt)
+			}
+		}
+	}
+
+	// Apply security-relevance filter for normal telemetry
+	telBatch := securityRelevant(batch)
+
+	if len(telBatch.Events) == 0 && len(captureEvents) == 0 {
 		return nil
 	}
 
@@ -366,34 +428,25 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 		agentID = loadEnrollmentFile("agent-id")
 	}
 
-	// Convert events to protobuf
-	pbEvents := make([]*pb.TelemetryEvent, 0, len(batch.Events))
-	for _, evt := range batch.Events {
-		pbEvt := &pb.TelemetryEvent{
-			Seq:       int64(evt.Seq),
-			Timestamp: timestamppb.New(evt.Timestamp),
-			EventName: evt.Name,
-		}
-		if evt.PS != nil {
-			pbEvt.ProcessName = evt.PS.Name
-			pbEvt.ProcessExe = evt.PS.Exe
-			pbEvt.ProcessCmdline = evt.PS.Cmdline
-			pbEvt.Pid = uint32(evt.PS.PID)
-			if evt.PS.Parent != nil {
-				pbEvt.ParentPid = uint32(evt.PS.Parent.PID)
-				pbEvt.ParentName = evt.PS.Parent.Name
-			}
-		}
-		// Include raw JSON event for the store
-		if raw := evt.MarshalJSON(); raw != nil {
-			pbEvt.RawEvent = raw
-		}
-		if evt.Params != nil {
-			if paramsJSON, err := json.Marshal(evt.Params); err == nil {
-				pbEvt.Params = paramsJSON
-			}
-		}
+	// Convert telemetry events to protobuf
+	seenSeq := make(map[uint64]int) // seq → index in pbEvents
+	pbEvents := make([]*pb.TelemetryEvent, 0, len(telBatch.Events)+len(captureEvents))
+	for _, evt := range telBatch.Events {
+		pbEvt := convertEventToProto(evt)
+		seenSeq[evt.Seq] = len(pbEvents)
 		pbEvents = append(pbEvents, pbEvt)
+	}
+
+	// Add capture events (with capture_id set)
+	for _, evt := range captureEvents {
+		if idx, exists := seenSeq[evt.Seq]; exists {
+			// Event already in telemetry batch — just tag it with capture_id
+			pbEvents[idx].CaptureId = capID
+		} else {
+			pbEvt := convertEventToProto(evt)
+			pbEvt.CaptureId = capID
+			pbEvents = append(pbEvents, pbEvt)
+		}
 	}
 
 	telBatch := &pb.TelemetryBatch{
@@ -421,6 +474,34 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 	}
 
 	return nil
+}
+
+// convertEventToProto converts a kernel event to a protobuf TelemetryEvent.
+func convertEventToProto(evt *event.Event) *pb.TelemetryEvent {
+	pbEvt := &pb.TelemetryEvent{
+		Seq:       int64(evt.Seq),
+		Timestamp: timestamppb.New(evt.Timestamp),
+		EventName: evt.Name,
+	}
+	if evt.PS != nil {
+		pbEvt.ProcessName = evt.PS.Name
+		pbEvt.ProcessExe = evt.PS.Exe
+		pbEvt.ProcessCmdline = evt.PS.Cmdline
+		pbEvt.Pid = uint32(evt.PS.PID)
+		if evt.PS.Parent != nil {
+			pbEvt.ParentPid = uint32(evt.PS.Parent.PID)
+			pbEvt.ParentName = evt.PS.Parent.Name
+		}
+	}
+	if raw := evt.MarshalJSON(); raw != nil {
+		pbEvt.RawEvent = raw
+	}
+	if evt.Params != nil {
+		if paramsJSON, err := json.Marshal(evt.Params); err == nil {
+			pbEvt.Params = paramsJSON
+		}
+	}
+	return pbEvt
 }
 
 // Config for the fleet server output.

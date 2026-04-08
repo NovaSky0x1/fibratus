@@ -283,6 +283,33 @@ type Command struct {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Captures: kernel event capture sessions
+// ═══════════════════════════════════════════════════════════════
+
+// Capture status values
+const (
+	CaptureActive    = "active"
+	CaptureCompleted = "completed"
+	CaptureFailed    = "failed"
+	CaptureCancelled = "cancelled"
+)
+
+// Capture represents a kernel event capture session on an agent.
+type Capture struct {
+	ID            string     `json:"id"`
+	OrgID         string     `json:"org_id"`
+	AgentID       string     `json:"agent_id"`
+	AgentHostname string     `json:"agent_hostname"`
+	Filter        string     `json:"filter"`
+	Status        string     `json:"status"`
+	EventCount    int64      `json:"event_count"`
+	DurationSec   int        `json:"duration_sec"`
+	CreatedBy     string     `json:"created_by,omitempty"`
+	StartedAt     time.Time  `json:"started_at"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Macros: reusable filter expressions for detection rules
 // ═══════════════════════════════════════════════════════════════
 

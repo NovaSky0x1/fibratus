@@ -32,6 +32,7 @@ import (
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
+	fleetserver "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
 )
 
 // WindowsExecutor executes fleet commands on Windows endpoints.
@@ -563,58 +564,55 @@ func (e *WindowsExecutor) getRegistry(cmd *fleet.Command) (json.RawMessage, erro
 	return result, nil
 }
 
-// startCapture starts a kernel event capture in the background.
+// startCapture activates capture mode on the running ETW pipeline.
+// Events matching the filter are tagged with capture_id and streamed to the server.
 func (e *WindowsExecutor) startCapture(cmd *fleet.Command) (json.RawMessage, error) {
 	var payload struct {
-		Filter   string `json:"filter"`
-		Duration int    `json:"duration"` // seconds, 0 = indefinite
+		CaptureID string `json:"capture_id"`
+		Filter    string `json:"filter"`
+		Duration  int    `json:"duration"` // seconds, 0 = indefinite
 	}
 	json.Unmarshal(cmd.Payload, &payload)
 
-	exe, _ := os.Executable()
-	captureDir := filepath.Join(filepath.Dir(exe), "..", "captures")
-	os.MkdirAll(captureDir, 0o755)
-	capturePath := filepath.Join(captureDir, fmt.Sprintf("capture-%d.kcap", time.Now().Unix()))
-
-	args := []string{"capture", "-o", capturePath}
-	if payload.Filter != "" {
-		args = append(args, payload.Filter)
+	if payload.CaptureID == "" {
+		return nil, fmt.Errorf("capture_id required")
 	}
 
-	c := exec.Command(exe, args...)
-	if err := c.Start(); err != nil {
-		return nil, fmt.Errorf("start capture: %v", err)
+	// Activate capture mode on the fleet output — events matching the filter
+	// will be tagged with capture_id and bypass the security-relevance filter.
+	fleetserver.SetCaptureState(payload.CaptureID, nil)
+
+	// Auto-stop after duration (if specified)
+	if payload.Duration > 0 {
+		go func() {
+			time.Sleep(time.Duration(payload.Duration) * time.Second)
+			if fleetserver.GetCaptureID() == payload.CaptureID {
+				fleetserver.ClearCaptureState()
+			}
+		}()
 	}
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"started":      true,
-		"capture_path": capturePath,
-		"pid":          c.Process.Pid,
-		"filter":       payload.Filter,
+		"started":    true,
+		"capture_id": payload.CaptureID,
+		"filter":     payload.Filter,
 	})
 	return result, nil
 }
 
-// stopCapture stops a running capture by PID.
+// stopCapture deactivates capture mode on the running ETW pipeline.
 func (e *WindowsExecutor) stopCapture(cmd *fleet.Command) (json.RawMessage, error) {
 	var payload struct {
-		PID int `json:"pid"`
+		CaptureID string `json:"capture_id"`
 	}
 	json.Unmarshal(cmd.Payload, &payload)
 
-	if payload.PID <= 0 {
-		return nil, fmt.Errorf("capture pid required")
-	}
-
-	out, err := runCmd("taskkill", "/F", "/PID", fmt.Sprintf("%d", payload.PID))
-	if err != nil {
-		return nil, fmt.Errorf("stop capture: %s: %v", out, err)
-	}
+	captureID := fleetserver.GetCaptureID()
+	fleetserver.ClearCaptureState()
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"stopped": true,
-		"pid":     payload.PID,
-		"message": strings.TrimSpace(out),
+		"stopped":    true,
+		"capture_id": captureID,
 	})
 	return result, nil
 }
