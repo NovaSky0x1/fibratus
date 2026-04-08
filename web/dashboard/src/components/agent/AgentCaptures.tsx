@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, Capture, CaptureEvent } from '../../lib/api'
 import {
   HardDrive, Play, Square, Search, Filter, Loader2, Trash2,
-  Clock, ChevronDown, ChevronRight, ArrowDown, Pause, X,
+  Clock, ChevronDown, ChevronRight, ArrowDown, X,
   Eye, RotateCw,
 } from 'lucide-react'
 
@@ -215,7 +215,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
 
   // ── Render helpers ────────────────────────────
 
-  const renderEventRow = (evt: CaptureEvent, isLive: boolean) => {
+  const renderEventRow = (evt: CaptureEvent) => {
     const isExpanded = expandedEvent === evt.id
     return (
       <div key={evt.id}>
@@ -414,7 +414,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                 Waiting for events...
               </div>
             )}
-            {liveEvents.map(evt => renderEventRow(evt, true))}
+            {liveEvents.map(evt => renderEventRow(evt))}
           </div>
         </div>
       )}
@@ -535,7 +535,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                 {browseSearch ? 'No events match your search' : 'No events in this capture'}
               </div>
             )}
-            {browseEvents.map(evt => renderEventRow(evt, false))}
+            {browseEvents.map(evt => renderEventRow(evt))}
             {browseEvents.length >= 200 && (
               <div className="flex justify-center py-3 border-t border-slate-800">
                 <button
