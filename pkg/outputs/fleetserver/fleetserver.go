@@ -449,7 +449,7 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 		}
 	}
 
-	telBatch := &pb.TelemetryBatch{
+	pbBatch := &pb.TelemetryBatch{
 		AgentId:  agentID,
 		OrgId:    f.orgID,
 		Hostname: f.hostname,
@@ -465,7 +465,7 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 		return fmt.Errorf("fleet output: open stream: %v", err)
 	}
 
-	if err := stream.Send(telBatch); err != nil {
+	if err := stream.Send(pbBatch); err != nil {
 		return fmt.Errorf("fleet output: send batch: %v", err)
 	}
 
