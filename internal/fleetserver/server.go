@@ -334,6 +334,8 @@ func (s *Server) Run(ctx context.Context) error {
 		// Agents
 		case subpath == "/agents" && r.Method == http.MethodGet:
 			agentHandler.List(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/tamper-protection") && r.Method == http.MethodPut:
+			agentHandler.SetTamperProtection(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/heartbeat-history") && r.Method == http.MethodGet:
 			agentHandler.HeartbeatHistory(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/events") && r.Method == http.MethodGet:

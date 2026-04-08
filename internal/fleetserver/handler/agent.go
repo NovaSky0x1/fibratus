@@ -228,6 +228,44 @@ func (h *AgentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SetTamperProtection handles PUT /api/v1/orgs/{org_id}/agents/{id}/tamper-protection
+func (h *AgentHandler) SetTamperProtection(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/agents/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+	agentID := strings.TrimSuffix(parts[1], "/tamper-protection")
+	agentID = strings.TrimSuffix(agentID, "/")
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := decodeBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	agent, err := h.agents.Get(r.Context(), orgID, agentID)
+	if err != nil || agent == nil {
+		writeError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+	agent.TamperProtection = req.Enabled
+	if err := h.agents.Update(r.Context(), agent); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update tamper protection")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"tamper_protection": req.Enabled}})
+}
+
 // HeartbeatHistory handles GET /api/v1/orgs/{org_id}/agents/{id}/heartbeat-history
 func (h *AgentHandler) HeartbeatHistory(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())

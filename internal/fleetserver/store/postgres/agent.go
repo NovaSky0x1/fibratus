@@ -68,7 +68,8 @@ func (s *AgentStore) Get(ctx context.Context, orgID, id string) (*fleet.Agent, e
 	row := s.db.QueryRowContext(ctx,
 		`SELECT a.id, a.org_id, a.hostname, a.os_version, a.engine_version, a.group_id,
 				COALESCE(g.name, '') as group_name, a.tags, a.status,
-				a.last_heartbeat, a.registered_at, a.updated_at
+				a.last_heartbeat, a.registered_at, a.updated_at,
+				COALESCE(a.tamper_protection, false), COALESCE(a.isolated, false)
 		 FROM agents a
 		 LEFT JOIN agent_groups g ON a.group_id = g.id
 		 WHERE a.id = $1 AND a.org_id = $2`, id, orgID)
@@ -79,7 +80,8 @@ func (s *AgentStore) GetByHostname(ctx context.Context, orgID, hostname string) 
 	row := s.db.QueryRowContext(ctx,
 		`SELECT a.id, a.org_id, a.hostname, a.os_version, a.engine_version, a.group_id,
 				COALESCE(g.name, '') as group_name, a.tags, a.status,
-				a.last_heartbeat, a.registered_at, a.updated_at
+				a.last_heartbeat, a.registered_at, a.updated_at,
+				COALESCE(a.tamper_protection, false), COALESCE(a.isolated, false)
 		 FROM agents a
 		 LEFT JOIN agent_groups g ON a.group_id = g.id
 		 WHERE a.hostname = $1 AND a.org_id = $2`, hostname, orgID)
@@ -89,7 +91,8 @@ func (s *AgentStore) GetByHostname(ctx context.Context, orgID, hostname string) 
 func (s *AgentStore) List(ctx context.Context, orgID string, opts fleet.AgentListOptions) ([]*fleet.Agent, int, error) {
 	query := `SELECT a.id, a.org_id, a.hostname, a.os_version, a.engine_version, a.group_id,
 				COALESCE(g.name, '') as group_name, a.tags, a.status,
-				a.last_heartbeat, a.registered_at, a.updated_at
+				a.last_heartbeat, a.registered_at, a.updated_at,
+				COALESCE(a.tamper_protection, false), COALESCE(a.isolated, false)
 			  FROM agents a
 			  LEFT JOIN agent_groups g ON a.group_id = g.id
 			  WHERE a.org_id = $1`
@@ -165,10 +168,10 @@ func (s *AgentStore) Update(ctx context.Context, agent *fleet.Agent) error {
 	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE agents SET hostname=$3, os_version=$4, engine_version=$5,
-			group_id=$6, tags=$7, status=$8, updated_at=NOW()
+			group_id=$6, tags=$7, status=$8, tamper_protection=$9, isolated=$10, updated_at=NOW()
 		 WHERE id=$1 AND org_id=$2`,
 		agent.ID, agent.OrgID, agent.Hostname, agent.OSVersion, agent.EngineVersion,
-		groupID, tags, string(agent.Status),
+		groupID, tags, string(agent.Status), agent.TamperProtection, agent.Isolated,
 	)
 	return err
 }
@@ -282,6 +285,7 @@ func scanAgent(row *sql.Row) (*fleet.Agent, error) {
 		&a.ID, &a.OrgID, &a.Hostname, &a.OSVersion, &a.EngineVersion,
 		&groupID, &a.GroupName, &tagsJSON, &status,
 		&lastHB, &a.RegisteredAt, &a.UpdatedAt,
+		&a.TamperProtection, &a.Isolated,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -312,6 +316,7 @@ func scanAgentRows(rows *sql.Rows) (*fleet.Agent, error) {
 		&a.ID, &a.OrgID, &a.Hostname, &a.OSVersion, &a.EngineVersion,
 		&groupID, &a.GroupName, &tagsJSON, &status,
 		&lastHB, &a.RegisteredAt, &a.UpdatedAt,
+		&a.TamperProtection, &a.Isolated,
 	)
 	if err != nil {
 		return nil, err
