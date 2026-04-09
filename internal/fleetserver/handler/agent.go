@@ -32,12 +32,14 @@ import (
 
 // AgentHandler handles agent-related API requests.
 type AgentHandler struct {
-	agents store.AgentStore
+	agents   store.AgentStore
+	accounts store.AccountStore
+	orgs     store.OrgStore
 }
 
 // NewAgentHandler creates a new agent handler.
-func NewAgentHandler(agents store.AgentStore) *AgentHandler {
-	return &AgentHandler{agents: agents}
+func NewAgentHandler(agents store.AgentStore, accounts store.AccountStore, orgs store.OrgStore) *AgentHandler {
+	return &AgentHandler{agents: agents, accounts: accounts, orgs: orgs}
 }
 
 // Register handles POST /api/v1/agents/register
@@ -257,6 +259,24 @@ func (h *AgentHandler) SetTamperProtection(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusNotFound, "agent not found")
 		return
 	}
+
+	// Block disabling if account-wide or org-wide tamper protection is enforced
+	if !req.Enabled {
+		accountID := ctxutil.AccountIDFromContext(r.Context())
+		if accountID != "" {
+			account, _ := h.accounts.Get(r.Context(), accountID)
+			if account != nil && account.TamperProtectionEnabled {
+				writeError(w, http.StatusForbidden, "tamper protection is enforced account-wide and cannot be disabled per-agent")
+				return
+			}
+		}
+		org, _ := h.orgs.Get(r.Context(), orgID)
+		if org != nil && org.TamperProtectionEnabled {
+			writeError(w, http.StatusForbidden, "tamper protection is enforced for this organization and cannot be disabled per-agent")
+			return
+		}
+	}
+
 	agent.TamperProtection = req.Enabled
 	if err := h.agents.Update(r.Context(), agent); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update tamper protection")

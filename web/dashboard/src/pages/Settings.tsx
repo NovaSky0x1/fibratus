@@ -615,6 +615,26 @@ export default function Settings() {
   )
 }
 
+function ToggleSwitch({ enabled, onToggle, disabled }: { enabled: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={enabled}
+      onClick={onToggle}
+      disabled={disabled}
+      className={'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-fibratus-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed ' +
+        (enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600')
+      }
+    >
+      <span
+        className={'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
+          (enabled ? 'translate-x-5' : 'translate-x-0')
+        }
+      />
+    </button>
+  )
+}
+
 function ProtectionSettingsSection() {
   const queryClient = useQueryClient()
 
@@ -622,18 +642,29 @@ function ProtectionSettingsSection() {
     queryKey: ['account-settings'],
     queryFn: () => api.getAccountSettings(),
   })
-  const settings = settingsData?.data as { tamper_protection_enabled: boolean; isolation_whitelist: string[] } | undefined
+  const settings = settingsData?.data as { tamper_protection_enabled: boolean; isolation_whitelist: string[]; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> } | undefined
   const tamperEnabled = settings?.tamper_protection_enabled ?? false
   const whitelist = settings?.isolation_whitelist ?? []
+  const orgProtection = settings?.org_protection ?? []
 
   const [newWhitelistEntry, setNewWhitelistEntry] = useState('')
   const [tamperToggling, setTamperToggling] = useState(false)
+  const [orgToggling, setOrgToggling] = useState<string | null>(null)
 
   const tamperMutation = useMutation({
     mutationFn: (enabled: boolean) => api.updateAccountSettings({ tamper_protection_enabled: enabled }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['account-settings'] })
     },
+  })
+
+  const orgTamperMutation = useMutation({
+    mutationFn: ({ orgId, enabled }: { orgId: string; enabled: boolean }) => api.updateOrgTamperProtection(orgId, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-settings'] })
+      setOrgToggling(null)
+    },
+    onError: () => setOrgToggling(null),
   })
 
   const whitelistMutation = useMutation({
@@ -650,6 +681,11 @@ function ProtectionSettingsSection() {
     } finally {
       setTamperToggling(false)
     }
+  }
+
+  const handleOrgTamperToggle = async (orgId: string, currentState: boolean) => {
+    setOrgToggling(orgId)
+    orgTamperMutation.mutate({ orgId, enabled: !currentState })
   }
 
   const handleAddWhitelist = () => {
@@ -674,30 +710,45 @@ function ProtectionSettingsSection() {
           </p>
         </div>
 
-        <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
+        {/* Account-wide toggle */}
+        <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50 space-y-5">
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Enable tamper protection for all agents</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Enable for all organizations</p>
               <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                When enabled, all agents will have tamper protection active. Individual agent toggles will be locked.
+                When enabled, all agents across all organizations will have tamper protection enforced. Individual agent and organization toggles will be locked.
               </p>
             </div>
-            <button
-              role="switch"
-              aria-checked={tamperEnabled}
-              onClick={handleTamperToggle}
-              disabled={tamperToggling || tamperMutation.isPending}
-              className={'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-fibratus-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed ' +
-                (tamperEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600')
-              }
-            >
-              <span
-                className={'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
-                  (tamperEnabled ? 'translate-x-5' : 'translate-x-0')
-                }
-              />
-            </button>
+            <ToggleSwitch enabled={tamperEnabled} onToggle={handleTamperToggle} disabled={tamperToggling || tamperMutation.isPending} />
           </div>
+
+          {/* Per-org toggles */}
+          {orgProtection.length > 0 && (
+            <div className="border-t border-gray-100 dark:border-slate-700 pt-4">
+              <p className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Per-Organization</p>
+              <div className="space-y-3">
+                {orgProtection.map(org => {
+                  const effectiveEnabled = tamperEnabled || org.tamper_protection_enabled
+                  const lockedByAccount = tamperEnabled
+                  return (
+                    <div key={org.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-slate-900/50">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-900 dark:text-slate-200 font-medium">{org.name}</span>
+                        {lockedByAccount && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Locked by account policy</span>
+                        )}
+                      </div>
+                      <ToggleSwitch
+                        enabled={effectiveEnabled}
+                        onToggle={() => handleOrgTamperToggle(org.id, org.tamper_protection_enabled)}
+                        disabled={lockedByAccount || orgToggling === org.id || orgTamperMutation.isPending}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

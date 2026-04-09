@@ -381,6 +381,7 @@ CREATE INDEX IF NOT EXISTS idx_hb_history_agent ON heartbeat_history(agent_id, t
 -- ═══════════════════════════════════════════════════════════════
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tamper_protection_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS isolation_whitelist JSONB DEFAULT '[]';
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tamper_protection_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS tamper_protection BOOLEAN DEFAULT FALSE;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS isolated BOOLEAN DEFAULT FALSE;
 

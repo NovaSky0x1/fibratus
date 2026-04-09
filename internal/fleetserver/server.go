@@ -144,7 +144,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
 	totpHandler := handler.NewTOTPHandler(userStore)
-	agentHandler := handler.NewAgentHandler(agentStore)
+	agentHandler := handler.NewAgentHandler(agentStore, accountStore, orgStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore, telemetryStore)
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore, macroStore, auditStore, userStore)
@@ -507,6 +507,13 @@ func (s *Server) Run(ctx context.Context) error {
 			requirePermission(fleetauth.PermManageSettings, authHandler.UpdateAccountSettings)(w, r)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/orgs/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tamper-protection") && r.Method == http.MethodPut {
+			requirePermission(fleetauth.PermManageSettings, authHandler.UpdateOrgTamperProtection)(w, r)
+		} else {
+			http.Error(w, "not found", http.StatusNotFound)
 		}
 	})
 

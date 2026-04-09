@@ -50,6 +50,15 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
   const [sysInfo, setSysInfo] = useState<Record<string, string> | null>(null)
   const [sysInfoLoading, setSysInfoLoading] = useState(false)
 
+  // Account/org-level tamper protection enforcement
+  const { data: settingsData } = useQuery({
+    queryKey: ['account-settings'],
+    queryFn: () => api.getAccountSettings(),
+    staleTime: 60000,
+  })
+  const accountSettings = settingsData?.data as { tamper_protection_enabled: boolean; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> } | undefined
+  const tamperLockedByPolicy = !!(accountSettings?.tamper_protection_enabled || accountSettings?.org_protection?.some(o => o.id === agent.org_id && o.tamper_protection_enabled))
+
   // Tamper protection state
   const [tamperResult, setTamperResult] = useState<ActionResult | null>(null)
   const [tamperToggling, setTamperToggling] = useState(false)
@@ -239,18 +248,26 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
-              (agent.tamper_protection
-                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
-            }>
-              {agent.tamper_protection ? 'Active' : 'Inactive'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+                (agent.tamper_protection
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+              }>
+                {agent.tamper_protection ? 'Active' : 'Inactive'}
+              </span>
+              {tamperLockedByPolicy && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                  Enforced by policy
+                </span>
+              )}
+            </div>
             <button
               role="switch"
               aria-checked={agent.tamper_protection}
               onClick={handleTamperToggle}
-              disabled={tamperToggling || isPending}
+              disabled={tamperToggling || isPending || tamperLockedByPolicy}
+              title={tamperLockedByPolicy ? 'Tamper protection is enforced by account or organization policy' : undefined}
               className={'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-fibratus-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed ' +
                 (agent.tamper_protection ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600')
               }

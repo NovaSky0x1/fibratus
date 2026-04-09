@@ -374,13 +374,65 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Include org-level tamper protection status
+	orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
+	orgProtection := make([]map[string]interface{}, 0, len(orgs))
+	for _, org := range orgs {
+		orgProtection = append(orgProtection, map[string]interface{}{
+			"id":                        org.ID,
+			"name":                      org.Name,
+			"tamper_protection_enabled": org.TamperProtectionEnabled,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"require_2fa":                account.Require2FA,
 		"account_name":               account.Name,
 		"plan":                        account.Plan,
 		"tamper_protection_enabled":   account.TamperProtectionEnabled,
 		"isolation_whitelist":         account.IsolationWhitelist,
+		"org_protection":             orgProtection,
 	}})
+}
+
+// UpdateOrgTamperProtection handles PUT /api/v1/account/orgs/{org_id}/tamper-protection
+func (h *AuthHandler) UpdateOrgTamperProtection(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	// Extract org ID from path
+	parts := strings.Split(r.URL.Path, "/orgs/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "org ID required")
+		return
+	}
+	orgID := strings.TrimSuffix(parts[len(parts)-1], "/tamper-protection")
+	orgID = strings.TrimSuffix(orgID, "/")
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	org, err := h.orgs.Get(r.Context(), orgID)
+	if err != nil || org == nil || org.AccountID != accountID {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+
+	if err := h.orgs.UpdateTamperProtection(r.Context(), orgID, req.Enabled); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update org tamper protection")
+		return
+	}
+
+	log.Infof("fleet: org %s tamper protection set to %v", orgID, req.Enabled)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"tamper_protection_enabled": req.Enabled}})
 }
 
 // ListOrganizations handles GET /api/v1/account/organizations

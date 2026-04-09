@@ -42,6 +42,7 @@ type OrgStore interface {
 	Get(ctx context.Context, id string) (*fleet.Organization, error)
 	ListByAccount(ctx context.Context, accountID string) ([]*fleet.Organization, error)
 	Delete(ctx context.Context, id string) error
+	UpdateTamperProtection(ctx context.Context, id string, enabled bool) error
 }
 
 // UserStore manages user persistence and authentication.

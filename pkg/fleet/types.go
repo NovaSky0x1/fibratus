@@ -45,13 +45,14 @@ type Account struct {
 // (e.g., "Production", "Staging", "US-East"). Each org has
 // its own agents, rules, detections, and enrollment tokens.
 type Organization struct {
-	ID         string    `json:"id"`
-	AccountID  string    `json:"account_id"`
-	Name       string    `json:"name"`
-	Slug       string    `json:"slug"`
-	AgentCount int       `json:"agent_count,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                      string    `json:"id"`
+	AccountID               string    `json:"account_id"`
+	Name                    string    `json:"name"`
+	Slug                    string    `json:"slug"`
+	AgentCount              int       `json:"agent_count,omitempty"`
+	TamperProtectionEnabled bool      `json:"tamper_protection_enabled"`
+	CreatedAt               time.Time `json:"created_at"`
+	UpdatedAt               time.Time `json:"updated_at"`
 }
 
 // User represents a dashboard user with access to one or more organizations.

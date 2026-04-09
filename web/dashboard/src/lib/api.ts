@@ -449,9 +449,11 @@ export const api = {
     fetchApi<unknown>(orgPath(`/github-sync/${id}/trigger`), { method: 'POST' }),
 
   // Account Settings
-  getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string; tamper_protection_enabled: boolean; isolation_whitelist: string[] }>('/account/settings'),
+  getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string; tamper_protection_enabled: boolean; isolation_whitelist: string[]; org_protection: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> }>('/account/settings'),
   updateAccountSettings: (data: { require_2fa?: boolean; tamper_protection_enabled?: boolean; isolation_whitelist?: string[] }) =>
     fetchApi<{ require_2fa: boolean; tamper_protection_enabled: boolean; isolation_whitelist: string[] }>('/account/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  updateOrgTamperProtection: (orgId: string, enabled: boolean) =>
+    fetchApi<void>(`/account/orgs/${orgId}/tamper-protection`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
 
   // Admin (root only)
   adminGetAccounts: () => fetchApi<unknown[]>('/admin/accounts'),
