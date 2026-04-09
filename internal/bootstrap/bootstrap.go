@@ -367,7 +367,7 @@ func (f *App) Run(args []string) error {
 			os.MkdirAll(captureDir, 0o755)
 			capPath := filepath.Join(captureDir, fmt.Sprintf("capture-%s.kcap", captureID[:8]))
 
-			w, err := cap.NewWriter(capPath, psnap, hsnap)
+			w, err := cap.NewWriter(capPath, f.psnap, f.hsnap)
 			if err != nil {
 				return nil, "", nil, fmt.Errorf("create .kcap writer: %w", err)
 			}
