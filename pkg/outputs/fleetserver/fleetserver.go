@@ -358,25 +358,19 @@ func securityRelevant(batch *event.Batch) *event.Batch {
 // function. Registered by bootstrap at startup to avoid import cycles.
 var CaptureFilterCompiler func(expr string) (func(*event.Event) bool, error)
 
-// CaptureWriterStart creates a cap.Writer for a .kcap file and returns
-// a channel to feed events + a close function. Registered by bootstrap.
-// Returns (eventCh, kcapPath, closeFn, error).
-var CaptureWriterStart func(captureID string) (chan<- *event.Event, string, func(), error)
-
 // captureState tracks the active capture session for event forking.
 var captureState struct {
 	sync.RWMutex
-	active    bool
-	id        string
-	filterFn  func(*event.Event) bool // nil = capture all events
-	writerCh  chan<- *event.Event      // feeds cap.Writer (nil if no .kcap)
-	kcapPath  string                   // path to local .kcap file
-	closeFn   func()                   // closes cap.Writer
+	active   bool
+	id       string
+	filterFn func(*event.Event) bool // nil = capture all events
+	writer   *kcapWriter             // local .kcap file writer
+	kcapPath string                  // path to local .kcap file
 }
 
 // SetCaptureState activates capture mode. Matching events will be tagged
 // with the capture ID and bypass the security-relevance filter.
-// Also starts a local .kcap writer if CaptureWriterStart is registered.
+// Also starts a local .kcap writer (pure-Go, no CGO needed).
 func SetCaptureState(captureID string, filterFn func(*event.Event) bool) {
 	captureState.Lock()
 	defer captureState.Unlock()
@@ -384,17 +378,19 @@ func SetCaptureState(captureID string, filterFn func(*event.Event) bool) {
 	captureState.id = captureID
 	captureState.filterFn = filterFn
 
-	// Start .kcap writer if available
-	if CaptureWriterStart != nil {
-		ch, path, closeFn, err := CaptureWriterStart(captureID)
-		if err != nil {
-			log.Warnf("fleet output: failed to start .kcap writer: %v", err)
-		} else {
-			captureState.writerCh = ch
-			captureState.kcapPath = path
-			captureState.closeFn = closeFn
-			log.Infof("fleet output: capture %s writing .kcap to %s", captureID, path)
-		}
+	// Start local .kcap writer
+	exe, _ := os.Executable()
+	captureDir := filepath.Join(filepath.Dir(exe), "..", "captures")
+	os.MkdirAll(captureDir, 0o755)
+	capPath := filepath.Join(captureDir, fmt.Sprintf("capture-%s.kcap", captureID[:8]))
+
+	w, err := newKcapWriter(capPath)
+	if err != nil {
+		log.Warnf("fleet output: failed to create .kcap writer: %v", err)
+	} else {
+		captureState.writer = w
+		captureState.kcapPath = capPath
+		log.Infof("fleet output: capture %s writing .kcap to %s", captureID, capPath)
 	}
 
 	log.Infof("fleet output: capture %s activated", captureID)
@@ -407,16 +403,15 @@ func ClearCaptureState() string {
 	kcapPath := captureState.kcapPath
 	if captureState.active {
 		log.Infof("fleet output: capture %s deactivated", captureState.id)
-		if captureState.closeFn != nil {
-			captureState.closeFn()
+		if captureState.writer != nil {
+			captureState.writer.close()
 		}
 	}
 	captureState.active = false
 	captureState.id = ""
 	captureState.filterFn = nil
-	captureState.writerCh = nil
+	captureState.writer = nil
 	captureState.kcapPath = ""
-	captureState.closeFn = nil
 	return kcapPath
 }
 
@@ -444,7 +439,7 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 	capActive := captureState.active
 	capID := captureState.id
 	capFilter := captureState.filterFn
-	capWriterCh := captureState.writerCh
+	capWriter := captureState.writer
 	captureState.RUnlock()
 
 	// Build capture events from the unfiltered batch
@@ -453,12 +448,9 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 		for _, evt := range batch.Events {
 			if capFilter == nil || capFilter(evt) {
 				captureEvents = append(captureEvents, evt)
-				// Also feed to local .kcap writer
-				if capWriterCh != nil {
-					select {
-					case capWriterCh <- evt:
-					default: // don't block if writer is slow
-					}
+				// Also write to local .kcap file
+				if capWriter != nil {
+					capWriter.writeEvent(evt)
 				}
 			}
 		}
