@@ -1,44 +1,54 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, Capture, CaptureEvent } from '../../lib/api'
 import {
   HardDrive, Play, Square, Search, Filter, Loader2, Trash2,
-  Clock, ChevronDown, ChevronRight, ArrowDown, X,
-  Eye, RotateCw,
+  Clock, ArrowDown, X, Eye, RotateCw, ChevronDown,
 } from 'lucide-react'
 
 // ═════════════════════════════════════════════════
-// Event name → color mapping for the terminal
+// Quick filter presets — real Fibratus QL syntax
 // ═════════════════════════════════════════════════
 
-const eventColors: Record<string, string> = {
-  CreateProcess: 'text-green-400',
-  TerminateProcess: 'text-red-400',
-  CreateFile: 'text-blue-400',
-  WriteFile: 'text-blue-300',
-  DeleteFile: 'text-red-300',
-  RenameFile: 'text-yellow-300',
-  RegSetValue: 'text-purple-400',
-  RegCreateKey: 'text-purple-300',
-  RegDeleteKey: 'text-red-300',
-  RegDeleteValue: 'text-red-300',
-  Connect: 'text-cyan-400',
-  Accept: 'text-cyan-300',
-  QueryDns: 'text-teal-400',
-  ReplyDns: 'text-teal-300',
-  LoadImage: 'text-amber-400',
-  UnloadImage: 'text-amber-300',
-  SetThreadContext: 'text-rose-400',
+const quickFilters = [
+  { label: 'All Events', filter: '', desc: 'Capture everything (high volume)' },
+  { label: 'Process Activity', filter: 'spawn_process or terminate_process', desc: 'Process creation and termination' },
+  { label: 'Suspicious Spawns', filter: "spawn_process and (ps.parent.name imatches '(?i)winword|excel|powerpnt|outlook|acrobat' or ps.name imatches '(?i)cmd|powershell|pwsh|wscript|cscript|mshta|certutil|bitsadmin|rundll32')", desc: 'Office children, LOLBins' },
+  { label: 'PowerShell', filter: "spawn_process and ps.name imatches '(?i)powershell|pwsh'", desc: 'PowerShell execution' },
+  { label: 'Network Connections', filter: 'connect_process or accept_process', desc: 'Outbound + inbound TCP/UDP' },
+  { label: 'DNS Queries', filter: 'query_dns', desc: 'All DNS lookups' },
+  { label: 'File Mutations', filter: 'create_file or delete_file or rename_file', desc: 'File creates, deletes, renames' },
+  { label: 'Registry Changes', filter: 'set_reg_value or create_reg_key or delete_reg_key', desc: 'Registry writes and key ops' },
+  { label: 'DLL Loads', filter: 'load_image', desc: 'Module/DLL loading' },
+  { label: 'Credential Access', filter: "spawn_process and ps.cmdline imatches '(?i)lsass|sam|ntds|credential|mimikatz|sekurlsa'", desc: 'LSASS access, credential tools' },
+  { label: 'Defense Evasion', filter: "spawn_process and ps.name imatches '(?i)reg|attrib|icacls|takeown|sc|bcdedit|wevtutil'", desc: 'Common defense evasion binaries' },
+  { label: 'Lateral Movement', filter: "spawn_process and ps.name imatches '(?i)psexec|wmic|winrm|mstsc|net'", desc: 'Remote execution and admin tools' },
+]
+
+// ═════════════════════════════════════════════════
+// Format events to match local `fibratus run` output
+// Template: {{ .Seq }} {{ .Timestamp }} - {{ .CPU }} {{ .Process }} ({{ .Pid }}) - {{ .Type }} ({{ .Params }})
+// ═════════════════════════════════════════════════
+
+function formatEventLine(evt: CaptureEvent): string {
+  const ts = evt.timestamp ? new Date(evt.timestamp).toISOString() : ''
+  const proc = evt.process_name || '?'
+  const pid = evt.pid || 0
+  const name = evt.event_name || '?'
+  const params = formatParams(evt.params)
+  return `${evt.seq} ${ts} ${proc} (${pid}) - ${name} (${params})`
 }
 
-function getEventColor(name: string): string {
-  return eventColors[name] || 'text-slate-400'
-}
-
-function formatTime(ts: string): string {
-  const d = new Date(ts)
-  return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
-    '.' + String(d.getMilliseconds()).padStart(3, '0')
+function formatParams(params: Record<string, unknown> | null | undefined): string {
+  if (!params || typeof params !== 'object') return ''
+  const entries = Object.entries(params)
+    .filter(([k]) => !k.startsWith('_')) // skip internal fields
+    .sort(([a], [b]) => a.localeCompare(b))
+  if (entries.length === 0) return ''
+  return entries.map(([k, v]) => {
+    const val = typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')
+    return `${k}\u27A0 ${val}`
+  }).join(', ')
 }
 
 function formatElapsed(startedAt: string): string {
@@ -49,35 +59,11 @@ function formatElapsed(startedAt: string): string {
 }
 
 function formatDuration(start: string, end: string | null): string {
-  if (!end) return '—'
+  if (!end) return '\u2014'
   const sec = Math.floor((new Date(end).getTime() - new Date(start).getTime()) / 1000)
   if (sec < 60) return `${sec}s`
   return `${Math.floor(sec / 60)}m ${sec % 60}s`
 }
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + '...' : s
-}
-
-// ═════════════════════════════════════════════════
-// Quick filter presets based on Fibratus QL
-// ═════════════════════════════════════════════════
-
-const quickFilters = [
-  { label: 'All Events', filter: '', desc: 'Capture everything (high volume)' },
-  { label: 'Process Activity', filter: 'spawn_process or terminate_process', desc: 'Process creation and termination' },
-  { label: 'Suspicious Spawns', filter: "spawn_process and (ps.parent.name imatches '(?i)winword|excel|powerpnt|outlook|acrobat' or ps.name imatches '(?i)cmd|powershell|pwsh|wscript|cscript|mshta|certutil|bitsadmin|rundll32')", desc: 'Child processes from Office, script engines, LOLBins' },
-  { label: 'PowerShell', filter: "spawn_process and ps.name imatches '(?i)powershell|pwsh'", desc: 'PowerShell execution' },
-  { label: 'Network Connections', filter: 'connect_process or accept_process', desc: 'Outbound and inbound TCP/UDP' },
-  { label: 'DNS Queries', filter: 'query_dns', desc: 'All DNS lookups' },
-  { label: 'File Mutations', filter: 'create_file or delete_file or rename_file', desc: 'File creates, deletes, renames' },
-  { label: 'Registry Changes', filter: 'set_reg_value or create_reg_key or delete_reg_key', desc: 'Registry writes and key operations' },
-  { label: 'DLL Loads', filter: 'load_image', desc: 'Module/DLL loading events' },
-  { label: 'Credential Access', filter: "spawn_process and ps.cmdline imatches '(?i)lsass|sam|ntds|credential|mimikatz|sekurlsa|logonpasswords'", desc: 'LSASS access and credential tools' },
-  { label: 'Defense Evasion', filter: "spawn_process and ps.name imatches '(?i)reg|attrib|icacls|takeown|sc|bcdedit|wevtutil'", desc: 'Common defense evasion binaries' },
-  { label: 'Lateral Movement', filter: "spawn_process and ps.name imatches '(?i)psexec|wmic|winrm|mstsc|net'", desc: 'Remote execution and admin tools' },
-  { label: 'Persistence', filter: "set_reg_value and kevt.arg[key_name] imatches '(?i)run|runonce|startup|services|shell'", desc: 'Registry persistence mechanisms' },
-]
 
 // ═════════════════════════════════════════════════
 // Main component
@@ -87,16 +73,17 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
   const queryClient = useQueryClient()
   const [view, setView] = useState<'control' | 'live' | 'history' | 'browse'>('control')
   const [filterInput, setFilterInput] = useState('')
-  const [durationMin, setDurationMin] = useState(0) // 0 = unlimited
+  const [durationMin, setDurationMin] = useState(0)
   const [showQuickFilters, setShowQuickFilters] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
-  const [expandedEvent, setExpandedEvent] = useState<number | null>(null)
   const [browsingCapture, setBrowsingCapture] = useState<Capture | null>(null)
   const [browseSearch, setBrowseSearch] = useState('')
   const [browseAfter, setBrowseAfter] = useState(0)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const terminalRef = useRef<HTMLDivElement>(null)
   const lastEventIdRef = useRef(0)
+  const [searchTerm, setSearchTerm] = useState('')
 
   // ── Queries ─────────────────────────────────
 
@@ -109,21 +96,20 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
   const activeCapture = captures.find(c => c.status === 'active')
   const completedCaptures = captures.filter(c => c.status !== 'active')
 
-  // Live event polling (only when capture active)
+  // Live event polling
   const { data: liveEventsRes } = useQuery({
     queryKey: ['capture-events-live', activeCapture?.id, lastEventIdRef.current],
     queryFn: () => {
       if (!activeCapture) return { data: [] }
       return api.getCaptureEvents(activeCapture.id, {
         after_id: String(lastEventIdRef.current),
-        limit: '200',
+        limit: '500',
       })
     },
     enabled: !!activeCapture,
     refetchInterval: activeCapture ? 2000 : false,
   })
 
-  // Accumulated live events
   const [liveEvents, setLiveEvents] = useState<CaptureEvent[]>([])
 
   useEffect(() => {
@@ -131,14 +117,12 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     if (newEvents.length > 0) {
       setLiveEvents(prev => {
         const merged = [...prev, ...newEvents]
-        // Keep last 2000 events in memory
-        return merged.length > 2000 ? merged.slice(-2000) : merged
+        return merged.length > 5000 ? merged.slice(-5000) : merged
       })
       lastEventIdRef.current = newEvents[newEvents.length - 1].id
     }
   }, [liveEventsRes])
 
-  // Switch to live view when capture starts
   useEffect(() => {
     if (activeCapture && view === 'control') {
       setView('live')
@@ -150,14 +134,12 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     }
   }, [activeCapture?.id])
 
-  // Auto-scroll terminal
   useEffect(() => {
     if (autoScroll && terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight
     }
   }, [liveEvents, autoScroll])
 
-  // Refresh active capture data
   const { data: activeCaptureDetail } = useQuery({
     queryKey: ['capture-detail', activeCapture?.id],
     queryFn: () => activeCapture ? api.getCapture(activeCapture.id) : null,
@@ -168,17 +150,41 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
 
   // Browse events for completed captures
   const { data: browseEventsRes, isLoading: browseLoading } = useQuery({
-    queryKey: ['capture-events-browse', browsingCapture?.id, browseSearch, browseAfter],
+    queryKey: ['capture-events-browse', browsingCapture?.id, browseAfter],
     queryFn: () => {
       if (!browsingCapture) return { data: [] }
-      const params: Record<string, string> = { limit: '5000' }
-      if (browseSearch) params.search = browseSearch
-      if (browseAfter > 0) params.after_id = String(browseAfter)
-      return api.getCaptureEvents(browsingCapture.id, params)
+      return api.getCaptureEvents(browsingCapture.id, {
+        limit: '10000',
+        ...(browseAfter > 0 ? { after_id: String(browseAfter) } : {}),
+      })
     },
     enabled: !!browsingCapture,
   })
   const browseEvents = (browseEventsRes?.data || []) as CaptureEvent[]
+
+  // Format all lines for terminal display + search
+  const liveLines = useMemo(() =>
+    liveEvents.map(evt => ({ id: evt.id, line: formatEventLine(evt) })),
+    [liveEvents]
+  )
+
+  const browseLines = useMemo(() =>
+    browseEvents.map(evt => ({ id: evt.id, line: formatEventLine(evt) })),
+    [browseEvents]
+  )
+
+  // Client-side search filter
+  const filteredLiveLines = useMemo(() => {
+    if (!searchTerm) return liveLines
+    const lower = searchTerm.toLowerCase()
+    return liveLines.filter(l => l.line.toLowerCase().includes(lower))
+  }, [liveLines, searchTerm])
+
+  const filteredBrowseLines = useMemo(() => {
+    if (!browseSearch) return browseLines
+    const lower = browseSearch.toLowerCase()
+    return browseLines.filter(l => l.line.toLowerCase().includes(lower))
+  }, [browseLines, browseSearch])
 
   // ── Mutations ────────────────────────────────
 
@@ -219,6 +225,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['captures', agentId] })
+      setDeleteConfirm(null)
       if (browsingCapture) {
         setBrowsingCapture(null)
         setView('history')
@@ -230,69 +237,11 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     setBrowsingCapture(cap)
     setBrowseSearch('')
     setBrowseAfter(0)
-    setExpandedEvent(null)
     setView('browse')
   }, [])
 
-  // ── Render helpers ────────────────────────────
-
-  const renderEventRow = (evt: CaptureEvent) => {
-    const isExpanded = expandedEvent === evt.id
-    return (
-      <div key={evt.id}>
-        <div
-          onClick={() => setExpandedEvent(isExpanded ? null : evt.id)}
-          className={'flex items-center gap-3 px-3 py-1 text-xs font-mono cursor-pointer transition-colors ' +
-            (isExpanded
-              ? 'bg-slate-700/50'
-              : 'hover:bg-slate-800/50')
-          }
-        >
-          <span className="text-slate-500 w-[70px] shrink-0 tabular-nums">{formatTime(evt.timestamp)}</span>
-          <span className={`w-[130px] shrink-0 font-medium ${getEventColor(evt.event_name)}`}>{evt.event_name}</span>
-          <span className="text-slate-300 w-[120px] shrink-0 truncate">{evt.process_name || '—'}</span>
-          <span className="text-slate-500 w-[50px] shrink-0 tabular-nums">{evt.pid || ''}</span>
-          <span className="text-slate-400 truncate flex-1 min-w-0">
-            {summarizeEvent(evt)}
-          </span>
-          {isExpanded ? <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" /> : <ChevronRight className="w-3 h-3 text-slate-500 shrink-0" />}
-        </div>
-        {isExpanded && (
-          <div className="px-3 py-3 bg-slate-900/80 border-t border-b border-slate-700/50">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs font-mono mb-3">
-              <div>
-                <span className="text-slate-500">Process: </span>
-                <span className="text-slate-200">{evt.process_name} ({evt.pid})</span>
-              </div>
-              <div>
-                <span className="text-slate-500">Parent: </span>
-                <span className="text-slate-200">{evt.parent_name || '—'} ({evt.parent_pid || '—'})</span>
-              </div>
-              <div className="col-span-2">
-                <span className="text-slate-500">Exe: </span>
-                <span className="text-slate-200 break-all">{evt.process_exe || '—'}</span>
-              </div>
-              <div className="col-span-2">
-                <span className="text-slate-500">Cmdline: </span>
-                <span className="text-slate-200 break-all">{evt.process_cmdline || '—'}</span>
-              </div>
-            </div>
-            {evt.params && Object.keys(evt.params).length > 0 && (
-              <div className="mt-2">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500 block mb-1">Parameters</span>
-                <pre className="text-[11px] text-slate-300 bg-slate-950/60 rounded p-2 overflow-x-auto max-h-48">
-                  {JSON.stringify(evt.params, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    )
-  }
-
   // ═════════════════════════════════════════════════
-  // VIEWS
+  // RENDER
   // ═════════════════════════════════════════════════
 
   return (
@@ -332,34 +281,33 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-medium text-gray-700 dark:text-slate-300">
                   <Filter className="w-3 h-3 inline mr-1" />
-                  Filter Expression
+                  Filter Expression (Fibratus QL)
                 </label>
-                <button
-                  onClick={() => setShowQuickFilters(!showQuickFilters)}
-                  className="text-[10px] text-fibratus-500 hover:text-fibratus-400 font-medium"
+                <button onClick={() => setShowQuickFilters(!showQuickFilters)}
+                  className="text-[10px] text-fibratus-500 hover:text-fibratus-400 font-medium flex items-center gap-1"
                 >
-                  {showQuickFilters ? 'Hide presets' : 'Quick filters'}
+                  Quick filters <ChevronDown className={`w-3 h-3 transition-transform ${showQuickFilters ? 'rotate-180' : ''}`} />
                 </button>
               </div>
               <input
                 type="text" value={filterInput} onChange={e => setFilterInput(e.target.value)}
-                placeholder="e.g., spawn_process and ps.name imatches '(?i)cmd|powershell'"
+                placeholder="e.g., query_dns   |   spawn_process and ps.name = 'cmd.exe'   |   kevt.name = 'Connect' and net.dip != '127.0.0.1'"
                 className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-mono text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-600 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
               />
-              <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Fibratus QL syntax. Empty = capture all events (high volume).</p>
+              <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">
+                Full Fibratus QL — same syntax as local <code className="text-[10px]">fibratus run</code>. Event macros (query_dns, spawn_process) and field expressions (ps.name, file.path, net.dip) both work. Empty = all events.
+              </p>
             </div>
 
             {/* Quick filter presets */}
             {showQuickFilters && (
               <div className="rounded-lg border border-slate-700 bg-slate-900/50 overflow-hidden">
                 <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-slate-500 font-medium border-b border-slate-700/50">
-                  Quick Filter Presets
+                  Presets
                 </div>
                 <div className="max-h-64 overflow-y-auto divide-y divide-slate-800/50">
                   {quickFilters.map((qf, i) => (
-                    <button
-                      key={i}
-                      onClick={() => { setFilterInput(qf.filter); setShowQuickFilters(false) }}
+                    <button key={i} onClick={() => { setFilterInput(qf.filter); setShowQuickFilters(false) }}
                       className="w-full text-left px-3 py-2 hover:bg-slate-800/50 transition-colors group"
                     >
                       <div className="flex items-center justify-between">
@@ -387,28 +335,21 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                     (durationMin === 0
                       ? 'border-fibratus-500 bg-fibratus-50 dark:bg-fibratus-900/30 text-fibratus-700 dark:text-fibratus-400'
                       : 'border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700')
-                  }
-                >
-                  Manual
-                </button>
+                  }>Manual</button>
                 {[1, 5, 15, 30, 60].map(m => (
                   <button key={m} onClick={() => setDurationMin(m)}
                     className={'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ' +
                       (durationMin === m
                         ? 'border-fibratus-500 bg-fibratus-50 dark:bg-fibratus-900/30 text-fibratus-700 dark:text-fibratus-400'
                         : 'border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700')
-                    }
-                  >
-                    {m < 60 ? `${m}min` : '1hr'}
-                  </button>
+                    }>{m < 60 ? `${m}min` : '1hr'}</button>
                 ))}
               </div>
               <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">
-                {durationMin === 0 ? 'Capture runs until you manually stop it.' : `Auto-stops after ${durationMin} minute${durationMin > 1 ? 's' : ''}.`}
+                {durationMin === 0 ? 'Runs until you stop it.' : `Auto-stops after ${durationMin} minute${durationMin > 1 ? 's' : ''}.`}
               </p>
             </div>
 
-            {/* Start */}
             <button onClick={() => startMutation.mutate()} disabled={startMutation.isPending}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50 transition-colors"
             >
@@ -421,67 +362,59 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
 
       {/* ── LIVE CAPTURE TERMINAL ────────────── */}
       {(view === 'live' && activeCapture) && (
-        <div className="rounded-xl border border-slate-700 bg-slate-900 shadow-lg overflow-hidden">
-          {/* Header bar */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 border-b border-slate-700">
+        <div className="rounded-xl border border-slate-700 bg-black shadow-lg overflow-hidden font-mono">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-700">
             <div className="flex items-center gap-3">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
               </span>
-              <span className="text-xs font-medium text-red-400">RECORDING</span>
-              <span className="text-xs text-slate-500">|</span>
-              <span className="text-xs text-slate-400 tabular-nums">{formatElapsed(activeCapture.started_at)}</span>
-              <span className="text-xs text-slate-500">|</span>
-              <span className="text-xs text-slate-400 tabular-nums">{(captureDetail?.event_count || liveEvents.length).toLocaleString()} events</span>
+              <span className="text-xs font-medium text-red-400">REC</span>
+              <span className="text-xs text-slate-500">{formatElapsed(activeCapture.started_at)}</span>
+              <span className="text-xs text-slate-500">{(captureDetail?.event_count || liveEvents.length).toLocaleString()} events</span>
               {activeCapture.filter && (
-                <>
-                  <span className="text-xs text-slate-500">|</span>
-                  <span className="text-xs text-slate-500 font-mono truncate max-w-[200px]" title={activeCapture.filter}>
-                    filter: {activeCapture.filter}
-                  </span>
-                </>
+                <span className="text-[10px] text-slate-600 truncate max-w-[300px]" title={activeCapture.filter}>
+                  {activeCapture.filter}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setAutoScroll(!autoScroll)}
-                className={'px-2 py-1 rounded text-[10px] font-medium border transition-colors ' +
-                  (autoScroll
-                    ? 'border-green-700 text-green-400 bg-green-950/30'
-                    : 'border-slate-600 text-slate-400 hover:bg-slate-700')
-                }
+              {/* Search in live */}
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-600" />
+                <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                  placeholder="search..."
+                  className="pl-7 pr-2 py-1 w-36 rounded border border-slate-700 bg-slate-900 text-[10px] text-slate-300 placeholder-slate-700 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+              <button onClick={() => setAutoScroll(!autoScroll)}
+                className={'px-1.5 py-1 rounded text-[10px] border ' +
+                  (autoScroll ? 'border-green-800 text-green-500' : 'border-slate-700 text-slate-500')}
                 title={autoScroll ? 'Auto-scroll on' : 'Auto-scroll off'}
-              >
-                <ArrowDown className="w-3 h-3" />
-              </button>
+              ><ArrowDown className="w-3 h-3" /></button>
               <button onClick={() => stopMutation.mutate()} disabled={stopMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1 px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs disabled:opacity-50"
               >
-                {stopMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
+                {stopMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
                 Stop
               </button>
             </div>
           </div>
 
-          {/* Column header */}
-          <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800 bg-slate-850 font-medium">
-            <span className="w-[70px] shrink-0">Time</span>
-            <span className="w-[130px] shrink-0">Event</span>
-            <span className="w-[120px] shrink-0">Process</span>
-            <span className="w-[50px] shrink-0">PID</span>
-            <span className="flex-1">Details</span>
-          </div>
-
-          {/* Event stream */}
-          <div ref={terminalRef} className="overflow-y-auto overflow-x-hidden" style={{ maxHeight: '500px', minHeight: '300px' }}>
-            {liveEvents.length === 0 && (
-              <div className="flex items-center justify-center py-16 text-sm text-slate-500">
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Waiting for events...
-              </div>
+          {/* Terminal output */}
+          <div ref={terminalRef} className="overflow-y-auto overflow-x-auto p-2 text-[11px] leading-[18px] text-green-400 select-text"
+            style={{ maxHeight: '600px', minHeight: '300px' }}
+          >
+            {filteredLiveLines.length === 0 && liveEvents.length === 0 && (
+              <div className="text-slate-600 py-8 text-center text-xs">Waiting for events...</div>
             )}
-            {liveEvents.map(evt => renderEventRow(evt))}
+            {filteredLiveLines.length === 0 && liveEvents.length > 0 && searchTerm && (
+              <div className="text-slate-600 py-4 text-center text-xs">No events match "{searchTerm}"</div>
+            )}
+            {filteredLiveLines.map(({ id, line }) => (
+              <div key={id} className="whitespace-pre hover:bg-slate-900/80">{line}</div>
+            ))}
           </div>
         </div>
       )}
@@ -497,7 +430,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
           </div>
           {completedCaptures.length === 0 ? (
             <div className="px-6 py-12 text-center text-sm text-gray-400 dark:text-slate-500">
-              No completed captures yet. Start a capture to begin recording kernel events.
+              No completed captures yet.
             </div>
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -514,23 +447,27 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                     <div className="flex items-center gap-4 text-[10px] text-gray-400 dark:text-slate-500 ml-7">
                       <span>{new Date(cap.started_at).toLocaleString()}</span>
                       <span>{formatDuration(cap.started_at, cap.completed_at)}</span>
-                      {cap.filter && <span className="font-mono truncate max-w-[250px]" title={cap.filter}>filter: {cap.filter}</span>}
+                      {cap.filter && <span className="font-mono truncate max-w-[300px]" title={cap.filter}>{cap.filter}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-4">
-                    <button
-                      onClick={() => handleBrowse(cap)}
+                    <button onClick={() => handleBrowse(cap)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-fibratus-500/50 text-fibratus-500 hover:bg-fibratus-950/30 transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      Browse
-                    </button>
-                    <button
-                      onClick={() => { if (confirm('Delete this capture and all its events?')) deleteMutation.mutate(cap.id) }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-600 text-slate-400 hover:text-red-400 hover:border-red-700 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    ><Eye className="w-3.5 h-3.5" />Browse</button>
+                    {deleteConfirm === cap.id ? (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => deleteMutation.mutate(cap.id)}
+                          className="px-2 py-1 rounded text-[10px] font-medium bg-red-600 text-white hover:bg-red-700"
+                        >Delete</button>
+                        <button onClick={() => setDeleteConfirm(null)}
+                          className="px-2 py-1 rounded text-[10px] font-medium border border-slate-600 text-slate-400 hover:bg-slate-700"
+                        >Cancel</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setDeleteConfirm(cap.id)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border border-slate-600 text-slate-400 hover:text-red-400 hover:border-red-700 transition-colors"
+                      ><Trash2 className="w-3.5 h-3.5" /></button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -541,76 +478,59 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
 
       {/* ── BROWSE CAPTURE EVENTS ──────────── */}
       {view === 'browse' && browsingCapture && (
-        <div className="rounded-xl border border-slate-700 bg-slate-900 shadow-lg overflow-hidden">
-          {/* Browse header */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 border-b border-slate-700">
+        <div className="rounded-xl border border-slate-700 bg-black shadow-lg overflow-hidden font-mono">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-700">
             <div className="flex items-center gap-3">
               <button onClick={() => { setView('history'); setBrowsingCapture(null) }} className="text-slate-400 hover:text-slate-200">
                 <X className="w-4 h-4" />
               </button>
-              <HardDrive className="w-4 h-4 text-slate-400" />
-              <span className="text-xs font-medium text-slate-200">
-                Capture — {browsingCapture.event_count.toLocaleString()} events
-              </span>
-              <span className="text-xs text-slate-500">|</span>
-              <span className="text-xs text-slate-400">{new Date(browsingCapture.started_at).toLocaleString()}</span>
-              <span className="text-xs text-slate-500">|</span>
-              <span className="text-xs text-slate-400">{formatDuration(browsingCapture.started_at, browsingCapture.completed_at)}</span>
+              <span className="text-xs text-slate-300">{browsingCapture.event_count.toLocaleString()} events</span>
+              <span className="text-xs text-slate-500">{new Date(browsingCapture.started_at).toLocaleString()}</span>
+              <span className="text-xs text-slate-500">{formatDuration(browsingCapture.started_at, browsingCapture.completed_at)}</span>
               {browsingCapture.filter && (
-                <>
-                  <span className="text-xs text-slate-500">|</span>
-                  <span className="text-xs text-slate-500 font-mono truncate max-w-[200px]" title={browsingCapture.filter}>
-                    filter: {browsingCapture.filter}
-                  </span>
-                </>
+                <span className="text-[10px] text-slate-600 truncate max-w-[300px]" title={browsingCapture.filter}>{browsingCapture.filter}</span>
               )}
             </div>
           </div>
 
-          {/* Search bar */}
-          <div className="px-4 py-2 border-b border-slate-800 bg-slate-850">
+          {/* Search */}
+          <div className="px-4 py-2 border-b border-slate-800 bg-slate-900/50">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-              <input
-                type="text" value={browseSearch}
-                onChange={e => { setBrowseSearch(e.target.value); setBrowseAfter(0) }}
-                placeholder="Search events (process name, command line, event name...)"
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs font-mono text-slate-200 placeholder-slate-600 focus:border-fibratus-500 focus:outline-none"
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
+              <input type="text" value={browseSearch}
+                onChange={e => setBrowseSearch(e.target.value)}
+                placeholder="Search events..."
+                className="w-full pl-9 pr-3 py-1.5 rounded border border-slate-700 bg-black text-[11px] text-slate-300 placeholder-slate-700 focus:border-slate-500 focus:outline-none"
               />
+              {browseSearch && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-600">
+                  {filteredBrowseLines.length}/{browseLines.length}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Column header */}
-          <div className="flex items-center gap-3 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800 font-medium">
-            <span className="w-[70px] shrink-0">Time</span>
-            <span className="w-[130px] shrink-0">Event</span>
-            <span className="w-[120px] shrink-0">Process</span>
-            <span className="w-[50px] shrink-0">PID</span>
-            <span className="flex-1">Details</span>
-          </div>
-
-          {/* Events */}
-          <div className="overflow-y-auto" style={{ maxHeight: '500px', minHeight: '200px' }}>
+          {/* Terminal output */}
+          <div className="overflow-y-auto overflow-x-auto p-2 text-[11px] leading-[18px] text-green-400 select-text"
+            style={{ maxHeight: '600px', minHeight: '200px' }}
+          >
             {browseLoading && (
-              <div className="flex items-center justify-center py-12 text-sm text-slate-500">
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Loading events...
+              <div className="text-slate-600 py-8 text-center text-xs"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Loading...</div>
+            )}
+            {!browseLoading && filteredBrowseLines.length === 0 && (
+              <div className="text-slate-600 py-8 text-center text-xs">
+                {browseSearch ? `No events match "${browseSearch}"` : 'No events'}
               </div>
             )}
-            {!browseLoading && browseEvents.length === 0 && (
-              <div className="flex items-center justify-center py-12 text-sm text-slate-500">
-                {browseSearch ? 'No events match your search' : 'No events in this capture'}
-              </div>
-            )}
-            {browseEvents.map(evt => renderEventRow(evt))}
-            {browseEvents.length >= 5000 && (
-              <div className="flex justify-center py-3 border-t border-slate-800">
-                <button
-                  onClick={() => setBrowseAfter(browseEvents[browseEvents.length - 1].id)}
-                  className="px-4 py-1.5 rounded-lg text-xs font-medium text-fibratus-400 hover:bg-slate-800 transition-colors"
-                >
-                  Load more events...
-                </button>
+            {filteredBrowseLines.map(({ id, line }) => (
+              <div key={id} className="whitespace-pre hover:bg-slate-900/80">{line}</div>
+            ))}
+            {browseEvents.length >= 10000 && (
+              <div className="text-center py-2">
+                <button onClick={() => setBrowseAfter(browseEvents[browseEvents.length - 1].id)}
+                  className="text-[10px] text-fibratus-500 hover:text-fibratus-400"
+                >Load more...</button>
               </div>
             )}
           </div>
@@ -632,9 +552,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
           ? 'bg-slate-800 text-white border border-slate-600'
           : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent')
       }
-    >
-      {children}
-    </button>
+    >{children}</button>
   )
 }
 
@@ -650,34 +568,4 @@ function StatusBadge({ status }: { status: string }) {
       {status}
     </span>
   )
-}
-
-function summarizeEvent(evt: CaptureEvent): string {
-  const p = evt.params || {}
-  switch (evt.event_name) {
-    case 'CreateProcess':
-    case 'TerminateProcess':
-      return evt.process_cmdline ? truncate(evt.process_cmdline, 80) : evt.process_exe || ''
-    case 'CreateFile':
-    case 'WriteFile':
-    case 'DeleteFile':
-    case 'RenameFile':
-      return (p.file_path || p.file_name || '') as string
-    case 'RegSetValue':
-    case 'RegCreateKey':
-    case 'RegDeleteKey':
-    case 'RegDeleteValue':
-      return (p.key_name || p.key_handle || '') as string
-    case 'Connect':
-    case 'Accept':
-      return `${p.dip || ''}:${p.dport || ''} (${p.l4_proto || ''})`
-    case 'QueryDns':
-    case 'ReplyDns':
-      return (p.dns_name || p.name || '') as string
-    case 'LoadImage':
-    case 'UnloadImage':
-      return (p.file_name || p.image_name || '') as string
-    default:
-      return ''
-  }
 }

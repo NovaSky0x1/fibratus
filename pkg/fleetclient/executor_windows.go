@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/event"
+	"github.com/rabbitstack/fibratus/pkg/filter"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	fleetserver "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
@@ -565,63 +566,70 @@ func (e *WindowsExecutor) getRegistry(cmd *fleet.Command) (json.RawMessage, erro
 	return result, nil
 }
 
-// captureEventMacros maps Fibratus QL event type macros to ETW event names.
-var captureEventMacros = map[string]string{
-	"spawn_process":     "CreateProcess",
-	"terminate_process": "TerminateProcess",
-	"create_file":       "CreateFile",
-	"delete_file":       "DeleteFile",
-	"rename_file":       "RenameFile",
-	"write_file":        "WriteFile",
-	"read_file":         "ReadFile",
-	"set_reg_value":     "RegSetValue",
-	"create_reg_key":    "RegCreateKey",
-	"delete_reg_key":    "RegDeleteKey",
-	"delete_reg_value":  "RegDeleteValue",
-	"connect_process":   "Connect",
-	"accept_process":    "Accept",
-	"query_dns":         "QueryDns",
-	"reply_dns":         "ReplyDns",
-	"load_image":        "LoadImage",
-	"unload_image":      "UnloadImage",
-	"set_thread_context": "SetThreadContext",
-	"open_process":      "OpenProcess",
-	"create_handle":     "CreateHandle",
-	"close_handle":      "CloseHandle",
-	"virtual_alloc":     "VirtualAlloc",
-	"virtual_free":      "VirtualFree",
-	"map_view_file":     "MapViewFile",
-	"unmap_view_file":   "UnmapViewFile",
-	"create_thread":     "CreateThread",
-	"terminate_thread":  "TerminateThread",
+// captureMacros maps Fibratus QL event type macros to their expanded
+// filter expressions. These are the same macros available in rules and
+// the local `fibratus run` / `fibratus capture` commands.
+var captureMacros = map[string]string{
+	"spawn_process":      "kevt.name = 'CreateProcess'",
+	"terminate_process":  "kevt.name = 'TerminateProcess'",
+	"create_file":        "kevt.name = 'CreateFile'",
+	"write_file":         "kevt.name = 'WriteFile'",
+	"read_file":          "kevt.name = 'ReadFile'",
+	"delete_file":        "kevt.name = 'DeleteFile'",
+	"rename_file":        "kevt.name = 'RenameFile'",
+	"set_reg_value":      "kevt.name = 'RegSetValue'",
+	"create_reg_key":     "kevt.name = 'RegCreateKey'",
+	"delete_reg_key":     "kevt.name = 'RegDeleteKey'",
+	"delete_reg_value":   "kevt.name = 'RegDeleteValue'",
+	"query_dns":          "kevt.name = 'QueryDns'",
+	"reply_dns":          "kevt.name = 'ReplyDns'",
+	"connect_process":    "kevt.name = 'Connect'",
+	"accept_process":     "kevt.name = 'Accept'",
+	"load_image":         "kevt.name = 'LoadImage'",
+	"unload_image":       "kevt.name = 'UnloadImage'",
+	"set_thread_context": "kevt.name = 'SetThreadContext'",
+	"open_process":       "kevt.name = 'OpenProcess'",
+	"create_handle":      "kevt.name = 'CreateHandle'",
+	"close_handle":       "kevt.name = 'CloseHandle'",
+	"virtual_alloc":      "kevt.name = 'VirtualAlloc'",
+	"virtual_free":       "kevt.name = 'VirtualFree'",
+	"map_view_file":      "kevt.name = 'MapViewFile'",
+	"unmap_view_file":    "kevt.name = 'UnmapViewFile'",
+	"create_thread":      "kevt.name = 'CreateThread'",
+	"terminate_thread":   "kevt.name = 'TerminateThread'",
 }
 
-// buildCaptureFilter parses a filter expression and returns an event-name
-// filter function. Supports event type macros (query_dns, spawn_process, etc.)
-// joined by "or"/"and". Returns nil if the expression is empty (capture all).
+// expandCaptureMacros replaces event type macros in the expression with
+// their Fibratus QL equivalents before the filter compiler sees them.
+func expandCaptureMacros(expr string) string {
+	for macro, expansion := range captureMacros {
+		// Use word-boundary-aware replacement to avoid partial matches
+		expr = strings.ReplaceAll(expr, macro, "("+expansion+")")
+	}
+	return expr
+}
+
+// buildCaptureFilter compiles a Fibratus QL filter expression using the
+// real filter engine. Supports full QL syntax (ps.name, kevt.name,
+// file.path, net.dip, etc.) plus event type macros (query_dns, spawn_process).
+// Returns nil if expression is empty (capture all events).
 func buildCaptureFilter(expr string) func(evt *event.Event) bool {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
-		return nil // capture everything
+		return nil
 	}
 
-	// Extract event names from macros in the expression
-	allowed := make(map[string]bool)
-	tokens := strings.Fields(strings.ToLower(expr))
-	for _, tok := range tokens {
-		tok = strings.Trim(tok, "()")
-		if name, ok := captureEventMacros[tok]; ok {
-			allowed[name] = true
-		}
+	// Expand event type macros before compiling
+	expanded := expandCaptureMacros(expr)
+
+	f, err := filter.NewFromCLIWithAllAccessors([]string{expanded})
+	if err != nil {
+		// Log but don't fail — capture everything as fallback
+		fmt.Fprintf(os.Stderr, "capture filter compile error: %v (capturing all events)\n", err)
+		return nil
 	}
 
-	if len(allowed) == 0 {
-		return nil // couldn't parse — capture everything as fallback
-	}
-
-	return func(evt *event.Event) bool {
-		return allowed[evt.Name]
-	}
+	return f.Run
 }
 
 // startCapture activates capture mode on the running ETW pipeline.
