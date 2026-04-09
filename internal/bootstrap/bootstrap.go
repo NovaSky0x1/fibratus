@@ -359,6 +359,33 @@ func (f *App) Run(args []string) error {
 			return f.Run, nil
 		}
 
+		// Register the .kcap writer factory so captures write local .kcap
+		// files alongside streaming to the fleet server.
+		fleetoutput.CaptureWriterStart = func(captureID string) (chan<- *event.Event, string, func(), error) {
+			exe, _ := os.Executable()
+			captureDir := filepath.Join(filepath.Dir(exe), "..", "captures")
+			os.MkdirAll(captureDir, 0o755)
+			capPath := filepath.Join(captureDir, fmt.Sprintf("capture-%s.kcap", captureID[:8]))
+
+			w, err := cap.NewWriter(capPath, psnap, hsnap)
+			if err != nil {
+				return nil, "", nil, fmt.Errorf("create .kcap writer: %w", err)
+			}
+
+			evtCh := make(chan *event.Event, 2048)
+			errCh := make(chan error)
+			writerDone := w.Write(evtCh, errCh)
+
+			closeFn := func() {
+				close(evtCh)
+				<-writerDone // wait for writer to drain
+				w.Close()
+				log.Infof("fleet: .kcap capture written to %s", capPath)
+			}
+
+			return evtCh, capPath, closeFn, nil
+		}
+
 		// When fleet mode is active, auto-enable fleet server as the output
 		// to stream telemetry to the fleet server for remote visibility.
 		// Override console or null output — fleet telemetry takes priority.

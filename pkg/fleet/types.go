@@ -304,6 +304,7 @@ type Capture struct {
 	Status        string     `json:"status"`
 	EventCount    int64      `json:"event_count"`
 	DurationSec   int        `json:"duration_sec"`
+	KcapPath      string     `json:"kcap_path,omitempty"`
 	CreatedBy     string     `json:"created_by,omitempty"`
 	StartedAt     time.Time  `json:"started_at"`
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`

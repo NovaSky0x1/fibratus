@@ -290,6 +290,19 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     downloadFile(`capture-${cap.id.slice(0, 8)}-${ts}.json`, JSON.stringify({ capture: cap, events }, null, 2), 'application/json')
   }, [fetchEvents, downloadFile])
 
+  const handleDownloadKcap = useCallback(async (cap: Capture) => {
+    setDownloadMenu(null)
+    if (!cap.kcap_path) {
+      setError('No .kcap file available for this capture. The agent may not have written one.')
+      return
+    }
+    // Send get_file command to agent to retrieve the .kcap
+    await api.createCommand(cap.agent_id, 'get_file', { path: cap.kcap_path })
+    setError(null)
+    // The file will be delivered via command result — show notification
+    alert(`Requested .kcap download from agent. Check command history for the file transfer.`)
+  }, [])
+
   const handleDownloadCSV = useCallback(async (cap: Capture) => {
     setDownloadMenu(null)
     const events = await fetchEvents(cap)
@@ -472,6 +485,9 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                         <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
                           <button onClick={() => handleDownloadJSON(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
                           <button onClick={() => handleDownloadCSV(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
+                          <button onClick={() => handleDownloadKcap(cap)} className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (cap.kcap_path ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
+                            .kcap {!cap.kcap_path && <span className="text-[9px] text-slate-600">(n/a)</span>}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -515,6 +531,9 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                   <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
                     <button onClick={() => handleDownloadJSON(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
                     <button onClick={() => handleDownloadCSV(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
+                    <button onClick={() => handleDownloadKcap(browsingCapture)} className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (browsingCapture.kcap_path ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
+                      .kcap {!browsingCapture.kcap_path && <span className="text-[9px] text-slate-600">(n/a)</span>}
+                    </button>
                   </div>
                 )}
               </div>

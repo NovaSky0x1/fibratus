@@ -181,6 +181,7 @@ export interface Capture {
   status: 'active' | 'completed' | 'failed' | 'cancelled'
   event_count: number
   duration_sec: number
+  kcap_path: string
   created_by: string
   started_at: string
   completed_at: string | null

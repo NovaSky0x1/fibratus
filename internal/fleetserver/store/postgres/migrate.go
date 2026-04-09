@@ -412,6 +412,8 @@ CREATE TABLE IF NOT EXISTS captures (
     completed_at    TIMESTAMPTZ
 );
 
+ALTER TABLE captures ADD COLUMN IF NOT EXISTS kcap_path TEXT DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS idx_captures_org_agent ON captures(org_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_captures_status ON captures(org_id, status);
 

@@ -240,6 +240,22 @@ func (h *CaptureHandler) StopCapture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Look for kcap_path from the start_capture command result
+	cmds, _ := h.commands.ListByAgent(r.Context(), orgID, cap.AgentID, 20)
+	for _, c := range cmds {
+		if c.Type == fleet.CmdStartCapture && len(c.Result) > 0 {
+			var res map[string]interface{}
+			if json.Unmarshal(c.Result, &res) == nil {
+				if cid, _ := res["capture_id"].(string); cid == captureID {
+					if kp, _ := res["kcap_path"].(string); kp != "" {
+						cap.KcapPath = kp
+					}
+					break
+				}
+			}
+		}
+	}
+
 	now := time.Now().UTC()
 	cap.Status = fleet.CaptureCompleted
 	cap.CompletedAt = &now

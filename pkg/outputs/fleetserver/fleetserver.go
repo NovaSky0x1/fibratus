@@ -356,40 +356,68 @@ func securityRelevant(batch *event.Batch) *event.Batch {
 
 // CaptureFilterCompiler compiles a Fibratus QL expression into a filter
 // function. Registered by bootstrap at startup to avoid import cycles.
-// The executor calls this to compile capture filter expressions using the
-// real filter engine (pkg/filter).
 var CaptureFilterCompiler func(expr string) (func(*event.Event) bool, error)
+
+// CaptureWriterStart creates a cap.Writer for a .kcap file and returns
+// a channel to feed events + a close function. Registered by bootstrap.
+// Returns (eventCh, kcapPath, closeFn, error).
+var CaptureWriterStart func(captureID string) (chan<- *event.Event, string, func(), error)
 
 // captureState tracks the active capture session for event forking.
 var captureState struct {
 	sync.RWMutex
-	active   bool
-	id       string
-	filterFn func(*event.Event) bool // nil = capture all events
+	active    bool
+	id        string
+	filterFn  func(*event.Event) bool // nil = capture all events
+	writerCh  chan<- *event.Event      // feeds cap.Writer (nil if no .kcap)
+	kcapPath  string                   // path to local .kcap file
+	closeFn   func()                   // closes cap.Writer
 }
 
 // SetCaptureState activates capture mode. Matching events will be tagged
 // with the capture ID and bypass the security-relevance filter.
-// filterFn is optional — nil means capture all events.
+// Also starts a local .kcap writer if CaptureWriterStart is registered.
 func SetCaptureState(captureID string, filterFn func(*event.Event) bool) {
 	captureState.Lock()
 	defer captureState.Unlock()
 	captureState.active = true
 	captureState.id = captureID
 	captureState.filterFn = filterFn
+
+	// Start .kcap writer if available
+	if CaptureWriterStart != nil {
+		ch, path, closeFn, err := CaptureWriterStart(captureID)
+		if err != nil {
+			log.Warnf("fleet output: failed to start .kcap writer: %v", err)
+		} else {
+			captureState.writerCh = ch
+			captureState.kcapPath = path
+			captureState.closeFn = closeFn
+			log.Infof("fleet output: capture %s writing .kcap to %s", captureID, path)
+		}
+	}
+
 	log.Infof("fleet output: capture %s activated", captureID)
 }
 
-// ClearCaptureState deactivates capture mode.
-func ClearCaptureState() {
+// ClearCaptureState deactivates capture mode and closes the .kcap writer.
+func ClearCaptureState() string {
 	captureState.Lock()
 	defer captureState.Unlock()
+	kcapPath := captureState.kcapPath
 	if captureState.active {
 		log.Infof("fleet output: capture %s deactivated", captureState.id)
+		if captureState.closeFn != nil {
+			captureState.closeFn()
+		}
 	}
 	captureState.active = false
 	captureState.id = ""
 	captureState.filterFn = nil
+	captureState.writerCh = nil
+	captureState.kcapPath = ""
+	captureState.closeFn = nil
+	return kcapPath
 }
 
 // GetCaptureID returns the active capture ID (empty if no capture active).
@@ -402,6 +430,13 @@ func GetCaptureID() string {
 	return ""
 }
 
+// GetKcapPath returns the .kcap file path for the active capture.
+func GetKcapPath() string {
+	captureState.RLock()
+	defer captureState.RUnlock()
+	return captureState.kcapPath
+}
+
 // Publish sends a batch of events to the fleet server via gRPC streaming.
 func (f *fleetOutput) Publish(batch *event.Batch) error {
 	// Snapshot capture state once per batch
@@ -409,6 +444,7 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 	capActive := captureState.active
 	capID := captureState.id
 	capFilter := captureState.filterFn
+	capWriterCh := captureState.writerCh
 	captureState.RUnlock()
 
 	// Build capture events from the unfiltered batch
@@ -417,6 +453,13 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 		for _, evt := range batch.Events {
 			if capFilter == nil || capFilter(evt) {
 				captureEvents = append(captureEvents, evt)
+				// Also feed to local .kcap writer
+				if capWriterCh != nil {
+					select {
+					case capWriterCh <- evt:
+					default: // don't block if writer is slow
+					}
+				}
 			}
 		}
 	}

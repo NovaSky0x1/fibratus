@@ -671,6 +671,7 @@ func (e *WindowsExecutor) startCapture(cmd *fleet.Command) (json.RawMessage, err
 		"started":    true,
 		"capture_id": payload.CaptureID,
 		"filter":     payload.Filter,
+		"kcap_path":  fleetserver.GetKcapPath(),
 	})
 	return result, nil
 }
@@ -683,10 +684,11 @@ func (e *WindowsExecutor) stopCapture(cmd *fleet.Command) (json.RawMessage, erro
 	json.Unmarshal(cmd.Payload, &payload)
 
 	captureID := fleetserver.GetCaptureID()
-	fleetserver.ClearCaptureState()
+	kcapPath := fleetserver.ClearCaptureState()
 
 	result, _ := json.Marshal(map[string]interface{}{
 		"stopped":    true,
+		"kcap_path":  kcapPath,
 		"capture_id": captureID,
 	})
 	return result, nil

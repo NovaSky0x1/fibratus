@@ -51,14 +51,14 @@ func (s *CaptureStore) Create(ctx context.Context, cap *fleet.Capture) error {
 
 func (s *CaptureStore) Get(ctx context.Context, orgID, id string) (*fleet.Capture, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, org_id, agent_id, agent_hostname, filter, status, event_count, duration_sec, created_by, started_at, completed_at
+		`SELECT id, org_id, agent_id, agent_hostname, filter, status, event_count, duration_sec, COALESCE(kcap_path,''), created_by, started_at, completed_at
 		 FROM captures WHERE org_id = $1 AND id = $2`, orgID, id)
 
 	return scanCapture(row)
 }
 
 func (s *CaptureStore) ListByAgent(ctx context.Context, orgID, agentID string) ([]*fleet.Capture, error) {
-	query := `SELECT id, org_id, agent_id, agent_hostname, filter, status, event_count, duration_sec, created_by, started_at, completed_at
+	query := `SELECT id, org_id, agent_id, agent_hostname, filter, status, event_count, duration_sec, COALESCE(kcap_path,''), created_by, started_at, completed_at
 			  FROM captures WHERE org_id = $1`
 	args := []interface{}{orgID}
 
@@ -87,8 +87,8 @@ func (s *CaptureStore) ListByAgent(ctx context.Context, orgID, agentID string) (
 
 func (s *CaptureStore) Update(ctx context.Context, cap *fleet.Capture) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE captures SET status = $1, event_count = $2, completed_at = $3 WHERE id = $4`,
-		cap.Status, cap.EventCount, cap.CompletedAt, cap.ID,
+		`UPDATE captures SET status = $1, event_count = $2, completed_at = $3, kcap_path = $4 WHERE id = $5`,
+		cap.Status, cap.EventCount, cap.CompletedAt, cap.KcapPath, cap.ID,
 	)
 	return err
 }
@@ -278,7 +278,7 @@ func scanCapture(row *sql.Row) (*fleet.Capture, error) {
 	var completedAt sql.NullTime
 	err := row.Scan(
 		&c.ID, &c.OrgID, &c.AgentID, &c.AgentHostname, &c.Filter,
-		&c.Status, &c.EventCount, &c.DurationSec, &c.CreatedBy,
+		&c.Status, &c.EventCount, &c.DurationSec, &c.KcapPath, &c.CreatedBy,
 		&c.StartedAt, &completedAt,
 	)
 	if err != nil {
@@ -295,7 +295,7 @@ func scanCaptureRows(rows *sql.Rows) (*fleet.Capture, error) {
 	var completedAt sql.NullTime
 	err := rows.Scan(
 		&c.ID, &c.OrgID, &c.AgentID, &c.AgentHostname, &c.Filter,
-		&c.Status, &c.EventCount, &c.DurationSec, &c.CreatedBy,
+		&c.Status, &c.EventCount, &c.DurationSec, &c.KcapPath, &c.CreatedBy,
 		&c.StartedAt, &completedAt,
 	)
 	if err != nil {
