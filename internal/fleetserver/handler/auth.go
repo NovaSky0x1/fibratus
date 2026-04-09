@@ -401,11 +401,11 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 
 	log.Infof("fleet: account %s settings updated (2fa=%v, tamper=%v)", accountID, req.Require2FA, req.TamperProtectionEnabled)
 
-	// When tamper protection is enabled account-wide, propagate to all agents
-	if req.TamperProtectionEnabled != nil && *req.TamperProtectionEnabled {
+	// Propagate tamper protection state change to all agents across all orgs
+	if req.TamperProtectionEnabled != nil {
 		orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
 		for _, org := range orgs {
-			h.propagateTamperProtection(r.Context(), org.ID, true)
+			h.propagateTamperProtection(r.Context(), org.ID, *req.TamperProtectionEnabled)
 		}
 	}
 
@@ -492,10 +492,8 @@ func (h *AuthHandler) UpdateOrgTamperProtection(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// When tamper protection is enabled for the org, propagate to all agents in that org
-	if req.Enabled {
-		h.propagateTamperProtection(r.Context(), orgID, true)
-	}
+	// Propagate tamper protection state change to all agents in this org
+	h.propagateTamperProtection(r.Context(), orgID, req.Enabled)
 
 	log.Infof("fleet: org %s tamper protection set to %v", orgID, req.Enabled)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"tamper_protection_enabled": req.Enabled}})
