@@ -437,14 +437,17 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 		pbEvents = append(pbEvents, pbEvt)
 	}
 
-	// Add capture events (with capture_id set)
+	// Add capture events — embed capture_id in the Metadata JSON field
+	// (the CaptureId proto struct field isn't in the raw descriptor, so we
+	// use metadata which is an existing bytes field that serializes correctly)
+	capMeta, _ := json.Marshal(map[string]string{"capture_id": capID})
 	for _, evt := range captureEvents {
 		if idx, exists := seenSeq[evt.Seq]; exists {
-			// Event already in telemetry batch — just tag it with capture_id
-			pbEvents[idx].CaptureId = capID
+			// Event already in telemetry batch — tag it via metadata
+			pbEvents[idx].Metadata = capMeta
 		} else {
 			pbEvt := convertEventToProto(evt)
-			pbEvt.CaptureId = capID
+			pbEvt.Metadata = capMeta
 			pbEvents = append(pbEvents, pbEvt)
 		}
 	}

@@ -187,16 +187,20 @@ func (s *agentService) StreamTelemetry(stream pb.AgentService_StreamTelemetrySer
 			return status.Errorf(codes.Internal, "receive telemetry: %v", err)
 		}
 
-		// Separate capture events from normal telemetry
-		var captureEvents = make(map[string][]json.RawMessage) // captureID → events
+		// Separate capture events from normal telemetry.
+		// capture_id is embedded in the Metadata JSON field (the proto
+		// struct field CaptureId isn't in the raw descriptor so we read
+		// from metadata instead).
+		var captureEventsMap = make(map[string][]json.RawMessage) // captureID → events
 		var telEvents []json.RawMessage
 
 		for _, evt := range batch.Events {
 			if len(evt.RawEvent) == 0 {
 				continue
 			}
-			if evt.CaptureId != "" {
-				captureEvents[evt.CaptureId] = append(captureEvents[evt.CaptureId], json.RawMessage(evt.RawEvent))
+			capID := extractCaptureIDFromMeta(evt.Metadata)
+			if capID != "" {
+				captureEventsMap[capID] = append(captureEventsMap[capID], json.RawMessage(evt.RawEvent))
 			} else {
 				telEvents = append(telEvents, json.RawMessage(evt.RawEvent))
 			}
@@ -204,7 +208,7 @@ func (s *agentService) StreamTelemetry(stream pb.AgentService_StreamTelemetrySer
 
 		// Ingest capture events into capture store
 		if s.captures != nil {
-			for capID, evts := range captureEvents {
+			for capID, evts := range captureEventsMap {
 				if err := s.captures.IngestEvents(stream.Context(), capID, batch.OrgId, evts); err != nil {
 					log.Warnf("grpc: capture event ingest error (capture %s): %v", capID, err)
 				}
@@ -443,4 +447,17 @@ func (s *agentService) CommandChannel(stream pb.AgentService_CommandChannelServe
 			return nil
 		}
 	}
+}
+
+// extractCaptureIDFromMeta parses the metadata JSON bytes and returns
+// the capture_id value if present, or empty string otherwise.
+func extractCaptureIDFromMeta(meta []byte) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	var m map[string]string
+	if json.Unmarshal(meta, &m) == nil {
+		return m["capture_id"]
+	}
+	return ""
 }
