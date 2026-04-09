@@ -92,12 +92,34 @@ const quickFilters = [
 function formatParams(params: Record<string, unknown> | null | undefined): string {
   if (!params || typeof params !== 'object') return ''
   return Object.entries(params)
-    .filter(([k]) => !k.startsWith('_'))
+    .filter(([k, v]) => !k.startsWith('_') && v !== '' && v !== 0 && v !== null && v !== undefined)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => {
       const val = typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')
       return `${k}\u27A0 ${val}`
     }).join(', ')
+}
+
+// Extract the full params from raw_event (which has everything)
+function getRawParams(evt: CaptureEvent): Record<string, unknown> {
+  const raw = evt.raw_event as Record<string, unknown> | null
+  if (!raw) return evt.params || {}
+  return (raw.params || evt.params || {}) as Record<string, unknown>
+}
+
+// Get process cmdline from raw_event for richer display
+function getRawCmdline(evt: CaptureEvent): string {
+  const raw = evt.raw_event as Record<string, unknown> | null
+  if (!raw) return evt.process_cmdline || ''
+  const ps = raw.ps as Record<string, unknown> | null
+  return (ps?.cmdline || evt.process_cmdline || '') as string
+}
+
+function getRawExe(evt: CaptureEvent): string {
+  const raw = evt.raw_event as Record<string, unknown> | null
+  if (!raw) return evt.process_exe || ''
+  const ps = raw.ps as Record<string, unknown> | null
+  return (ps?.exe || evt.process_exe || '') as string
 }
 
 function formatElapsed(startedAt: string): string {
@@ -125,10 +147,11 @@ function formatTS(ts: string): string {
 function EventLine({ evt, searchTerm }: { evt: CaptureEvent; searchTerm?: string }) {
   const arrow = arrowColor(evt.event_name)
   const typeClr = typeColors[evt.event_name] || 'text-white font-bold'
-  const p = formatParams(evt.params)
+  const rawParams = getRawParams(evt)
+  const p = formatParams(rawParams)
 
   // Build the plain text for search matching
-  const plain = `${evt.seq} ${evt.timestamp} ${evt.process_name} ${evt.pid} ${evt.event_name} ${p}`
+  const plain = `${evt.seq} ${evt.timestamp} ${evt.process_name} ${evt.pid} ${evt.event_name} ${p} ${getRawCmdline(evt)} ${getRawExe(evt)}`
   if (searchTerm && !plain.toLowerCase().includes(searchTerm.toLowerCase())) return null
 
   return (
