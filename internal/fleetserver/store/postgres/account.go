@@ -21,6 +21,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 )
@@ -46,16 +47,20 @@ func (s *AccountStore) Create(ctx context.Context, account *fleet.Account) error
 
 func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, name, plan, COALESCE(require_2fa, false), created_at, updated_at
+		`SELECT id, name, plan, COALESCE(require_2fa, false), COALESCE(tamper_protection_enabled, false), COALESCE(isolation_whitelist, '[]'::jsonb), created_at, updated_at
 		 FROM accounts WHERE id = $1`, id)
 
 	a := &fleet.Account{}
-	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.CreatedAt, &a.UpdatedAt)
+	var wlJSON []byte
+	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.TamperProtectionEnabled, &wlJSON, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
+	}
+	if len(wlJSON) > 0 {
+		json.Unmarshal(wlJSON, &a.IsolationWhitelist)
 	}
 	return a, nil
 }
@@ -90,11 +95,31 @@ func (s *AccountStore) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-func (s *AccountStore) UpdateSettings(ctx context.Context, id string, require2FA bool) error {
+func (s *AccountStore) UpdateSettings(ctx context.Context, id string, require2FA bool, tamperProtection *bool, isolationWhitelist []string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE accounts SET require_2fa = $2, updated_at = NOW() WHERE id = $1`,
 		id, require2FA)
-	return err
+	if err != nil {
+		return err
+	}
+	if tamperProtection != nil {
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE accounts SET tamper_protection_enabled = $2, updated_at = NOW() WHERE id = $1`,
+			id, *tamperProtection)
+		if err != nil {
+			return err
+		}
+	}
+	if isolationWhitelist != nil {
+		wl, _ := json.Marshal(isolationWhitelist)
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE accounts SET isolation_whitelist = $2, updated_at = NOW() WHERE id = $1`,
+			id, wl)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *AccountStore) UpdateProfile(ctx context.Context, id, name, plan string) error {

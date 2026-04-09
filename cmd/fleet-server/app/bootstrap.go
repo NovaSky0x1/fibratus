@@ -150,7 +150,7 @@ Example:
 		log.Infof("created root user: %s (%s)", bsAdminEmail, userID)
 
 		// Enforce 2FA on the account — admin must set up TOTP on first login
-		err = accountStore.UpdateSettings(ctx, accountID, true)
+		err = accountStore.UpdateSettings(ctx, accountID, true, nil, nil)
 		if err != nil {
 			log.Warnf("failed to enable 2FA enforcement: %v", err)
 		} else {

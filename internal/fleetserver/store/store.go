@@ -32,7 +32,7 @@ type AccountStore interface {
 	Get(ctx context.Context, id string) (*fleet.Account, error)
 	ListAll(ctx context.Context) ([]*fleet.Account, error)
 	Delete(ctx context.Context, id string) error
-	UpdateSettings(ctx context.Context, id string, require2FA bool) error
+	UpdateSettings(ctx context.Context, id string, require2FA bool, tamperProtection *bool, isolationWhitelist []string) error
 	UpdateProfile(ctx context.Context, id, name, plan string) error
 }
 

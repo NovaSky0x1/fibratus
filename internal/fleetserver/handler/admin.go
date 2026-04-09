@@ -130,7 +130,7 @@ func (h *AdminHandler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 
 	// Update 2FA if provided
 	if req.Require2FA != nil {
-		if err := h.accounts.UpdateSettings(r.Context(), accountID, *req.Require2FA); err != nil {
+		if err := h.accounts.UpdateSettings(r.Context(), accountID, *req.Require2FA, nil, nil); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to update account")
 			return
 		}
