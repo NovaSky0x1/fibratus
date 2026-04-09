@@ -243,8 +243,8 @@ func (s *CaptureStore) GetEvents(ctx context.Context, captureID string, opts sto
 
 	query += " ORDER BY id ASC"
 	limit := opts.Limit
-	if limit <= 0 || limit > 500 {
-		limit = 200
+	if limit <= 0 || limit > 10000 {
+		limit = 5000
 	}
 	query += fmt.Sprintf(" LIMIT %d", limit)
 	if opts.Offset > 0 {

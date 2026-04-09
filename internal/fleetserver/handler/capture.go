@@ -188,7 +188,7 @@ func (h *CaptureHandler) GetCaptureEvents(w http.ResponseWriter, r *http.Request
 		EventName:   q.Get("event_name"),
 		ProcessName: q.Get("process_name"),
 		Search:      q.Get("search"),
-		Limit:       200,
+		Limit:       5000,
 	}
 
 	if v := q.Get("after_id"); v != "" {

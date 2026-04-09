@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rabbitstack/fibratus/pkg/event"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	fleetserver "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
@@ -564,6 +565,65 @@ func (e *WindowsExecutor) getRegistry(cmd *fleet.Command) (json.RawMessage, erro
 	return result, nil
 }
 
+// captureEventMacros maps Fibratus QL event type macros to ETW event names.
+var captureEventMacros = map[string]string{
+	"spawn_process":     "CreateProcess",
+	"terminate_process": "TerminateProcess",
+	"create_file":       "CreateFile",
+	"delete_file":       "DeleteFile",
+	"rename_file":       "RenameFile",
+	"write_file":        "WriteFile",
+	"read_file":         "ReadFile",
+	"set_reg_value":     "RegSetValue",
+	"create_reg_key":    "RegCreateKey",
+	"delete_reg_key":    "RegDeleteKey",
+	"delete_reg_value":  "RegDeleteValue",
+	"connect_process":   "Connect",
+	"accept_process":    "Accept",
+	"query_dns":         "QueryDns",
+	"reply_dns":         "ReplyDns",
+	"load_image":        "LoadImage",
+	"unload_image":      "UnloadImage",
+	"set_thread_context": "SetThreadContext",
+	"open_process":      "OpenProcess",
+	"create_handle":     "CreateHandle",
+	"close_handle":      "CloseHandle",
+	"virtual_alloc":     "VirtualAlloc",
+	"virtual_free":      "VirtualFree",
+	"map_view_file":     "MapViewFile",
+	"unmap_view_file":   "UnmapViewFile",
+	"create_thread":     "CreateThread",
+	"terminate_thread":  "TerminateThread",
+}
+
+// buildCaptureFilter parses a filter expression and returns an event-name
+// filter function. Supports event type macros (query_dns, spawn_process, etc.)
+// joined by "or"/"and". Returns nil if the expression is empty (capture all).
+func buildCaptureFilter(expr string) func(evt *event.Event) bool {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return nil // capture everything
+	}
+
+	// Extract event names from macros in the expression
+	allowed := make(map[string]bool)
+	tokens := strings.Fields(strings.ToLower(expr))
+	for _, tok := range tokens {
+		tok = strings.Trim(tok, "()")
+		if name, ok := captureEventMacros[tok]; ok {
+			allowed[name] = true
+		}
+	}
+
+	if len(allowed) == 0 {
+		return nil // couldn't parse — capture everything as fallback
+	}
+
+	return func(evt *event.Event) bool {
+		return allowed[evt.Name]
+	}
+}
+
 // startCapture activates capture mode on the running ETW pipeline.
 // Events matching the filter are tagged with capture_id and streamed to the server.
 func (e *WindowsExecutor) startCapture(cmd *fleet.Command) (json.RawMessage, error) {
@@ -578,9 +638,12 @@ func (e *WindowsExecutor) startCapture(cmd *fleet.Command) (json.RawMessage, err
 		return nil, fmt.Errorf("capture_id required")
 	}
 
+	// Build filter function from the expression
+	filterFn := buildCaptureFilter(payload.Filter)
+
 	// Activate capture mode on the fleet output — events matching the filter
 	// will be tagged with capture_id and bypass the security-relevance filter.
-	fleetserver.SetCaptureState(payload.CaptureID, nil)
+	fleetserver.SetCaptureState(payload.CaptureID, filterFn)
 
 	// Auto-stop after duration (if specified)
 	if payload.Duration > 0 {

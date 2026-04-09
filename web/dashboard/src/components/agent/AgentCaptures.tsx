@@ -171,7 +171,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     queryKey: ['capture-events-browse', browsingCapture?.id, browseSearch, browseAfter],
     queryFn: () => {
       if (!browsingCapture) return { data: [] }
-      const params: Record<string, string> = { limit: '200' }
+      const params: Record<string, string> = { limit: '5000' }
       if (browseSearch) params.search = browseSearch
       if (browseAfter > 0) params.after_id = String(browseAfter)
       return api.getCaptureEvents(browsingCapture.id, params)
@@ -603,7 +603,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
               </div>
             )}
             {browseEvents.map(evt => renderEventRow(evt))}
-            {browseEvents.length >= 200 && (
+            {browseEvents.length >= 5000 && (
               <div className="flex justify-center py-3 border-t border-slate-800">
                 <button
                   onClick={() => setBrowseAfter(browseEvents[browseEvents.length - 1].id)}
