@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,11 +107,29 @@ func (e *WindowsExecutor) isolate(cmd *fleet.Command) (json.RawMessage, error) {
 	}
 	json.Unmarshal(cmd.Payload, &payload)
 
-	// Resolve fleet server IP
+	// Resolve fleet server IP — must be an actual IP for WFP filters.
+	// The server URL may be a hostname (e.g. edr.novasky.io) which WFP cannot use directly.
 	serverHost := strings.TrimPrefix(e.serverURL, "https://")
 	serverHost = strings.TrimPrefix(serverHost, "http://")
 	serverHost = strings.Split(serverHost, ":")[0]
 	serverHost = strings.Split(serverHost, "/")[0]
+
+	// If it's not already an IP, resolve via DNS
+	if net.ParseIP(serverHost) == nil {
+		ips, err := net.LookupIP(serverHost)
+		if err == nil && len(ips) > 0 {
+			// Prefer IPv4
+			for _, ip := range ips {
+				if ip.To4() != nil {
+					serverHost = ip.String()
+					break
+				}
+			}
+			if net.ParseIP(serverHost) == nil && len(ips) > 0 {
+				serverHost = ips[0].String()
+			}
+		}
+	}
 
 	if err := e.wfp.Isolate(serverHost, payload.WhitelistIPs); err != nil {
 		return nil, fmt.Errorf("wfp isolate: %v", err)

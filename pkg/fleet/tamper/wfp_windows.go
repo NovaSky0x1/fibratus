@@ -577,13 +577,16 @@ func (w *WFPIsolator) addPermitLoopback(engine uintptr) (windows.GUID, error) {
 }
 
 func deleteFilter(engine uintptr, key windows.GUID) {
-	procFwpmFilterDeleteByKey0.Call(engine, uintptr(unsafe.Pointer(&key)))
+	ret, _, _ := procFwpmFilterDeleteByKey0.Call(engine, uintptr(unsafe.Pointer(&key)))
+	if ret != 0 {
+		log.Warnf("wfp: failed to delete filter %v: 0x%x", key, ret)
+	}
 }
 
 func parseAddr(s string) string {
-	s = net.ParseIP(s).String()
-	if s != "<nil>" {
-		return s
+	// Direct IP
+	if ip := net.ParseIP(s); ip != nil {
+		return ip.String()
 	}
 	// Try CIDR — extract the IP
 	if ip, _, err := net.ParseCIDR(s); err == nil {
@@ -591,8 +594,15 @@ func parseAddr(s string) string {
 	}
 	// Try hostname resolution
 	ips, err := net.LookupIP(s)
-	if err == nil && len(ips) > 0 {
-		return ips[0].String()
+	if err == nil {
+		for _, ip := range ips {
+			if ip.To4() != nil {
+				return ip.String()
+			}
+		}
+		if len(ips) > 0 {
+			return ips[0].String()
+		}
 	}
 	return ""
 }
