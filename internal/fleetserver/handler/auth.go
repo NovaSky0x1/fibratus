@@ -40,19 +40,72 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-
 
 // AuthHandler handles authentication API requests.
 type AuthHandler struct {
-	accounts  store.AccountStore
-	orgs      store.OrgStore
-	users     store.UserStore
-	jwtSecret string
+	accounts     store.AccountStore
+	orgs         store.OrgStore
+	users        store.UserStore
+	agents       store.AgentStore
+	commands     store.CommandStore
+	jwtSecret    string
+	onCmdCreated CommandPushCallback
 }
 
 // NewAuthHandler creates a new auth handler.
-func NewAuthHandler(accounts store.AccountStore, orgs store.OrgStore, users store.UserStore, jwtSecret string) *AuthHandler {
+func NewAuthHandler(accounts store.AccountStore, orgs store.OrgStore, users store.UserStore, agents store.AgentStore, commands store.CommandStore, jwtSecret string) *AuthHandler {
 	return &AuthHandler{
 		accounts:  accounts,
 		orgs:      orgs,
 		users:     users,
+		agents:    agents,
+		commands:  commands,
 		jwtSecret: jwtSecret,
+	}
+}
+
+// SetCommandPushCallback registers a callback for instant command delivery.
+func (h *AuthHandler) SetCommandPushCallback(cb CommandPushCallback) {
+	h.onCmdCreated = cb
+}
+
+// propagateTamperProtection queues set_tamper_protection commands to all
+// agents in the given org. This ensures that toggling tamper protection at
+// the account or org level actually enables it on the agents, not just in
+// the database.
+func (h *AuthHandler) propagateTamperProtection(ctx context.Context, orgID string, enabled bool) {
+	agents, _, err := h.agents.List(ctx, orgID, fleet.AgentListOptions{
+		ListOptions: fleet.ListOptions{PerPage: 10000},
+	})
+	if err != nil {
+		log.Errorf("fleet: failed to list agents for tamper propagation in org %s: %v", orgID, err)
+		return
+	}
+	payload, _ := json.Marshal(map[string]bool{"enabled": enabled})
+	for _, agent := range agents {
+		cmd := &fleet.Command{
+			ID:        GenerateID(),
+			OrgID:     orgID,
+			AgentID:   agent.ID,
+			Type:      fleet.CmdSetTamperProtection,
+			Payload:   payload,
+			Status:    fleet.CmdStatusPending,
+			CreatedBy: "system",
+			CreatedAt: time.Now().UTC(),
+		}
+		if err := h.commands.Create(ctx, cmd); err != nil {
+			log.Errorf("fleet: failed to queue tamper command for agent %s: %v", agent.ID, err)
+			continue
+		}
+		// Update the agent DB record to reflect the new state
+		agent.TamperProtection = enabled
+		if err := h.agents.Update(ctx, agent); err != nil {
+			log.Errorf("fleet: failed to update tamper state for agent %s: %v", agent.ID, err)
+		}
+		// Try instant push via gRPC if available
+		if h.onCmdCreated != nil {
+			if h.onCmdCreated(agent.ID, cmd.ID, cmd.Type, cmd.Payload) {
+				h.commands.MarkRunning(ctx, cmd.ID)
+			}
+		}
+		log.Infof("fleet: queued tamper protection %v for agent %s (%s)", enabled, agent.Hostname, agent.ID)
 	}
 }
 
@@ -348,6 +401,14 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 
 	log.Infof("fleet: account %s settings updated (2fa=%v, tamper=%v)", accountID, req.Require2FA, req.TamperProtectionEnabled)
 
+	// When tamper protection is enabled account-wide, propagate to all agents
+	if req.TamperProtectionEnabled != nil && *req.TamperProtectionEnabled {
+		orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
+		for _, org := range orgs {
+			h.propagateTamperProtection(r.Context(), org.ID, true)
+		}
+	}
+
 	account, err := h.accounts.Get(r.Context(), accountID)
 	if err != nil || account == nil {
 		writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"require_2fa": req.Require2FA}})
@@ -429,6 +490,11 @@ func (h *AuthHandler) UpdateOrgTamperProtection(w http.ResponseWriter, r *http.R
 	if err := h.orgs.UpdateTamperProtection(r.Context(), orgID, req.Enabled); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update org tamper protection")
 		return
+	}
+
+	// When tamper protection is enabled for the org, propagate to all agents in that org
+	if req.Enabled {
+		h.propagateTamperProtection(r.Context(), orgID, true)
 	}
 
 	log.Infof("fleet: org %s tamper protection set to %v", orgID, req.Enabled)

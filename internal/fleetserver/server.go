@@ -142,7 +142,7 @@ func (s *Server) Run(ctx context.Context) error {
 	seedMacrosFromFile(ctx, macroStore, orgStore, db)
 
 	// Create handlers
-	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, s.config.Auth.JWTSecret)
+	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, agentStore, commandStore, s.config.Auth.JWTSecret)
 	totpHandler := handler.NewTOTPHandler(userStore)
 	agentHandler := handler.NewAgentHandler(agentStore, accountStore, orgStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
@@ -237,6 +237,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	commandHandler.SetCommandPushCallback(cmdPushCallback)
 	captureHandler.SetCommandPushCallback(cmdPushCallback)
+	authHandler.SetCommandPushCallback(cmdPushCallback)
 
 	// Start gRPC server in background
 	go func() {
