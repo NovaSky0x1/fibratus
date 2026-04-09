@@ -90,6 +90,7 @@ var events = map[Type]Info{
 	SubmitThreadpoolWork:     {"SubmitThreadpoolWork", Threadpool, "Enqueues the work item to the thread pool"},
 	SubmitThreadpoolCallback: {"SubmitThreadpoolCallback", Threadpool, "Submits the thread pool callback for execution within the work item"},
 	SetThreadpoolTimer:       {"SetThreadpoolTimer", Threadpool, "Sets the thread pool timer object"},
+	EventLogEvent:            {"EventLogEvent", EventLog, "Windows Event Log record"},
 }
 
 var types = map[string]Type{
@@ -149,6 +150,7 @@ var types = map[string]Type{
 	"SubmitThreadpoolWork":     SubmitThreadpoolWork,
 	"SubmitThreadpoolCallback": SubmitThreadpoolCallback,
 	"SetThreadpoolTimer":       SetThreadpoolTimer,
+	"EventLogEvent":            EventLogEvent,
 }
 
 // indexedEvents keeps the slice of event infos. When the
@@ -211,6 +213,7 @@ var indexedEvents = []Info{
 	events[SubmitThreadpoolWork],
 	events[SubmitThreadpoolCallback],
 	events[SetThreadpoolTimer],
+	events[EventLogEvent],
 }
 
 // All returns all event types.

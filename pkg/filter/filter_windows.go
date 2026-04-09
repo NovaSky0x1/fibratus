@@ -88,6 +88,8 @@ func New(expr string, config *config.Config, options ...Option) Filter {
 	if config.EventSource.EnableThreadpoolEvents {
 		accessors = append(accessors, newThreadpoolAccessor())
 	}
+	// Event log accessor is always available — collection is driven by server policy
+	accessors = append(accessors, newEventLogAccessor())
 
 	var parser *ql.Parser
 	if fconfig.HasMacros() {

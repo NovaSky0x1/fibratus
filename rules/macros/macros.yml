@@ -109,6 +109,10 @@
 - macro: create_handle
   expr: evt.name = 'CreateHandle'
 
+- macro: eventlog_event
+  expr: evt.name = 'EventLogEvent'
+  description: Matches Windows Event Log events collected via the event log collector.
+
 - macro: query_dns
   expr: evt.name = 'QueryDns'
 

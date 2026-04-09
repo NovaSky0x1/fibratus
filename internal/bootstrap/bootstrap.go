@@ -20,6 +20,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,8 +28,9 @@ import (
 
 	"github.com/rabbitstack/fibratus/internal/evasion"
 	"github.com/rabbitstack/fibratus/pkg/aggregator"
-	"github.com/rabbitstack/fibratus/pkg/event"
 	"github.com/rabbitstack/fibratus/pkg/alertsender"
+	"github.com/rabbitstack/fibratus/pkg/event"
+	"github.com/rabbitstack/fibratus/pkg/eventlog"
 	"github.com/rabbitstack/fibratus/pkg/api"
 	"github.com/rabbitstack/fibratus/pkg/cap"
 	"github.com/rabbitstack/fibratus/pkg/config"
@@ -689,7 +691,29 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	}
 
 	executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL, wfpIsolator, protector)
+	// Register event log reconfigure callback so server policy changes
+	// dynamically update the collector without agent restart
+	executor.SetEventLogReconfigureCallback(func(policyJSON json.RawMessage) {
+		if f.evs == nil {
+			return
+		}
+		elCfg, err := parseEventLogPolicyJSON(policyJSON)
+		if err != nil {
+			log.Errorf("eventlog: failed to parse policy JSON: %v", err)
+			return
+		}
+		f.evs.StartEventLogCollector(elCfg)
+		log.Infof("eventlog: reconfigured via fleet policy (%d channels, enabled=%v)", len(elCfg.Channels), elCfg.Enabled)
+	})
 	client.StartCommandLoop(executor)
+
+	// Load persisted event log policy from disk (survives reboot)
+	if policyData, err := os.ReadFile(filepath.Join(dataDir, "eventlog-policy.json")); err == nil {
+		if elCfg, err := parseEventLogPolicyJSON(policyData); err == nil && elCfg.Enabled {
+			f.evs.StartEventLogCollector(elCfg)
+			log.Infof("eventlog: loaded persisted policy (%d channels)", len(elCfg.Channels))
+		}
+	}
 
 	log.Infof("fleet: connected to %s", cfg.Fleet.ServerURL)
 	return nil
@@ -726,4 +750,24 @@ func (f *App) isSingleInstance() bool {
 	}
 	event, err := windows.CreateEvent(nil, 0, 0, name)
 	return event != 0 && !errors.Is(err, windows.ERROR_ALREADY_EXISTS)
+}
+
+// parseEventLogPolicyJSON converts the raw fleet policy JSON into an eventlog.Config.
+func parseEventLogPolicyJSON(data []byte) (eventlog.Config, error) {
+	var policy fleet.EventLogPolicy
+	if err := json.Unmarshal(data, &policy); err != nil {
+		return eventlog.Config{}, err
+	}
+	channels := make([]eventlog.ChannelConfig, len(policy.Channels))
+	for i, ch := range policy.Channels {
+		channels[i] = eventlog.ChannelConfig{
+			Name:       ch.Name,
+			CollectAll: ch.CollectAll,
+			EventIDs:   ch.EventIDs,
+		}
+	}
+	return eventlog.Config{
+		Enabled:  policy.Enabled,
+		Channels: channels,
+	}, nil
 }

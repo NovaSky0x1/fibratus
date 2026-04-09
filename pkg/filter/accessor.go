@@ -165,6 +165,7 @@ func (f *filter) narrowAccessors() {
 		removeMemAccessor        = true
 		removeDNSAccessor        = true
 		removeThreadpoolAccessor = true
+		removeEventLogAccessor   = true
 	)
 
 	for _, field := range f.fields {
@@ -193,6 +194,8 @@ func (f *filter) narrowAccessors() {
 			removeDNSAccessor = false
 		case field.Name.IsThreadpoolField():
 			removeThreadpoolAccessor = false
+		case field.Name.IsEventLogField():
+			removeEventLogAccessor = false
 		}
 	}
 
@@ -231,6 +234,9 @@ func (f *filter) narrowAccessors() {
 	}
 	if removeThreadpoolAccessor {
 		f.removeAccessor(&threadpoolAccessor{})
+	}
+	if removeEventLogAccessor {
+		f.removeAccessor(&eventlogAccessor{})
 	}
 
 	for _, accessor := range f.accessors {

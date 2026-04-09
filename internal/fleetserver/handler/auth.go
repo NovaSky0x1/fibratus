@@ -40,13 +40,14 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-
 
 // AuthHandler handles authentication API requests.
 type AuthHandler struct {
-	accounts     store.AccountStore
-	orgs         store.OrgStore
-	users        store.UserStore
-	agents       store.AgentStore
-	commands     store.CommandStore
-	jwtSecret    string
-	onCmdCreated CommandPushCallback
+	accounts       store.AccountStore
+	orgs           store.OrgStore
+	users          store.UserStore
+	agents         store.AgentStore
+	commands       store.CommandStore
+	eventlogPolicy store.EventLogPolicyStore
+	jwtSecret      string
+	onCmdCreated   CommandPushCallback
 }
 
 // NewAuthHandler creates a new auth handler.
@@ -59,6 +60,11 @@ func NewAuthHandler(accounts store.AccountStore, orgs store.OrgStore, users stor
 		commands:  commands,
 		jwtSecret: jwtSecret,
 	}
+}
+
+// SetEventLogPolicyStore sets the event log policy store for account-level propagation.
+func (h *AuthHandler) SetEventLogPolicyStore(s store.EventLogPolicyStore) {
+	h.eventlogPolicy = s
 }
 
 // SetCommandPushCallback registers a callback for instant command delivery.
@@ -106,6 +112,72 @@ func (h *AuthHandler) propagateTamperProtection(ctx context.Context, orgID strin
 			}
 		}
 		log.Infof("fleet: queued tamper protection %v for agent %s (%s)", enabled, agent.Hostname, agent.ID)
+	}
+}
+
+// propagateEventLogPolicy pushes the event log collection policy to all agents
+// in the given org when the account-level toggle changes.
+func (h *AuthHandler) propagateEventLogPolicy(ctx context.Context, orgID string, enabled bool) {
+	// Get the org's policy (or use recommended defaults if none exists)
+	var policy *fleet.EventLogPolicy
+	if h.eventlogPolicy != nil {
+		policy, _ = h.eventlogPolicy.Get(ctx, orgID)
+	}
+	if policy == nil {
+		// Create default policy with recommended channels
+		channels := []fleet.EventLogPolicyChannel{
+			{Name: "Security", CollectAll: true},
+			{Name: "System", CollectAll: true},
+			{Name: "Microsoft-Windows-PowerShell/Operational", CollectAll: true},
+			{Name: "Microsoft-Windows-Sysmon/Operational", CollectAll: true},
+			{Name: "Microsoft-Windows-Windows Defender/Operational", CollectAll: true},
+		}
+		policy = &fleet.EventLogPolicy{
+			ID:       GenerateID(),
+			OrgID:    orgID,
+			Enabled:  enabled,
+			Channels: channels,
+		}
+		if h.eventlogPolicy != nil {
+			h.eventlogPolicy.Upsert(ctx, policy)
+		}
+	} else {
+		policy.Enabled = enabled
+		if h.eventlogPolicy != nil {
+			h.eventlogPolicy.Upsert(ctx, policy)
+		}
+	}
+
+	agents, _, err := h.agents.List(ctx, orgID, fleet.AgentListOptions{
+		ListOptions: fleet.ListOptions{PerPage: 10000},
+	})
+	if err != nil {
+		log.Errorf("fleet: failed to list agents for eventlog policy propagation in org %s: %v", orgID, err)
+		return
+	}
+
+	payload, _ := json.Marshal(policy)
+	for _, agent := range agents {
+		cmd := &fleet.Command{
+			ID:        GenerateID(),
+			OrgID:     orgID,
+			AgentID:   agent.ID,
+			Type:      fleet.CmdSetEventLogPolicy,
+			Payload:   payload,
+			Status:    fleet.CmdStatusPending,
+			CreatedBy: "system",
+			CreatedAt: time.Now().UTC(),
+		}
+		if err := h.commands.Create(ctx, cmd); err != nil {
+			log.Errorf("fleet: failed to queue eventlog policy command for agent %s: %v", agent.ID, err)
+			continue
+		}
+		if h.onCmdCreated != nil {
+			if h.onCmdCreated(agent.ID, cmd.ID, cmd.Type, cmd.Payload) {
+				h.commands.MarkRunning(ctx, cmd.ID)
+			}
+		}
+		log.Infof("fleet: queued eventlog policy for agent %s (%s)", agent.Hostname, agent.ID)
 	}
 }
 
@@ -387,6 +459,7 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 	var req struct {
 		Require2FA              bool     `json:"require_2fa"`
 		TamperProtectionEnabled *bool    `json:"tamper_protection_enabled,omitempty"`
+		EventLogEnabled         *bool    `json:"eventlog_enabled,omitempty"`
 		IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -394,18 +467,26 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.accounts.UpdateSettings(r.Context(), accountID, req.Require2FA, req.TamperProtectionEnabled, req.IsolationWhitelist); err != nil {
+	if err := h.accounts.UpdateSettings(r.Context(), accountID, req.Require2FA, req.TamperProtectionEnabled, req.IsolationWhitelist, req.EventLogEnabled); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update settings")
 		return
 	}
 
-	log.Infof("fleet: account %s settings updated (2fa=%v, tamper=%v)", accountID, req.Require2FA, req.TamperProtectionEnabled)
+	log.Infof("fleet: account %s settings updated (2fa=%v, tamper=%v, eventlog=%v)", accountID, req.Require2FA, req.TamperProtectionEnabled, req.EventLogEnabled)
 
 	// Propagate tamper protection state change to all agents across all orgs
 	if req.TamperProtectionEnabled != nil {
 		orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
 		for _, org := range orgs {
 			h.propagateTamperProtection(r.Context(), org.ID, *req.TamperProtectionEnabled)
+		}
+	}
+
+	// Propagate event log policy when toggled at account level
+	if req.EventLogEnabled != nil && h.eventlogPolicy != nil {
+		orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
+		for _, org := range orgs {
+			h.propagateEventLogPolicy(r.Context(), org.ID, *req.EventLogEnabled)
 		}
 	}
 
@@ -417,6 +498,7 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"require_2fa":                account.Require2FA,
 		"tamper_protection_enabled":  account.TamperProtectionEnabled,
+		"eventlog_enabled":           account.EventLogEnabled,
 		"isolation_whitelist":        account.IsolationWhitelist,
 	}})
 }
@@ -451,6 +533,7 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 		"account_name":               account.Name,
 		"plan":                        account.Plan,
 		"tamper_protection_enabled":   account.TamperProtectionEnabled,
+		"eventlog_enabled":            account.EventLogEnabled,
 		"isolation_whitelist":         account.IsolationWhitelist,
 		"org_protection":             orgProtection,
 	}})

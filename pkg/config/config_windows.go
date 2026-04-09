@@ -25,7 +25,7 @@ import (
 	"golang.org/x/sys/windows"
 	"time"
 
-	"github.com/rabbitstack/fibratus/pkg/outputs/eventlog"
+	eventlogoutput "github.com/rabbitstack/fibratus/pkg/outputs/eventlog"
 
 	"github.com/rabbitstack/fibratus/pkg/outputs/http"
 
@@ -133,6 +133,9 @@ type Config struct {
 	// Fleet stores the fleet client configuration for centralized management.
 	Fleet FleetConfig `json:"fleet" yaml:"fleet"`
 
+	// EventLog stores the Windows Event Log collection configuration.
+	EventLog EventLogConfig `json:"eventlog" yaml:"eventlog"`
+
 	flags *pflag.FlagSet
 	viper *viper.Viper
 	opts  *Options
@@ -227,7 +230,7 @@ func NewWithOpts(options ...Option) *Config {
 		amqp.AddFlags(flagSet)
 		elasticsearch.AddFlags(flagSet)
 		http.AddFlags(flagSet)
-		eventlog.AddFlags(flagSet)
+		eventlogoutput.AddFlags(flagSet)
 		removet.AddFlags(flagSet)
 		replacet.AddFlags(flagSet)
 		renamet.AddFlags(flagSet)

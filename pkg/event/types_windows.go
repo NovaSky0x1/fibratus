@@ -69,6 +69,8 @@ var (
 	ThreadpoolGUID = windows.GUID{Data1: 0xc861d0e2, Data2: 0xa2c1, Data3: 0x4d36, Data4: [8]byte{0x9f, 0x9c, 0x97, 0x0b, 0xab, 0x94, 0x3a, 0x12}}
 	// ProcessKernelEventGUID represents the Process Kernel event GUID
 	ProcessKernelEventGUID = windows.GUID{Data1: 0x22fb2cd6, Data2: 0x0e7b, Data3: 0x422b, Data4: [8]byte{0xa0, 0xc7, 0x2f, 0xad, 0x1f, 0xd0, 0xe7, 0x16}}
+	// EventLogGUID is a synthetic GUID for Windows Event Log events (not an ETW provider).
+	EventLogGUID = windows.GUID{Data1: 0xf1b2a3c4, Data2: 0xd5e6, Data3: 0x47f8, Data4: [8]byte{0x90, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde}}
 	// RegistryKernelEventGUID represents the Registry Kernel event GUID
 	RegistryKernelEventGUID = windows.GUID{Data1: 0x70eb4f03, Data2: 0xc1de, Data3: 0x4f73, Data4: [8]byte{0xa0, 0x51, 0x33, 0xd1, 0x3d, 0x54, 0x13, 0xbd}}
 )
@@ -234,6 +236,9 @@ var (
 	// SetThreadpoolTimer represents the event that sets the thread pool timer object
 	SetThreadpoolTimer = pack(ThreadpoolGUID, 44)
 
+	// EventLogEvent represents a Windows Event Log record
+	EventLogEvent = pack(EventLogGUID, 1)
+
 	// UnknownType designates unknown event type
 	UnknownType = pack(windows.GUID{}, 0)
 )
@@ -357,6 +362,8 @@ func (t Type) String() string {
 		return "SubmitThreadpoolCallback"
 	case SetThreadpoolTimer:
 		return "SetThreadpoolTimer"
+	case EventLogEvent:
+		return "EventLogEvent"
 	default:
 		return ""
 	}
@@ -394,6 +401,8 @@ func (t Type) Category() Category {
 		return Object
 	case SubmitThreadpoolWork, SubmitThreadpoolCallback, SetThreadpoolTimer:
 		return Threadpool
+	case EventLogEvent:
+		return EventLog
 	default:
 		return Unknown
 	}
@@ -502,6 +511,8 @@ func (t Type) Description() string {
 		return "Submits the thread pool callback for execution within the work item"
 	case SetThreadpoolTimer:
 		return "Sets the thread pool timer object"
+	case EventLogEvent:
+		return "Windows Event Log record"
 	default:
 		return ""
 	}

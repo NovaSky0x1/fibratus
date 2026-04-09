@@ -162,6 +162,9 @@ func (s *Server) Run(ctx context.Context) error {
 	dbAdminHandler := handler.NewDBAdminHandler(db, chDB)
 	groupHandler := handler.NewGroupHandler(groupStore)
 	captureHandler := handler.NewCaptureHandler(captureStore, agentStore, commandStore, auditStore, userStore)
+	eventLogPolicyStore := postgres.NewEventLogPolicyStore(db)
+	eventLogPolicyHandler := handler.NewEventLogPolicyHandler(eventLogPolicyStore, agentStore, commandStore)
+	authHandler.SetEventLogPolicyStore(eventLogPolicyStore)
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
@@ -238,6 +241,7 @@ func (s *Server) Run(ctx context.Context) error {
 	commandHandler.SetCommandPushCallback(cmdPushCallback)
 	captureHandler.SetCommandPushCallback(cmdPushCallback)
 	authHandler.SetCommandPushCallback(cmdPushCallback)
+	eventLogPolicyHandler.SetCommandPushCallback(cmdPushCallback)
 
 	// Start gRPC server in background
 	go func() {
@@ -375,6 +379,12 @@ func (s *Server) Run(ctx context.Context) error {
 			requirePermission(fleetauth.PermManageRules, ruleHandler.Update)(w, r)
 		case strings.HasPrefix(subpath, "/rules/") && r.Method == http.MethodDelete:
 			requirePermission(fleetauth.PermManageRules, ruleHandler.Delete)(w, r)
+
+		// Event Log Policy
+		case subpath == "/eventlog-policy" && r.Method == http.MethodGet:
+			eventLogPolicyHandler.Get(w, r)
+		case subpath == "/eventlog-policy" && r.Method == http.MethodPut:
+			requirePermission(fleetauth.PermManageSettings, eventLogPolicyHandler.Upsert)(w, r)
 
 		// Enrollment Tokens
 		case subpath == "/enrollment-tokens" && r.Method == http.MethodGet:

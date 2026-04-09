@@ -385,6 +385,9 @@ ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tamper_protection_enabled BOO
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS tamper_protection BOOLEAN DEFAULT FALSE;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS isolated BOOLEAN DEFAULT FALSE;
 
+-- Event log collection account-level toggle
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS eventlog_enabled BOOLEAN DEFAULT FALSE;
+
 -- ═══════════════════════════════════════════════════════════════
 -- Decommissioned agents — deleted agents that should auto-uninstall on reconnect
 -- ═══════════════════════════════════════════════════════════════
@@ -439,6 +442,21 @@ CREATE TABLE IF NOT EXISTS capture_events (
 CREATE INDEX IF NOT EXISTS idx_capture_events_capture ON capture_events(capture_id);
 CREATE INDEX IF NOT EXISTS idx_capture_events_ts ON capture_events(capture_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_capture_events_name ON capture_events(capture_id, event_name);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Event Log Policies: server-managed Windows Event Log collection config
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS eventlog_policies (
+    id         TEXT PRIMARY KEY,
+    org_id     TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    enabled    BOOLEAN DEFAULT true,
+    channels   JSONB NOT NULL DEFAULT '[]',
+    version    INTEGER DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(org_id)
+);
+CREATE INDEX IF NOT EXISTS idx_eventlog_policies_org ON eventlog_policies(org_id);
 `
 
 // Migrate runs the database schema migrations.

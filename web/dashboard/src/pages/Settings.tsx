@@ -192,6 +192,11 @@ export default function Settings() {
       <ProtectionSettingsSection />
 
       {/* ──────────────────────────────────────────── */}
+      {/* Event Log Collection */}
+      {/* ──────────────────────────────────────────── */}
+      <EventLogCollectionSection />
+
+      {/* ──────────────────────────────────────────── */}
       {/* Enrollment Tokens Section */}
       {/* ──────────────────────────────────────────── */}
       <div className="mt-8">
@@ -632,6 +637,256 @@ function ToggleSwitch({ enabled, onToggle, disabled }: { enabled: boolean; onTog
         }
       />
     </button>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Event Log Collection Section
+// ═══════════════════════════════════════════════════════════════
+
+interface EventLogChannel {
+  name: string
+  collect_all: boolean
+  event_ids?: number[]
+}
+
+const RECOMMENDED_CHANNELS: EventLogChannel[] = [
+  { name: 'Security', collect_all: true },
+  { name: 'System', collect_all: true },
+  { name: 'Microsoft-Windows-PowerShell/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-Sysmon/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-Windows Defender/Operational', collect_all: true },
+]
+
+const ADDITIONAL_CHANNELS: EventLogChannel[] = [
+  { name: 'Application', collect_all: true },
+  { name: 'Microsoft-Windows-CodeIntegrity/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-Windows Firewall With Advanced Security/Firewall', collect_all: true },
+  { name: 'Microsoft-Windows-Bits-Client/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-TaskScheduler/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-WMI-Activity/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-TerminalServices-LocalSessionManager/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-NTLM/Operational', collect_all: true },
+]
+
+function EventLogCollectionSection() {
+  const queryClient = useQueryClient()
+  const [showAddChannel, setShowAddChannel] = useState(false)
+  const [customChannelName, setCustomChannelName] = useState('')
+
+  // Account-level toggle (like tamper protection)
+  const { data: settingsData } = useQuery({
+    queryKey: ['account-settings'],
+    queryFn: () => api.getAccountSettings(),
+  })
+  const accountEnabled = (settingsData?.data as { eventlog_enabled?: boolean } | undefined)?.eventlog_enabled ?? false
+
+  const accountToggleMutation = useMutation({
+    mutationFn: (enabled: boolean) => api.updateAccountSettings({ eventlog_enabled: enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['eventlog-policy'] })
+    },
+  })
+
+  // Org-level channel configuration
+  const { data: policyData, isLoading } = useQuery({
+    queryKey: ['eventlog-policy'],
+    queryFn: () => api.getEventLogPolicy(),
+  })
+
+  const policy = policyData?.data as { enabled: boolean; channels: EventLogChannel[]; version?: number } | undefined
+  const enabled = accountEnabled
+  const channels = policy?.channels ?? []
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { enabled: boolean; channels: EventLogChannel[] }) => api.updateEventLogPolicy(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['eventlog-policy'] })
+    },
+  })
+
+  const handleToggle = () => {
+    accountToggleMutation.mutate(!accountEnabled)
+  }
+
+  const handleChannelToggle = (channelName: string) => {
+    const exists = channels.find(c => c.name === channelName)
+    let newChannels: EventLogChannel[]
+    if (exists) {
+      newChannels = channels.filter(c => c.name !== channelName)
+    } else {
+      newChannels = [...channels, { name: channelName, collect_all: true }]
+    }
+    updateMutation.mutate({ enabled, channels: newChannels })
+  }
+
+  const handlePreset = (preset: 'recommended' | 'sigma-full' | 'minimal') => {
+    let newChannels: EventLogChannel[]
+    switch (preset) {
+      case 'recommended':
+        newChannels = [...RECOMMENDED_CHANNELS]
+        break
+      case 'sigma-full':
+        newChannels = [...RECOMMENDED_CHANNELS, ...ADDITIONAL_CHANNELS]
+        break
+      case 'minimal':
+        newChannels = [
+          { name: 'Security', collect_all: true },
+          { name: 'System', collect_all: true },
+        ]
+        break
+    }
+    updateMutation.mutate({ enabled: true, channels: newChannels })
+  }
+
+  const handleAddCustomChannel = () => {
+    if (!customChannelName.trim()) return
+    if (channels.find(c => c.name === customChannelName.trim())) return
+    const newChannels = [...channels, { name: customChannelName.trim(), collect_all: true }]
+    updateMutation.mutate({ enabled, channels: newChannels })
+    setCustomChannelName('')
+    setShowAddChannel(false)
+  }
+
+  const isChannelEnabled = (name: string) => channels.some(c => c.name === name)
+
+  if (isLoading) {
+    return <div className="mt-8 text-sm text-gray-500 dark:text-slate-400">Loading event log policy...</div>
+  }
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
+            Event Log Collection
+          </h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            Collect Windows Event Logs from enrolled agents. Enables detection rules based on Security, Sysmon, PowerShell, and other log sources.
+          </p>
+        </div>
+        <ToggleSwitch
+          enabled={enabled}
+          onToggle={handleToggle}
+          disabled={accountToggleMutation.isPending}
+        />
+      </div>
+
+      {enabled && (
+        <div className="mt-4 space-y-4">
+          {/* Presets */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wide">Presets:</span>
+            <button onClick={() => handlePreset('recommended')} className="rounded-md bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800">
+              Recommended
+            </button>
+            <button onClick={() => handlePreset('sigma-full')} className="rounded-md bg-purple-50 dark:bg-purple-900/30 px-3 py-1.5 text-xs font-medium text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 border border-purple-200 dark:border-purple-800">
+              Sigma Full Coverage
+            </button>
+            <button onClick={() => handlePreset('minimal')} className="rounded-md bg-gray-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600">
+              Minimal
+            </button>
+          </div>
+
+          {/* Channel list */}
+          <div className="rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+              <thead className="bg-gray-50 dark:bg-slate-800">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Channel</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Mode</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 dark:text-slate-400 uppercase">Collect</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-100 dark:divide-slate-800">
+                {/* Recommended channels */}
+                {RECOMMENDED_CHANNELS.map(ch => (
+                  <tr key={ch.name} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                    <td className="px-4 py-2.5 text-sm text-gray-900 dark:text-slate-200 font-mono">{ch.name}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500 dark:text-slate-400">All Events</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isChannelEnabled(ch.name)}
+                        onChange={() => handleChannelToggle(ch.name)}
+                        disabled={updateMutation.isPending}
+                        className="h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 dark:bg-slate-700"
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {/* Additional channels */}
+                {ADDITIONAL_CHANNELS.map(ch => (
+                  <tr key={ch.name} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                    <td className="px-4 py-2.5 text-sm text-gray-900 dark:text-slate-200 font-mono">{ch.name}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500 dark:text-slate-400">All Events</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isChannelEnabled(ch.name)}
+                        onChange={() => handleChannelToggle(ch.name)}
+                        disabled={updateMutation.isPending}
+                        className="h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 dark:bg-slate-700"
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {/* Custom channels (not in presets) */}
+                {channels
+                  .filter(c => ![...RECOMMENDED_CHANNELS, ...ADDITIONAL_CHANNELS].find(p => p.name === c.name))
+                  .map(ch => (
+                    <tr key={ch.name} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                      <td className="px-4 py-2.5 text-sm text-gray-900 dark:text-slate-200 font-mono">{ch.name}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500 dark:text-slate-400">All Events</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked
+                          onChange={() => handleChannelToggle(ch.name)}
+                          disabled={updateMutation.isPending}
+                          className="h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 dark:bg-slate-700"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Add custom channel */}
+          <div className="flex items-center gap-2">
+            {showAddChannel ? (
+              <>
+                <input
+                  type="text"
+                  value={customChannelName}
+                  onChange={e => setCustomChannelName(e.target.value)}
+                  placeholder="Microsoft-Windows-Provider/Operational"
+                  className="flex-1 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm text-gray-900 dark:text-slate-200 font-mono placeholder-gray-400 dark:placeholder-slate-500"
+                  onKeyDown={e => e.key === 'Enter' && handleAddCustomChannel()}
+                />
+                <button onClick={handleAddCustomChannel} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">Add</button>
+                <button onClick={() => { setShowAddChannel(false); setCustomChannelName('') }} className="rounded-md border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700">Cancel</button>
+              </>
+            ) : (
+              <button onClick={() => setShowAddChannel(true)} className="rounded-md border border-dashed border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-slate-300">
+                + Add Custom Channel
+              </button>
+            )}
+          </div>
+
+          {/* Status */}
+          <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-3">
+            <p className="text-xs text-blue-700 dark:text-blue-400">
+              <strong>{channels.length}</strong> channel{channels.length !== 1 ? 's' : ''} configured.
+              Policy will be pushed to all enrolled agents.
+              {policy?.version && <span className="ml-2 text-blue-500 dark:text-blue-500">(v{policy.version})</span>}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

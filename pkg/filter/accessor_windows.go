@@ -65,6 +65,7 @@ func GetAccessors() []Accessor {
 		newNetworkAccessor(),
 		newRegistryAccessor(),
 		newThreadpoolAccessor(),
+		newEventLogAccessor(),
 	}
 }
 
@@ -1349,6 +1350,55 @@ func (*threadpoolAccessor) Get(f Field, e *event.Event) (params.Value, error) {
 		return e.Params.GetUint32(params.ThreadpoolTimerWindow)
 	case fields.ThreadpoolTimerAbsolute:
 		return e.Params.GetBool(params.ThreadpoolTimerAbsolute)
+	}
+
+	return nil, nil
+}
+
+// eventlogAccessor extracts values from Windows Event Log events
+type eventlogAccessor struct{}
+
+func (eventlogAccessor) SetFields([]Field)            {}
+func (eventlogAccessor) SetSegments([]fields.Segment) {}
+func (eventlogAccessor) IsFieldAccessible(e *event.Event) bool {
+	return e.Category == event.EventLog
+}
+
+func newEventLogAccessor() Accessor {
+	return &eventlogAccessor{}
+}
+
+func (*eventlogAccessor) Get(f Field, e *event.Event) (params.Value, error) {
+	switch f.Name {
+	case fields.EventLogChannel:
+		return e.GetParamAsString("eventlog.channel"), nil
+	case fields.EventLogProvider:
+		return e.GetParamAsString("eventlog.provider"), nil
+	case fields.EventLogEventID:
+		return e.Params.GetUint16("eventlog.event.id")
+	case fields.EventLogLevel:
+		return e.GetParamAsString("eventlog.level"), nil
+	case fields.EventLogLevelID:
+		return e.Params.GetUint8("eventlog.level.id")
+	case fields.EventLogRecordID:
+		return e.Params.GetUint64("eventlog.record.id")
+	case fields.EventLogTask:
+		return e.Params.GetUint16("eventlog.task")
+	case fields.EventLogOpcode:
+		return e.Params.GetUint8("eventlog.opcode")
+	case fields.EventLogKeywords:
+		return e.GetParamAsString("eventlog.keywords"), nil
+	case fields.EventLogComputer:
+		return e.GetParamAsString("eventlog.computer"), nil
+	case fields.EventLogUserID:
+		return e.GetParamAsString("eventlog.user.id"), nil
+	case fields.EventLogData:
+		// eventlog.data[FieldName] — retrieve specific EventData field
+		name := f.Arg
+		if name == "" {
+			return nil, nil
+		}
+		return e.GetParamAsString("eventlog.data." + name), nil
 	}
 
 	return nil, nil

@@ -659,6 +659,31 @@ const (
 	// DNSRcode identifies the field that represents the DNS response code
 	DNSRcode Field = "dns.rcode"
 
+	// EventLogChannel represents the Windows Event Log channel name
+	EventLogChannel Field = "eventlog.channel"
+	// EventLogProvider represents the event log provider name
+	EventLogProvider Field = "eventlog.provider"
+	// EventLogEventID represents the event log event identifier
+	EventLogEventID Field = "eventlog.event.id"
+	// EventLogLevel represents the event log level name
+	EventLogLevel Field = "eventlog.level"
+	// EventLogLevelID represents the event log level numeric value
+	EventLogLevelID Field = "eventlog.level.id"
+	// EventLogRecordID represents the event log record identifier
+	EventLogRecordID Field = "eventlog.record.id"
+	// EventLogTask represents the event log task value
+	EventLogTask Field = "eventlog.task"
+	// EventLogOpcode represents the event log opcode value
+	EventLogOpcode Field = "eventlog.opcode"
+	// EventLogKeywords represents the event log keywords
+	EventLogKeywords Field = "eventlog.keywords"
+	// EventLogComputer represents the computer name from the event log
+	EventLogComputer Field = "eventlog.computer"
+	// EventLogUserID represents the security user ID from the event log
+	EventLogUserID Field = "eventlog.user.id"
+	// EventLogData represents the event data fields accessed by name
+	EventLogData Field = "eventlog.data"
+
 	// ThreadpoolPoolID identifies the field that represents the thread pool identifier
 	ThreadpoolPoolID = "threadpool.id"
 	// ThreadpoolTaskID identifies the field that represents the thread pool task identifier
@@ -717,6 +742,7 @@ func (f Field) IsModuleField() bool {
 func (f Field) IsMemField() bool        { return strings.HasPrefix(string(f), "mem.") }
 func (f Field) IsDNSField() bool        { return strings.HasPrefix(string(f), "dns.") }
 func (f Field) IsThreadpoolField() bool { return strings.HasPrefix(string(f), "threadpool.") }
+func (f Field) IsEventLogField() bool  { return strings.HasPrefix(string(f), "eventlog.") }
 
 func (f Field) IsPeSection() bool { return f == PeNumSections || f == PsPeNumSections }
 func (f Field) IsPeSymbol() bool {
@@ -1293,6 +1319,30 @@ var fields = map[Field]FieldInfo{
 	ThreadpoolTimerPeriod:              {ThreadpoolTimerPeriod, "thread pool timer period", params.Uint32, []string{"threadpool.timer.period = 0'"}, nil, nil},
 	ThreadpoolTimerWindow:              {ThreadpoolTimerWindow, "thread pool timer tolerate period", params.Uint32, []string{"threadpool.timer.window = 0'"}, nil, nil},
 	ThreadpoolTimerAbsolute:            {ThreadpoolTimerAbsolute, "indicates if the thread pool timer is absolute or relative", params.Bool, []string{"threadpool.timer.is_absolute = true'"}, nil, nil},
+
+	EventLogChannel:  {EventLogChannel, "Windows Event Log channel name", params.UnicodeString, []string{"eventlog.channel = 'Security'"}, nil, nil},
+	EventLogProvider: {EventLogProvider, "event log provider name", params.UnicodeString, []string{"eventlog.provider = 'Microsoft-Windows-Sysmon'"}, nil, nil},
+	EventLogEventID:  {EventLogEventID, "event log event identifier", params.Uint16, []string{"eventlog.event.id = 4624"}, nil, nil},
+	EventLogLevel:    {EventLogLevel, "event log level name", params.UnicodeString, []string{"eventlog.level = 'Warning'"}, nil, nil},
+	EventLogLevelID:  {EventLogLevelID, "event log level numeric value", params.Uint8, []string{"eventlog.level.id = 2"}, nil, nil},
+	EventLogRecordID: {EventLogRecordID, "event log record identifier", params.Uint64, []string{"eventlog.record.id > 1000"}, nil, nil},
+	EventLogTask:     {EventLogTask, "event log task value", params.Uint16, []string{"eventlog.task = 1"}, nil, nil},
+	EventLogOpcode:   {EventLogOpcode, "event log opcode value", params.Uint8, []string{"eventlog.opcode = 0"}, nil, nil},
+	EventLogKeywords: {EventLogKeywords, "event log keywords", params.UnicodeString, []string{"eventlog.keywords contains '0x8020'"}, nil, nil},
+	EventLogComputer: {EventLogComputer, "computer name from the event log", params.UnicodeString, []string{"eventlog.computer icontains 'DC01'"}, nil, nil},
+	EventLogUserID:   {EventLogUserID, "security user ID from the event log", params.UnicodeString, []string{"eventlog.user.id = 'S-1-5-18'"}, nil, nil},
+	EventLogData: {EventLogData, "event data field accessed by name", params.Object, []string{"eventlog.data[TargetUserName] = 'admin'"}, nil, &Argument{Optional: false, Pattern: "[a-zA-Z0-9_]+", ValidationFunc: func(s string) bool {
+		for _, c := range s {
+			switch {
+			case unicode.IsLetter(c):
+			case unicode.IsNumber(c):
+			case c == '_':
+			default:
+				return false
+			}
+		}
+		return len(s) > 0
+	}}},
 }
 
 // ArgumentOf returns argument data for the specified field.

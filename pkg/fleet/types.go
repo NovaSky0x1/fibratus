@@ -34,6 +34,7 @@ type Account struct {
 	Plan            string    `json:"plan"`
 	Require2FA              bool     `json:"require_2fa"`
 	TamperProtectionEnabled bool     `json:"tamper_protection_enabled"`
+	EventLogEnabled         bool     `json:"eventlog_enabled"`
 	IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
 	OrgCount                int      `json:"org_count,omitempty"`
 	UserCount       int       `json:"user_count,omitempty"`
@@ -255,6 +256,7 @@ const (
 	CmdStopCapture         = "stop_capture"
 	CmdYaraScan            = "yara_scan"
 	CmdSetTamperProtection = "set_tamper_protection"
+	CmdSetEventLogPolicy   = "set_eventlog_policy"
 	CmdLogoffUser          = "logoff_user"
 )
 
@@ -281,6 +283,28 @@ type Command struct {
 	CreatedAt    time.Time       `json:"created_at"`
 	StartedAt    *time.Time      `json:"started_at,omitempty"`
 	CompletedAt  *time.Time      `json:"completed_at,omitempty"`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Event Log Policies: server-managed WEL collection configuration
+// ═══════════════════════════════════════════════════════════════
+
+// EventLogPolicyChannel represents a single channel in the event log collection policy.
+type EventLogPolicyChannel struct {
+	Name       string   `json:"name"`
+	CollectAll bool     `json:"collect_all"`
+	EventIDs   []uint16 `json:"event_ids,omitempty"`
+}
+
+// EventLogPolicy represents the server-managed event log collection configuration.
+type EventLogPolicy struct {
+	ID        string                  `json:"id"`
+	OrgID     string                  `json:"org_id"`
+	Enabled   bool                    `json:"enabled"`
+	Channels  []EventLogPolicyChannel `json:"channels"`
+	Version   int                     `json:"version"`
+	CreatedAt time.Time               `json:"created_at"`
+	UpdatedAt time.Time               `json:"updated_at"`
 }
 
 // ═══════════════════════════════════════════════════════════════

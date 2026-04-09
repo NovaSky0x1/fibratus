@@ -32,7 +32,7 @@ type AccountStore interface {
 	Get(ctx context.Context, id string) (*fleet.Account, error)
 	ListAll(ctx context.Context) ([]*fleet.Account, error)
 	Delete(ctx context.Context, id string) error
-	UpdateSettings(ctx context.Context, id string, require2FA bool, tamperProtection *bool, isolationWhitelist []string) error
+	UpdateSettings(ctx context.Context, id string, require2FA bool, tamperProtection *bool, isolationWhitelist []string, eventlogEnabled *bool) error
 	UpdateProfile(ctx context.Context, id, name, plan string) error
 }
 
@@ -246,6 +246,12 @@ type TelemetryEvent struct {
 	Params         json.RawMessage `json:"params"`
 	Metadata       json.RawMessage `json:"metadata"`
 	RawEvent       json.RawMessage `json:"raw_event"`
+}
+
+// EventLogPolicyStore manages event log collection policies.
+type EventLogPolicyStore interface {
+	Get(ctx context.Context, orgID string) (*fleet.EventLogPolicy, error)
+	Upsert(ctx context.Context, policy *fleet.EventLogPolicy) error
 }
 
 // TelemetrySearchOpts defines search filters for telemetry events.

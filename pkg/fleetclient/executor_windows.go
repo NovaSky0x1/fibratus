@@ -35,18 +35,30 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	fleetserver "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
+	log "github.com/sirupsen/logrus"
 )
+
+// EventLogReconfigureCallback is called when the server pushes a new event log
+// collection policy. The raw JSON payload is passed to the bootstrap layer which
+// converts it to the appropriate config type and reconfigures the collector.
+type EventLogReconfigureCallback func(policyJSON json.RawMessage)
 
 // WindowsExecutor executes fleet commands on Windows endpoints.
 type WindowsExecutor struct {
-	serverURL string
-	wfp       *tamper.WFPIsolator
-	protector *tamper.Protector
+	serverURL          string
+	wfp                *tamper.WFPIsolator
+	protector          *tamper.Protector
+	eventlogReconfigure EventLogReconfigureCallback
 }
 
 // NewWindowsExecutor creates a new Windows command executor.
 func NewWindowsExecutor(serverURL string, wfp *tamper.WFPIsolator, protector *tamper.Protector) *WindowsExecutor {
 	return &WindowsExecutor{serverURL: serverURL, wfp: wfp, protector: protector}
+}
+
+// SetEventLogReconfigureCallback registers the callback for event log policy changes.
+func (e *WindowsExecutor) SetEventLogReconfigureCallback(cb EventLogReconfigureCallback) {
+	e.eventlogReconfigure = cb
 }
 
 // Execute dispatches and runs a command based on its type.
@@ -92,6 +104,8 @@ func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
 		return e.yaraScan(cmd)
 	case fleet.CmdSetTamperProtection:
 		return e.setTamperProtection(cmd)
+	case fleet.CmdSetEventLogPolicy:
+		return e.setEventLogPolicy(cmd)
 	case fleet.CmdLogoffUser:
 		return e.logoffUser(cmd)
 	default:
@@ -190,6 +204,33 @@ func (e *WindowsExecutor) setTamperProtection(cmd *fleet.Command) (json.RawMessa
 
 	result, _ := json.Marshal(map[string]interface{}{
 		"tamper_protection": payload.Enabled,
+	})
+	return result, nil
+}
+
+// setEventLogPolicy applies the event log collection policy received from the server.
+func (e *WindowsExecutor) setEventLogPolicy(cmd *fleet.Command) (json.RawMessage, error) {
+	var policy fleet.EventLogPolicy
+	if err := json.Unmarshal(cmd.Payload, &policy); err != nil {
+		return nil, fmt.Errorf("parse eventlog policy: %v", err)
+	}
+
+	// Persist the raw policy to disk for reboot survival
+	exe, _ := os.Executable()
+	if exe != "" {
+		dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
+		os.WriteFile(filepath.Join(dataDir, "eventlog-policy.json"), cmd.Payload, 0o600)
+	}
+
+	// Apply immediately via the reconfigure callback (bootstrap handles conversion)
+	if e.eventlogReconfigure != nil {
+		e.eventlogReconfigure(cmd.Payload)
+	}
+
+	log.Infof("fleet: event log policy applied (enabled=%v, channels=%d)", policy.Enabled, len(policy.Channels))
+	result, _ := json.Marshal(map[string]interface{}{
+		"eventlog_enabled":  policy.Enabled,
+		"channels_count":    len(policy.Channels),
 	})
 	return result, nil
 }
