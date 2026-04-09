@@ -158,7 +158,7 @@ func (h *CaptureHandler) ListCaptures(w http.ResponseWriter, r *http.Request) {
 // GetCapture handles GET /api/v1/orgs/{org_id}/captures/{id}
 func (h *CaptureHandler) GetCapture(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	captureID := extractLastPathSegment(r.URL.Path)
+	captureID := extractCaptureID(r.URL.Path, "")
 	if orgID == "" || captureID == "" {
 		writeError(w, http.StatusBadRequest, "org and capture ID required")
 		return
@@ -177,7 +177,7 @@ func (h *CaptureHandler) GetCapture(w http.ResponseWriter, r *http.Request) {
 func (h *CaptureHandler) GetCaptureEvents(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	// Path: /captures/{id}/events — extract capture ID
-	captureID := extractPathParam(r.URL.Path, "/captures/", "/events")
+	captureID := extractCaptureID(r.URL.Path, "/events")
 	if orgID == "" || captureID == "" {
 		writeError(w, http.StatusBadRequest, "org and capture ID required")
 		return
@@ -223,7 +223,7 @@ func (h *CaptureHandler) GetCaptureEvents(w http.ResponseWriter, r *http.Request
 // StopCapture handles POST /api/v1/orgs/{org_id}/captures/{id}/stop
 func (h *CaptureHandler) StopCapture(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	captureID := extractPathParam(r.URL.Path, "/captures/", "/stop")
+	captureID := extractCaptureID(r.URL.Path, "/stop")
 	if orgID == "" || captureID == "" {
 		writeError(w, http.StatusBadRequest, "org and capture ID required")
 		return
@@ -288,7 +288,7 @@ func (h *CaptureHandler) StopCapture(w http.ResponseWriter, r *http.Request) {
 // DeleteCapture handles DELETE /api/v1/orgs/{org_id}/captures/{id}
 func (h *CaptureHandler) DeleteCapture(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	captureID := extractLastPathSegment(r.URL.Path)
+	captureID := extractCaptureID(r.URL.Path, "")
 	if orgID == "" || captureID == "" {
 		writeError(w, http.StatusBadRequest, "org and capture ID required")
 		return
@@ -316,11 +316,20 @@ func extractCaptureAgentID(path string) string {
 	return rest
 }
 
-// extractLastPathSegment returns the last non-empty path segment.
-func extractLastPathSegment(path string) string {
-	path = strings.TrimRight(path, "/")
-	if idx := strings.LastIndex(path, "/"); idx >= 0 {
-		return path[idx+1:]
+// extractCaptureID extracts the capture ID from paths like /captures/{id}/stop or /captures/{id}/events.
+// Works with full URL paths containing org prefix.
+func extractCaptureID(path, suffix string) string {
+	parts := strings.Split(path, "/captures/")
+	if len(parts) < 2 {
+		return ""
 	}
-	return path
+	rest := parts[1]
+	if suffix != "" {
+		rest = strings.TrimSuffix(rest, suffix)
+	}
+	rest = strings.Trim(rest, "/")
+	if strings.Contains(rest, "/") {
+		return ""
+	}
+	return rest
 }
