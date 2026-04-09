@@ -353,7 +353,7 @@ func (e *WindowsExecutor) collectInfo(cmd *fleet.Command) (json.RawMessage, erro
 	software, _ := runCmd("wmic", "product", "get", "Name,Version", "/format:csv")
 
 	// Get network adapters as structured JSON
-	ipconfig, _ := runPowerShellLong(`@(Get-NetAdapter -EA 0|%{$ip=Get-NetIPAddress -InterfaceIndex $_.ifIndex -EA 0;$dns=Get-DnsClientServerAddress -InterfaceIndex $_.ifIndex -EA 0;@{name=$_.Name;description=$_.InterfaceDescription;status=$_.Status;mac=$_.MacAddress;speed_mbps=[math]::Round($_.LinkSpeed.Replace(' Gbps','000').Replace(' Mbps','').Replace(' Kbps',''),0);ipv4=@($ip|?{$_.AddressFamily -eq 'IPv4'}|%{$_.IPAddress});ipv6=@($ip|?{$_.AddressFamily -eq 'IPv6'}|%{$_.IPAddress});dns=@($dns|%{$_.ServerAddresses}|Select -Unique);dhcp=$_.Dhcp}})|ConvertTo-Json -Depth 3 -Compress`, 15)
+	ipconfig, _ := runPowerShellLong(`@(Get-NetAdapter -EA 0|%{$ip=Get-NetIPAddress -InterfaceIndex $_.ifIndex -EA 0;$dns=Get-DnsClientServerAddress -InterfaceIndex $_.ifIndex -EA 0;$sp=$_.LinkSpeed;$mbps=0;if($sp -match '([\d.]+)\s*Gbps'){$mbps=[double]$Matches[1]*1000}elseif($sp -match '([\d.]+)\s*Mbps'){$mbps=[double]$Matches[1]}elseif($sp -match '([\d.]+)\s*Kbps'){$mbps=[double]$Matches[1]/1000};@{name=$_.Name;description=$_.InterfaceDescription;status=$_.Status;mac=$_.MacAddress;speed_mbps=[math]::Round($mbps,0);ipv4=@($ip|?{$_.AddressFamily -eq 'IPv4'}|%{$_.IPAddress});ipv6=@($ip|?{$_.AddressFamily -eq 'IPv6'}|%{$_.IPAddress});dns=@($dns|%{$_.ServerAddresses}|Select -Unique);dhcp=$_.Dhcp}})|ConvertTo-Json -Depth 3 -Compress`, 15)
 
 	// Get logged in users
 	users, _ := runCmd("query", "user")
