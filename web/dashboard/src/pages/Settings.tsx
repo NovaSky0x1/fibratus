@@ -104,14 +104,14 @@ export default function Settings() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100 dark:text-slate-100">Settings</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Settings</h1>
 
       {/* ──────────────────────────────────────────── */}
       {/* Agent Deployment Section */}
       {/* ──────────────────────────────────────────── */}
       <div className="mt-8">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
             Agent Deployment
           </h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
@@ -124,7 +124,7 @@ export default function Settings() {
         <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
           <div className="space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
                 Prerequisites
               </h3>
               <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-slate-400">
@@ -153,7 +153,7 @@ export default function Settings() {
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
                 Install Command
               </h3>
               <p className="mt-1 text-xs text-gray-500">
@@ -174,8 +174,8 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-xs text-amber-800">
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+              <p className="text-xs text-amber-800 dark:text-amber-300">
                 <strong>Important:</strong> Each enrollment token is scoped to an
                 organization and has a usage limit. Create a token below, then
                 use its ID in the install command. The token is embedded in the
@@ -197,7 +197,7 @@ export default function Settings() {
       <div className="mt-8">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
               Enrollment Tokens
             </h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
@@ -447,7 +447,7 @@ export default function Settings() {
       <div className="mt-12">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
               Organizations
             </h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
@@ -925,7 +925,7 @@ function SecuritySection() {
   return (
     <div className="mt-12">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100 dark:text-slate-100">Security</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Security</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
           Manage your account security and two-factor authentication.
         </p>
