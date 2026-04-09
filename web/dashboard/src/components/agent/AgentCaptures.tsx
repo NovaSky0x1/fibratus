@@ -292,6 +292,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
   }, [])
 
   const [downloadMenu, setDownloadMenu] = useState<string | null>(null)
+  const [kcapDownloading, setKcapDownloading] = useState<string | null>(null) // capture ID being downloaded
 
   const fetchEvents = useCallback(async (cap: Capture) => {
     const res = await api.getCaptureEvents(cap.id, { limit: '50000' })
@@ -319,11 +320,43 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
       setError('No .kcap file available for this capture. The agent may not have written one.')
       return
     }
-    // Send get_file command to agent to retrieve the .kcap
-    await api.createCommand(cap.agent_id, 'get_file', { path: cap.kcap_path })
+    setKcapDownloading(cap.id)
     setError(null)
-    // The file will be delivered via command result — show notification
-    alert(`Requested .kcap download from agent. Check command history for the file transfer.`)
+    try {
+      // Send get_file command to agent
+      const cmdRes = await api.createCommand(cap.agent_id, 'get_file', { path: cap.kcap_path })
+      const cmdId = (cmdRes?.data as { id?: string } | undefined)?.id
+      if (!cmdId) throw new Error('Failed to create get_file command')
+
+      // Poll for command completion (max ~60s)
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        const cmdsRes = await api.getAgentCommands(cap.agent_id)
+        const cmd = ((cmdsRes?.data || []) as Array<{ id: string; status: string; result: unknown; error_message: string }>).find(c => c.id === cmdId)
+        if (!cmd) continue
+        if (cmd.status === 'failed') throw new Error(cmd.error_message || 'Agent failed to retrieve .kcap file')
+        if (cmd.status === 'completed') {
+          const result = cmd.result as { content?: string; path?: string } | null
+          if (!result?.content) throw new Error('No file content in command result')
+          // content is base64-encoded binary
+          const binary = atob(result.content)
+          const bytes = new Uint8Array(binary.length)
+          for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
+          const blob = new Blob([bytes], { type: 'application/octet-stream' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          const ts = new Date(cap.started_at).toISOString().slice(0, 19).replace(/:/g, '')
+          a.href = url; a.download = `capture-${cap.id.slice(0, 8)}-${ts}.kcap`; a.click()
+          URL.revokeObjectURL(url)
+          setKcapDownloading(null)
+          return
+        }
+      }
+      throw new Error('Timed out waiting for .kcap file from agent')
+    } catch (e) {
+      setError((e as Error).message)
+      setKcapDownloading(null)
+    }
   }, [])
 
   const handleDownloadCSV = useCallback(async (cap: Capture) => {
@@ -508,12 +541,18 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                         <div className="absolute right-0 bottom-full mb-1 z-50 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
                           <button onClick={() => handleDownloadJSON(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
                           <button onClick={() => handleDownloadCSV(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
-                          <button onClick={() => handleDownloadKcap(cap)} className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (cap.kcap_path ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
-                            .kcap {!cap.kcap_path && <span className="text-[9px] text-slate-600">(n/a)</span>}
+                          <button onClick={() => handleDownloadKcap(cap)} disabled={kcapDownloading === cap.id || !cap.kcap_path}
+                            className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (cap.kcap_path && kcapDownloading !== cap.id ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
+                            {kcapDownloading === cap.id ? <><Loader2 className="w-3 h-3 inline animate-spin mr-1" />Downloading...</> : <>.kcap {!cap.kcap_path && <span className="text-[9px] text-slate-600">(n/a)</span>}</>}
                           </button>
                         </div>
                       )}
                     </div>
+                    {kcapDownloading === cap.id && (
+                      <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />Fetching .kcap from agent...
+                      </span>
+                    )}
                     {deleteConfirm === cap.id ? (
                       <div className="flex items-center gap-1">
                         <button onClick={() => deleteMutation.mutate(cap.id)} className="px-2 py-1 rounded text-[10px] font-medium bg-red-600 text-white hover:bg-red-700">Delete</button>
@@ -554,8 +593,9 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                   <div className="absolute right-0 bottom-full mb-1 z-50 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
                     <button onClick={() => handleDownloadJSON(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
                     <button onClick={() => handleDownloadCSV(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
-                    <button onClick={() => handleDownloadKcap(browsingCapture)} className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (browsingCapture.kcap_path ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
-                      .kcap {!browsingCapture.kcap_path && <span className="text-[9px] text-slate-600">(n/a)</span>}
+                    <button onClick={() => handleDownloadKcap(browsingCapture)} disabled={kcapDownloading === browsingCapture.id || !browsingCapture.kcap_path}
+                      className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (browsingCapture.kcap_path && kcapDownloading !== browsingCapture.id ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
+                      {kcapDownloading === browsingCapture.id ? <><Loader2 className="w-3 h-3 inline animate-spin mr-1" />Downloading...</> : <>.kcap {!browsingCapture.kcap_path && <span className="text-[9px] text-slate-600">(n/a)</span>}</>}
                     </button>
                   </div>
                 )}
