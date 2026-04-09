@@ -268,18 +268,39 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
     setBrowsingCapture(cap); setBrowseSearch(''); setBrowseAfter(0); setView('browse')
   }, [])
 
-  // Download capture as JSON
-  const handleDownload = useCallback(async (cap: Capture) => {
+  const [downloadMenu, setDownloadMenu] = useState<string | null>(null)
+
+  const fetchEvents = useCallback(async (cap: Capture) => {
     const res = await api.getCaptureEvents(cap.id, { limit: '50000' })
-    const events = (res?.data || []) as CaptureEvent[]
-    const blob = new Blob([JSON.stringify({ capture: cap, events }, null, 2)], { type: 'application/json' })
+    return (res?.data || []) as CaptureEvent[]
+  }, [])
+
+  const downloadFile = useCallback((name: string, content: string, type: string) => {
+    const blob = new Blob([content], { type })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
-    a.download = `capture-${cap.id.slice(0, 8)}-${new Date(cap.started_at).toISOString().slice(0, 19).replace(/:/g, '')}.json`
-    a.click()
+    a.href = url; a.download = name; a.click()
     URL.revokeObjectURL(url)
   }, [])
+
+  const handleDownloadJSON = useCallback(async (cap: Capture) => {
+    setDownloadMenu(null)
+    const events = await fetchEvents(cap)
+    const ts = new Date(cap.started_at).toISOString().slice(0, 19).replace(/:/g, '')
+    downloadFile(`capture-${cap.id.slice(0, 8)}-${ts}.json`, JSON.stringify({ capture: cap, events }, null, 2), 'application/json')
+  }, [fetchEvents, downloadFile])
+
+  const handleDownloadCSV = useCallback(async (cap: Capture) => {
+    setDownloadMenu(null)
+    const events = await fetchEvents(cap)
+    const headers = ['seq', 'timestamp', 'event_name', 'event_category', 'pid', 'process_name', 'process_exe', 'process_cmdline', 'parent_pid', 'parent_name', 'params']
+    const rows = events.map(e =>
+      [e.seq, e.timestamp, e.event_name, e.event_category || '', e.pid, e.process_name, e.process_exe, `"${(e.process_cmdline || '').replace(/"/g, '""')}"`, e.parent_pid, e.parent_name, `"${JSON.stringify(e.params || {}).replace(/"/g, '""')}"`].join(',')
+    )
+    const csv = [headers.join(','), ...rows].join('\n')
+    const ts = new Date(cap.started_at).toISOString().slice(0, 19).replace(/:/g, '')
+    downloadFile(`capture-${cap.id.slice(0, 8)}-${ts}.csv`, csv, 'text/csv')
+  }, [fetchEvents, downloadFile])
 
   // ═════════════════════════════════════════════════
   // RENDER
@@ -442,10 +463,18 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-fibratus-500/50 text-fibratus-500 hover:bg-fibratus-950/30 transition-colors">
                       <Eye className="w-3.5 h-3.5" />Replay
                     </button>
-                    <button onClick={() => handleDownload(cap)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-600 text-slate-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors">
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="relative">
+                      <button onClick={() => setDownloadMenu(downloadMenu === cap.id ? null : cap.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-600 text-slate-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors">
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                      {downloadMenu === cap.id && (
+                        <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
+                          <button onClick={() => handleDownloadJSON(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
+                          <button onClick={() => handleDownloadCSV(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
+                        </div>
+                      )}
+                    </div>
                     {deleteConfirm === cap.id ? (
                       <div className="flex items-center gap-1">
                         <button onClick={() => deleteMutation.mutate(cap.id)} className="px-2 py-1 rounded text-[10px] font-medium bg-red-600 text-white hover:bg-red-700">Delete</button>
@@ -477,10 +506,18 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                 <span className="text-[11px] text-slate-600 font-mono">{formatDuration(browsingCapture.started_at, browsingCapture.completed_at)}</span>
                 {browsingCapture.filter && <span className="text-[10px] text-slate-600 font-mono truncate max-w-[200px]">{browsingCapture.filter}</span>}
               </div>
-              <button onClick={() => handleDownload(browsingCapture)}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border border-slate-700 text-slate-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors">
-                <Download className="w-3 h-3" /> JSON
-              </button>
+              <div className="relative">
+                <button onClick={() => setDownloadMenu(downloadMenu === 'replay' ? null : 'replay')}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border border-slate-700 text-slate-400 hover:text-cyan-400 hover:border-cyan-700 transition-colors">
+                  <Download className="w-3 h-3" /> Export
+                </button>
+                {downloadMenu === 'replay' && (
+                  <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
+                    <button onClick={() => handleDownloadJSON(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
+                    <button onClick={() => handleDownloadCSV(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
+                  </div>
+                )}
+              </div>
             </div>
           }
           search={
