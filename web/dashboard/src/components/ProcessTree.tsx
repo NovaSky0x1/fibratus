@@ -31,22 +31,22 @@ interface ProcessInfo {
 // Custom node component for process visualization
 function ProcessNode({ data }: { data: ProcessInfo & { selected: boolean } }) {
   return (
-    <div className={'rounded-lg border-2 px-3 py-2 bg-white shadow-sm min-w-[180px] ' +
-      (data.selected ? 'border-fibratus-500 ring-2 ring-fibratus-200' : 'border-gray-200 hover:border-gray-300')}>
-      <Handle type="target" position={Position.Top} className="!bg-gray-300 !w-2 !h-2" />
+    <div className={'rounded-lg border-2 px-3 py-2 bg-white dark:bg-slate-800 shadow-sm min-w-[180px] ' +
+      (data.selected ? 'border-fibratus-500 ring-2 ring-fibratus-200 dark:ring-fibratus-800' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600')}>
+      <Handle type="target" position={Position.Top} className="!bg-gray-300 dark:!bg-slate-500 !w-2 !h-2" />
       <div className="flex items-center gap-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-100 text-blue-700 text-[10px] font-bold flex-shrink-0">
+        <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex-shrink-0">
           {data.pid}
         </div>
-        <span className="font-medium text-sm text-gray-900 truncate">{data.name}</span>
+        <span className="font-medium text-sm text-gray-900 dark:text-slate-100 truncate">{data.name}</span>
       </div>
       {data.exe && (
-        <div className="mt-1 text-[10px] text-gray-400 font-mono truncate max-w-[200px]">{data.exe}</div>
+        <div className="mt-1 text-[10px] text-gray-400 dark:text-slate-500 font-mono truncate max-w-[200px]">{data.exe}</div>
       )}
       {data.eventCount > 1 && (
-        <div className="mt-1 text-[10px] text-gray-400">{data.eventCount} events</div>
+        <div className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">{data.eventCount} events</div>
       )}
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-300 !w-2 !h-2" />
+      <Handle type="source" position={Position.Bottom} className="!bg-gray-300 dark:!bg-slate-500 !w-2 !h-2" />
     </div>
   )
 }
@@ -172,7 +172,7 @@ export default function ProcessTree({ agentId }: { agentId: string }) {
   return (
     <div className="flex gap-4" style={{ height: 'calc(100vh - 220px)' }}>
       {/* ReactFlow tree */}
-      <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
+      <div className="flex-1 border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden bg-gray-50 dark:bg-slate-900">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -196,37 +196,37 @@ export default function ProcessTree({ agentId }: { agentId: string }) {
       </div>
 
       {/* Detail pane */}
-      <div className="w-72 border rounded-lg overflow-auto bg-white flex-shrink-0">
-        <div className="sticky top-0 bg-white border-b px-3 py-2 z-10 flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-500">{nodes.length} processes</span>
+      <div className="w-72 border border-gray-200 dark:border-slate-700 rounded-lg overflow-auto bg-white dark:bg-slate-800 flex-shrink-0">
+        <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 px-3 py-2 z-10 flex items-center justify-between">
+          <span className="text-xs font-medium text-gray-500 dark:text-slate-400">{nodes.length} processes</span>
           <button onClick={() => refetch()} className="text-xs text-fibratus-600 hover:underline">Refresh</button>
         </div>
         {selectedProcess ? (
           <div className="p-4 space-y-3">
             <div>
-              <h4 className="font-medium text-gray-900">{selectedProcess.name}</h4>
-              <p className="text-xs text-gray-500 mt-0.5">PID {selectedProcess.pid}</p>
+              <h4 className="font-medium text-gray-900 dark:text-slate-100">{selectedProcess.name}</h4>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">PID {selectedProcess.pid}</p>
             </div>
             <div className="space-y-2 text-sm">
               {selectedProcess.exe && (
                 <div>
-                  <span className="text-xs text-gray-500 block">Executable</span>
-                  <span className="font-mono text-xs text-gray-700 break-all">{selectedProcess.exe}</span>
+                  <span className="text-xs text-gray-500 dark:text-slate-400 block">Executable</span>
+                  <span className="font-mono text-xs text-gray-700 dark:text-slate-300 break-all">{selectedProcess.exe}</span>
                 </div>
               )}
               {selectedProcess.cmdline && (
                 <div>
-                  <span className="text-xs text-gray-500 block">Command Line</span>
-                  <span className="font-mono text-xs text-gray-700 break-all">{selectedProcess.cmdline}</span>
+                  <span className="text-xs text-gray-500 dark:text-slate-400 block">Command Line</span>
+                  <span className="font-mono text-xs text-gray-700 dark:text-slate-300 break-all">{selectedProcess.cmdline}</span>
                 </div>
               )}
               <div>
                 <span className="text-xs text-gray-500 block">First Seen</span>
-                <span className="text-xs text-gray-700">{new Date(selectedProcess.timestamp).toLocaleString()}</span>
+                <span className="text-xs text-gray-700 dark:text-slate-300">{new Date(selectedProcess.timestamp).toLocaleString()}</span>
               </div>
               <div>
                 <span className="text-xs text-gray-500 block">Events</span>
-                <span className="text-xs text-gray-700">{selectedProcess.eventCount} event(s)</span>
+                <span className="text-xs text-gray-700 dark:text-slate-300">{selectedProcess.eventCount} event(s)</span>
               </div>
             </div>
           </div>

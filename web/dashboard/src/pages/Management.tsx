@@ -9,20 +9,20 @@ type Tab = 'account' | 'organizations' | 'groups' | 'users'
 
 // Category display order and colors (same as Groups page)
 const categoryMeta: Record<string, { color: string; bg: string }> = {
-  Agents:           { color: 'text-blue-700',    bg: 'bg-blue-50' },
-  Detections:       { color: 'text-amber-700',   bg: 'bg-amber-50' },
-  Events:           { color: 'text-cyan-700',    bg: 'bg-cyan-50' },
-  Rules:            { color: 'text-purple-700',   bg: 'bg-purple-50' },
-  Macros:           { color: 'text-indigo-700',  bg: 'bg-indigo-50' },
-  'Active Response': { color: 'text-red-700',    bg: 'bg-red-50' },
-  Settings:         { color: 'text-gray-700',    bg: 'bg-gray-100' },
-  'User Management': { color: 'text-emerald-700', bg: 'bg-emerald-50' },
-  Audit:            { color: 'text-orange-700',  bg: 'bg-orange-50' },
-  Organizations:    { color: 'text-teal-700',    bg: 'bg-teal-50' },
+  Agents:           { color: 'text-blue-700 dark:text-blue-400',    bg: 'bg-blue-50 dark:bg-blue-900/20' },
+  Detections:       { color: 'text-amber-700 dark:text-amber-400',   bg: 'bg-amber-50 dark:bg-amber-900/20' },
+  Events:           { color: 'text-cyan-700 dark:text-cyan-400',    bg: 'bg-cyan-50 dark:bg-cyan-900/20' },
+  Rules:            { color: 'text-purple-700 dark:text-purple-400',   bg: 'bg-purple-50 dark:bg-purple-900/20' },
+  Macros:           { color: 'text-indigo-700 dark:text-indigo-400',  bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+  'Active Response': { color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-50 dark:bg-red-900/20' },
+  Settings:         { color: 'text-gray-700 dark:text-slate-300',    bg: 'bg-gray-100 dark:bg-slate-700' },
+  'User Management': { color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+  Audit:            { color: 'text-orange-700 dark:text-orange-400',  bg: 'bg-orange-50 dark:bg-orange-900/20' },
+  Organizations:    { color: 'text-teal-700 dark:text-teal-400',    bg: 'bg-teal-50 dark:bg-teal-900/20' },
 }
 
 function permBadgeClasses(category: string): string {
-  const meta = categoryMeta[category] || { color: 'text-gray-700', bg: 'bg-gray-100' }
+  const meta = categoryMeta[category] || { color: 'text-gray-700 dark:text-slate-300', bg: 'bg-gray-100 dark:bg-slate-700' }
   return `${meta.bg} ${meta.color}`
 }
 

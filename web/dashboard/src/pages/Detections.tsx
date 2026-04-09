@@ -262,9 +262,9 @@ export default function Detections() {
                         </span>
                       </a>
                       {matchedRule.raw_yaml?.includes('action:') ? (
-                        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                          <span className="text-xs font-medium text-amber-800">Response Actions Configured</span>
-                          <p className="text-xs text-amber-700 mt-0.5">
+                        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2">
+                          <span className="text-xs font-medium text-amber-800 dark:text-amber-300">Response Actions Configured</span>
+                          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
                             {matchedRule.raw_yaml.includes('kill') && 'Kill process '}
                             {matchedRule.raw_yaml.includes('isolate') && 'Isolate host '}
                             — executed automatically on the endpoint when this rule triggers

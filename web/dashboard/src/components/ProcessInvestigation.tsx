@@ -44,14 +44,14 @@ interface Props {
 // ── Category colors ──────────────────────────────────────
 
 const catColor: Record<string, string> = {
-  process: 'bg-blue-100 text-blue-700',
-  net: 'bg-green-100 text-green-700',
-  file: 'bg-yellow-100 text-yellow-700',
-  registry: 'bg-purple-100 text-purple-700',
-  image: 'bg-indigo-100 text-indigo-700',
-  dns: 'bg-teal-100 text-teal-700',
-  thread: 'bg-orange-100 text-orange-700',
-  mem: 'bg-pink-100 text-pink-700',
+  process: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  net: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  file: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+  registry: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  image: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  dns: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+  thread: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  mem: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
 }
 
 // ── Tree builder ─────────────────────────────────────────
@@ -170,14 +170,14 @@ function TreeNode({ node, selected, onSelect, expanded, onToggle }: {
         data-node-id={node.id}
         className={'flex items-center gap-1 py-1 px-2 cursor-pointer text-[13px] group ' +
           (isSelected ? 'bg-fibratus-50 ring-1 ring-fibratus-300 rounded' :
-           node.isFocus ? 'bg-blue-50 border-l-2 border-blue-500' :
-           node.isOnFocusPath ? 'bg-blue-50/40' : 'hover:bg-gray-50')}
+           node.isFocus ? 'bg-blue-50 dark:bg-blue-900/30 border-l-2 border-blue-500' :
+           node.isOnFocusPath ? 'bg-blue-50/40 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-700')}
         style={{ paddingLeft: node.depth * 16 + 4 }}
         onClick={() => onSelect(node.id)}
       >
         {hasKids ? (
           <button onClick={e => { e.stopPropagation(); onToggle(node.id) }}
-            className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600 flex-shrink-0">
+            className="w-4 h-4 flex items-center justify-center text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 flex-shrink-0">
             <svg className={'w-3 h-3 transition-transform ' + (isExpanded ? 'rotate-90' : '')}
               fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -186,9 +186,9 @@ function TreeNode({ node, selected, onSelect, expanded, onToggle }: {
         ) : <span className="w-4 flex-shrink-0" />}
 
         <span className={'w-2 h-2 rounded-full flex-shrink-0 ' +
-          (node.isFocus ? 'bg-red-500' : node.isOnFocusPath ? 'bg-blue-400' : 'bg-gray-300')} />
+          (node.isFocus ? 'bg-red-500' : node.isOnFocusPath ? 'bg-blue-400' : 'bg-gray-300 dark:bg-slate-600')} />
 
-        <span className={'font-medium truncate ' + (node.isFocus ? 'text-red-700' : isSelected ? 'text-fibratus-700' : 'text-gray-800')}>
+        <span className={'font-medium truncate ' + (node.isFocus ? 'text-red-700 dark:text-red-400' : isSelected ? 'text-fibratus-700 dark:text-fibratus-400' : 'text-gray-800 dark:text-slate-200')}>
           {node.name}
         </span>
         <span className="text-[10px] text-gray-400 font-mono flex-shrink-0">{node.pid}</span>
@@ -208,27 +208,27 @@ function EventRow({ evt, isFocus, isOpen, onToggle }: {
   evt: TelemetryEvent; isFocus: boolean; isOpen: boolean; onToggle: () => void
 }) {
   return (
-    <div className={'border-b border-gray-100 ' + (isFocus ? 'bg-red-50 border-l-2 border-red-400' : '')}>
-      <div className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-50/50 text-[13px]"
+    <div className={'border-b border-gray-100 dark:border-slate-700 ' + (isFocus ? 'bg-red-50 dark:bg-red-900/20 border-l-2 border-red-400' : '')}>
+      <div className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/50 text-[13px]"
         onClick={onToggle}>
         <span className="text-gray-400 tabular-nums font-mono text-xs w-20 flex-shrink-0">
           {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions)}
         </span>
         <span className={'rounded px-1.5 py-0.5 text-[11px] font-medium flex-shrink-0 ' +
-          (catColor[evt.event_category] || 'bg-gray-100 text-gray-700')}>
+          (catColor[evt.event_category] || 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-300')}>
           {evt.event_name}
         </span>
-        <span className="text-gray-600 truncate text-xs">
+        <span className="text-gray-600 dark:text-slate-400 truncate text-xs">
           {summarizeEvent(evt)}
         </span>
       </div>
       {isOpen && (
-        <div className="px-3 pb-3 pt-1 bg-gray-50/50 text-xs space-y-2" onClick={e => e.stopPropagation()}>
+        <div className="px-3 pb-3 pt-1 bg-gray-50/50 dark:bg-slate-700/50 text-xs space-y-2" onClick={e => e.stopPropagation()}>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <div><span className="text-gray-400">Process</span> <span className="font-mono text-gray-700">{evt.process_name}</span></div>
-            <div><span className="text-gray-400">PID</span> <span className="font-mono text-gray-700">{evt.pid}</span></div>
-            {evt.process_exe && <div className="col-span-2"><span className="text-gray-400">Exe</span> <span className="font-mono text-gray-700 break-all">{evt.process_exe}</span></div>}
-            {evt.parent_name && <div><span className="text-gray-400">Parent</span> <span className="font-mono text-gray-700">{evt.parent_name} ({evt.parent_pid})</span></div>}
+            <div><span className="text-gray-400 dark:text-slate-500">Process</span> <span className="font-mono text-gray-700 dark:text-slate-300">{evt.process_name}</span></div>
+            <div><span className="text-gray-400 dark:text-slate-500">PID</span> <span className="font-mono text-gray-700 dark:text-slate-300">{evt.pid}</span></div>
+            {evt.process_exe && <div className="col-span-2"><span className="text-gray-400 dark:text-slate-500">Exe</span> <span className="font-mono text-gray-700 dark:text-slate-300 break-all">{evt.process_exe}</span></div>}
+            {evt.parent_name && <div><span className="text-gray-400 dark:text-slate-500">Parent</span> <span className="font-mono text-gray-700 dark:text-slate-300">{evt.parent_name} ({evt.parent_pid})</span></div>}
           </div>
           {evt.process_cmdline && (
             <div>
@@ -243,7 +243,7 @@ function EventRow({ evt, isFocus, isOpen, onToggle }: {
                 {Object.entries(parseParams(evt.params)).map(([k, v]) => (
                   <div key={k} className="min-w-0">
                     <span className="text-gray-400">{k}:</span>{' '}
-                    <span className="font-mono text-gray-700 break-all">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                    <span className="font-mono text-gray-700 dark:text-slate-300 break-all">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
                   </div>
                 ))}
               </div>
@@ -394,13 +394,13 @@ export default function ProcessInvestigation({ agentId, focusPid, focusProcessNa
     <div className="flex flex-col" style={{ height: 'calc(100vh - 200px)' }}>
       {/* Context bar */}
       {detection && (
-        <div className="flex items-center gap-3 px-4 py-2.5 border-b bg-gray-50/50 flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-200 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 flex-shrink-0">
           <SeverityBadge severity={detection.severity} />
-          <span className="font-medium text-sm text-gray-900">{detection.title}</span>
-          <span className="text-xs text-gray-400">{detection.hostname}</span>
-          <span className="text-xs text-gray-400">{new Date(detection.timestamp).toLocaleString()}</span>
+          <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{detection.title}</span>
+          <span className="text-xs text-gray-400 dark:text-slate-500">{detection.hostname}</span>
+          <span className="text-xs text-gray-400 dark:text-slate-500">{new Date(detection.timestamp).toLocaleString()}</span>
           {detection.labels?.['technique.id'] && (
-            <span className="ml-auto rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600">
+            <span className="ml-auto rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-mono text-gray-600 dark:text-slate-400">
               {detection.labels['technique.id']} — {detection.labels['technique.name'] || ''}
             </span>
           )}
@@ -409,11 +409,11 @@ export default function ProcessInvestigation({ agentId, focusPid, focusProcessNa
 
       <div className="flex flex-1 min-h-0">
         {/* Left: Process tree */}
-        <div className="w-80 border-r flex flex-col min-h-0 flex-shrink-0">
-          <div className="px-3 py-2 border-b bg-white flex items-center gap-2 flex-shrink-0">
+        <div className="w-80 border-r border-gray-200 dark:border-slate-700 flex flex-col min-h-0 flex-shrink-0">
+          <div className="px-3 py-2 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center gap-2 flex-shrink-0">
             <input value={treeSearch} onChange={e => setTreeSearch(e.target.value)}
               placeholder="Search processes..."
-              className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs focus:ring-1 focus:ring-fibratus-500 focus:outline-none" />
+              className="flex-1 rounded border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-2 py-1 text-xs focus:ring-1 focus:ring-fibratus-500 focus:outline-none" />
             <span className="text-[10px] text-gray-400">{nodeMap.size}</span>
             <button onClick={() => refetch()} className="text-[10px] text-fibratus-600 hover:underline">Refresh</button>
           </div>
@@ -432,31 +432,31 @@ export default function ProcessInvestigation({ agentId, focusPid, focusProcessNa
           {selectedNode ? (
             <>
               {/* Process detail header */}
-              <div className="px-4 py-3 border-b bg-white flex-shrink-0 space-y-1">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0 space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-gray-900">{selectedNode.name}</span>
-                  <span className="text-xs font-mono text-gray-400">PID {selectedNode.pid}</span>
-                  {selectedNode.isFocus && <span className="rounded bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 font-medium">Trigger</span>}
+                  <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{selectedNode.name}</span>
+                  <span className="text-xs font-mono text-gray-400 dark:text-slate-500">PID {selectedNode.pid}</span>
+                  {selectedNode.isFocus && <span className="rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] px-1.5 py-0.5 font-medium">Trigger</span>}
                 </div>
-                {selectedNode.exe && <div className="text-xs text-gray-500 font-mono truncate">{selectedNode.exe}</div>}
+                {selectedNode.exe && <div className="text-xs text-gray-500 dark:text-slate-400 font-mono truncate">{selectedNode.exe}</div>}
                 {selectedNode.cmdline && (
-                  <div className="rounded bg-gray-900 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap max-h-16 overflow-auto">
+                  <div className="rounded bg-gray-900 dark:bg-gray-950 px-2 py-1.5 text-[11px] text-gray-100 font-mono break-all whitespace-pre-wrap max-h-16 overflow-auto">
                     {selectedNode.cmdline}
                   </div>
                 )}
               </div>
 
               {/* Category filter tabs */}
-              <div className="px-4 py-2 border-b bg-white flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+              <div className="px-4 py-2 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                 <button onClick={() => setCatFilter('all')}
                   className={'rounded-full px-2 py-0.5 text-[11px] font-medium border ' +
-                    (catFilter === 'all' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
+                    (catFilter === 'all' ? 'bg-gray-800 dark:bg-slate-200 text-white dark:text-slate-900 border-gray-800 dark:border-slate-200' : 'bg-white dark:bg-slate-700 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600')}>
                   All ({selectedEvents.length})
                 </button>
                 {Array.from(categories.entries()).map(([cat, count]) => (
                   <button key={cat} onClick={() => setCatFilter(catFilter === cat ? 'all' : cat)}
                     className={'rounded-full px-2 py-0.5 text-[11px] font-medium border ' +
-                      (catFilter === cat ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
+                      (catFilter === cat ? 'bg-gray-800 dark:bg-slate-200 text-white dark:text-slate-900 border-gray-800 dark:border-slate-200' : 'bg-white dark:bg-slate-700 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600')}>
                     {cat} ({count})
                   </button>
                 ))}

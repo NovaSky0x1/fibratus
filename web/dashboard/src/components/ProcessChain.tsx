@@ -238,7 +238,7 @@ function DetailPanel({ event, onClose }: { event: TelemetryEvent | null; onClose
     <div className="w-80 h-full bg-white dark:bg-slate-800 border-l border-gray-200 dark:border-slate-700 overflow-y-auto shrink-0">
       <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-800">
         <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${cc(event.event_category).badge}`}>{event.event_name}</span>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+        <button onClick={onClose} className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 text-sm">✕</button>
       </div>
       <div className="p-4 space-y-3">
         <div>

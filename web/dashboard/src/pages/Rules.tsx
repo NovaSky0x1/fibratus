@@ -232,7 +232,7 @@ export default function Rules() {
             rules/*.yml files.
           </p>
           {uploadError && (
-            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+            <div className="mt-3 rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-2 text-sm text-red-700 dark:text-red-400">
               {uploadError}
             </div>
           )}
@@ -426,7 +426,7 @@ export default function Rules() {
             </div>
 
             {editError && (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+              <div className="mb-4 rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-2 text-sm text-red-700 dark:text-red-400">
                 {editError}
               </div>
             )}

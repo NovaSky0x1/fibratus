@@ -514,7 +514,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-slate-700">
               {completedCaptures.map(cap => (
-                <div key={cap.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-750 transition-colors">
+                <div key={cap.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
                   <div className="space-y-1 min-w-0 flex-1">
                     <div className="flex items-center gap-3">
                       <HardDrive className="w-4 h-4 text-gray-400 dark:text-slate-500 shrink-0" />

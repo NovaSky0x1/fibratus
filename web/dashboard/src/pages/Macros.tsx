@@ -154,8 +154,8 @@ export default function Macros() {
                   </td>
                   <td className="px-6 py-3">
                     <span className={'rounded px-1.5 py-0.5 text-xs font-medium ' +
-                      (macroTypeBadge(m) === 'list' ? 'bg-purple-50 text-purple-700' :
-                       macroTypeBadge(m) === 'expr' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500')}>
+                      (macroTypeBadge(m) === 'list' ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                       macroTypeBadge(m) === 'expr' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400')}>
                       {macroTypeBadge(m)}
                     </span>
                   </td>

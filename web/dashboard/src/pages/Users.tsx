@@ -6,9 +6,9 @@ import { useTableSort } from '../hooks/useTableSort'
 import SortableHeader from '../components/SortableHeader'
 
 const roleBadge: Record<string, string> = {
-  admin: 'bg-purple-100 text-purple-700',
-  analyst: 'bg-blue-100 text-blue-700',
-  viewer: 'bg-gray-100 text-gray-600',
+  admin: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  analyst: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  viewer: 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-400',
 }
 
 const passwordRules = [
@@ -174,7 +174,7 @@ export default function Users() {
                     </td>
                     <td className="px-6 py-3">
                       <span className={'rounded-full px-2 py-0.5 text-[10px] font-medium ' +
-                        (user.totp_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500')}>
+                        (user.totp_enabled ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400')}>
                         {user.totp_enabled ? 'Enabled' : 'Off'}
                       </span>
                     </td>
