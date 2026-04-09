@@ -354,6 +354,12 @@ func securityRelevant(batch *event.Batch) *event.Batch {
 	return &event.Batch{Events: filtered}
 }
 
+// CaptureFilterCompiler compiles a Fibratus QL expression into a filter
+// function. Registered by bootstrap at startup to avoid import cycles.
+// The executor calls this to compile capture filter expressions using the
+// real filter engine (pkg/filter).
+var CaptureFilterCompiler func(expr string) (func(*event.Event) bool, error)
+
 // captureState tracks the active capture session for event forking.
 var captureState struct {
 	sync.RWMutex

@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/event"
-	"github.com/rabbitstack/fibratus/pkg/filter"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	fleetserver "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
@@ -610,9 +609,9 @@ func expandCaptureMacros(expr string) string {
 }
 
 // buildCaptureFilter compiles a Fibratus QL filter expression using the
-// real filter engine. Supports full QL syntax (ps.name, kevt.name,
-// file.path, net.dip, etc.) plus event type macros (query_dns, spawn_process).
-// Returns nil if expression is empty (capture all events).
+// real filter engine via a callback registered by bootstrap. Supports full
+// QL syntax (ps.name, kevt.name, file.path, net.dip, etc.) plus event type
+// macros (query_dns, spawn_process). Returns nil if expression is empty.
 func buildCaptureFilter(expr string) func(evt *event.Event) bool {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
@@ -622,14 +621,19 @@ func buildCaptureFilter(expr string) func(evt *event.Event) bool {
 	// Expand event type macros before compiling
 	expanded := expandCaptureMacros(expr)
 
-	f, err := filter.NewFromCLIWithAllAccessors([]string{expanded})
-	if err != nil {
-		// Log but don't fail — capture everything as fallback
-		fmt.Fprintf(os.Stderr, "capture filter compile error: %v (capturing all events)\n", err)
-		return nil
+	// Use the real Fibratus filter engine (registered by bootstrap at startup)
+	if fleetserver.CaptureFilterCompiler != nil {
+		fn, err := fleetserver.CaptureFilterCompiler(expanded)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "capture filter compile error: %v (capturing all events)\n", err)
+			return nil
+		}
+		return fn
 	}
 
-	return f.Run
+	// Fallback if compiler not registered: shouldn't happen in normal operation
+	fmt.Fprintf(os.Stderr, "capture filter compiler not registered (capturing all events)\n")
+	return nil
 }
 
 // startCapture activates capture mode on the running ETW pipeline.

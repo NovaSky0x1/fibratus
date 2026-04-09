@@ -27,6 +27,7 @@ import (
 
 	"github.com/rabbitstack/fibratus/internal/evasion"
 	"github.com/rabbitstack/fibratus/pkg/aggregator"
+	"github.com/rabbitstack/fibratus/pkg/event"
 	"github.com/rabbitstack/fibratus/pkg/alertsender"
 	"github.com/rabbitstack/fibratus/pkg/api"
 	"github.com/rabbitstack/fibratus/pkg/cap"
@@ -347,6 +348,17 @@ func (f *App) Run(args []string) error {
 		if err != nil {
 			return multierror.Wrap(err, f.evs.Close())
 		}
+		// Register the capture filter compiler so the fleet executor can
+		// compile Fibratus QL expressions without importing pkg/filter
+		// directly (which would create an import cycle).
+		fleetoutput.CaptureFilterCompiler = func(expr string) (func(*event.Event) bool, error) {
+			f, err := filter.NewFromCLIWithAllAccessors([]string{expr})
+			if err != nil {
+				return nil, err
+			}
+			return f.Run, nil
+		}
+
 		// When fleet mode is active, auto-enable fleet server as the output
 		// to stream telemetry to the fleet server for remote visibility.
 		// Override console or null output — fleet telemetry takes priority.
