@@ -14,13 +14,35 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
-	"github.com/rabbitstack/fibratus/pkg/cap/section"
-	capver "github.com/rabbitstack/fibratus/pkg/cap/version"
 	"github.com/rabbitstack/fibratus/pkg/event"
+	"github.com/rabbitstack/fibratus/pkg/util/bytes"
 	log "github.com/sirupsen/logrus"
 )
 
 const kcapMagic = 0x6669627261747573
+
+// Section type constants (matching pkg/cap/section)
+const (
+	sectionHandle uint8 = 2
+	sectionEvent  uint8 = 3
+)
+
+// Section version constants (matching pkg/cap/version)
+const (
+	handleV1 uint8 = 1
+	eventV2  uint8 = 2
+)
+
+// writeSection writes a 10-byte section header.
+func writeSection(w *zstd.Encoder, typ, ver uint8, length, size uint32) error {
+	var sec [10]byte
+	sec[0] = typ
+	sec[1] = ver
+	copy(sec[2:6], bytes.WriteUint32(length))
+	copy(sec[6:], bytes.WriteUint32(size))
+	_, err := w.Write(sec[:])
+	return err
+}
 
 // kcapWriter writes events to a .kcap file using pure-Go zstd compression.
 type kcapWriter struct {
@@ -28,7 +50,7 @@ type kcapWriter struct {
 	f       *os.File
 	zw      *zstd.Encoder
 	count   uint64
-	bytes   uint64
+	nbytes  uint64
 	started time.Time
 }
 
@@ -61,9 +83,8 @@ func newKcapWriter(path string) (*kcapWriter, error) {
 		return nil, err
 	}
 
-	// Write empty handle section (no handles — replay will still work)
-	sec := section.New(section.Handle, capver.HandleV1, 0, 0)
-	if _, err := zw.Write(sec[:]); err != nil {
+	// Write empty handle section (no handles — replay still works, just without handle context)
+	if err := writeSection(zw, sectionHandle, handleV1, 0, 0); err != nil {
 		w.close()
 		return nil, err
 	}
@@ -81,8 +102,7 @@ func (w *kcapWriter) writeEvent(evt *event.Event) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	sec := section.New(section.Event, capver.EventV2, 0, uint32(len(raw)))
-	if _, err := w.zw.Write(sec[:]); err != nil {
+	if err := writeSection(w.zw, sectionEvent, eventV2, 0, uint32(len(raw))); err != nil {
 		return
 	}
 	if _, err := w.zw.Write(raw); err != nil {
@@ -90,7 +110,7 @@ func (w *kcapWriter) writeEvent(evt *event.Event) {
 	}
 
 	w.count++
-	w.bytes += uint64(len(raw))
+	w.nbytes += uint64(len(raw))
 }
 
 // close flushes and closes the .kcap file.
@@ -105,5 +125,5 @@ func (w *kcapWriter) close() {
 		w.f.Close()
 	}
 
-	log.Infof("kcap: wrote %d events (%d bytes) in %s", w.count, w.bytes, time.Since(w.started).Round(time.Millisecond))
+	log.Infof("kcap: wrote %d events (%d bytes) in %s", w.count, w.nbytes, time.Since(w.started).Round(time.Millisecond))
 }
