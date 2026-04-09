@@ -448,7 +448,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
 
       {/* ── HISTORY ── */}
       {view === 'history' && (
-        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50 overflow-hidden">
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Capture History</h3>
             <button onClick={() => refetchCaptures()} className="text-slate-400 hover:text-slate-300"><RotateCw className="w-3.5 h-3.5" /></button>
@@ -482,7 +482,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                         <Download className="w-3.5 h-3.5" />
                       </button>
                       {downloadMenu === cap.id && (
-                        <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
+                        <div className="absolute right-0 bottom-full mb-1 z-50 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
                           <button onClick={() => handleDownloadJSON(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
                           <button onClick={() => handleDownloadCSV(cap)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
                           <button onClick={() => handleDownloadKcap(cap)} className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (cap.kcap_path ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
@@ -528,7 +528,7 @@ export default function AgentCaptures({ agentId }: { agentId: string }) {
                   <Download className="w-3 h-3" /> Export
                 </button>
                 {downloadMenu === 'replay' && (
-                  <div className="absolute right-0 top-full mt-1 z-20 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
+                  <div className="absolute right-0 bottom-full mb-1 z-50 rounded-lg border border-slate-700 bg-slate-800 shadow-xl py-1 min-w-[120px]">
                     <button onClick={() => handleDownloadJSON(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">JSON</button>
                     <button onClick={() => handleDownloadCSV(browsingCapture)} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 font-mono">CSV</button>
                     <button onClick={() => handleDownloadKcap(browsingCapture)} className={'w-full text-left px-3 py-1.5 text-xs font-mono ' + (browsingCapture.kcap_path ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed')}>
