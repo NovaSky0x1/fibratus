@@ -284,7 +284,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create user
+	// Create user (role=member — permissions come from groups)
 	userID := GenerateID()
 	user := &fleet.User{
 		ID:        userID,
@@ -292,7 +292,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		Name:      req.Name,
 		Password:  hashedPassword,
 		AccountID: accountID,
-		Role:      "admin",
+		Role:      fleetauth.RoleMember,
 		CreatedAt: now,
 	}
 	if err := h.users.Create(r.Context(), user); err != nil {
@@ -302,14 +302,23 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add user org access
-	if err := h.users.AddOrgAccess(r.Context(), userID, orgID, "admin"); err != nil {
+	if err := h.users.AddOrgAccess(r.Context(), userID, orgID, fleetauth.RoleMember); err != nil {
 		log.Errorf("fleet: signup add org access error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
+	// Seed default groups for the new account and add user to Administrators
+	if h.groups != nil {
+		adminGroupID := h.seedDefaultGroupsForSignup(r.Context(), accountID)
+		if adminGroupID != "" {
+			h.groups.AddMember(r.Context(), userID, adminGroupID)
+			log.Infof("fleet: added signup user %s to Administrators group %s", userID, adminGroupID)
+		}
+	}
+
 	// Generate JWT
-	token, err := fleetauth.GenerateJWT(h.jwtSecret, userID, accountID, "admin")
+	token, err := fleetauth.GenerateJWT(h.jwtSecret, userID, accountID, fleetauth.RoleMember)
 	if err != nil {
 		log.Errorf("fleet: signup generate token error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -1043,6 +1052,99 @@ func hashAPIKey(key string) string {
 }
 
 // slugify converts a name to a URL-friendly slug.
+// seedDefaultGroupsForSignup creates default groups for a new account on signup.
+// Returns the Administrators group ID so the signup user can be added to it.
+func (h *AuthHandler) seedDefaultGroupsForSignup(ctx context.Context, accountID string) string {
+	if h.groups == nil {
+		return ""
+	}
+
+	adminGroupID := ""
+	defaults := []struct {
+		name        string
+		description string
+		permissions []string
+		isAdmin     bool
+	}{
+		{
+			name: "Administrators", description: "Full access to all features within this account", isAdmin: true,
+			permissions: []string{
+				"page:overview", "page:agents", "page:detections", "page:events",
+				"page:rules", "page:macros", "page:audit", "page:management", "page:process_tree",
+				"agents:view", "agents:manage", "agents:delete",
+				"agents:view_events", "agents:view_detections", "agents:view_processes",
+				"agents:view_network", "agents:view_services", "agents:view_drivers",
+				"agents:view_autoruns", "agents:view_software", "agents:view_users",
+				"agents:view_files", "agents:view_registry", "agents:view_eventlog",
+				"agents:view_terminal", "agents:view_captures", "agents:view_history",
+				"detections:view", "detections:manage", "events:view",
+				"rules:view", "rules:manage",
+				"commands:view", "commands:execute",
+				"response:isolate", "response:unisolate", "response:kill_process",
+				"response:run_command", "response:browse_files", "response:download_file",
+				"response:collect_info", "response:uninstall",
+				"captures:view", "captures:create", "captures:delete",
+				"telemetry:view", "telemetry:configure",
+				"settings:view", "settings:manage", "settings:macros",
+				"enrollment:view", "enrollment:manage",
+				"github_sync:view", "github_sync:manage",
+				"users:manage", "users:groups", "audit:view",
+				"organizations:manage",
+			},
+		},
+		{
+			name: "Analysts", description: "Investigation and rule management",
+			permissions: []string{
+				"page:overview", "page:agents", "page:detections", "page:events",
+				"page:rules", "page:macros", "page:audit", "page:process_tree",
+				"agents:view",
+				"agents:view_events", "agents:view_detections", "agents:view_processes",
+				"agents:view_network", "agents:view_services", "agents:view_drivers",
+				"agents:view_autoruns", "agents:view_software", "agents:view_users",
+				"agents:view_files", "agents:view_registry", "agents:view_eventlog",
+				"agents:view_captures", "agents:view_history",
+				"detections:view", "detections:manage", "events:view",
+				"rules:view", "rules:manage", "commands:view",
+				"captures:view", "telemetry:view", "enrollment:view",
+				"github_sync:view", "audit:view",
+			},
+		},
+		{
+			name: "Read Only", description: "View-only access",
+			permissions: []string{
+				"page:overview", "page:agents", "page:detections", "page:events",
+				"page:rules", "page:audit", "page:process_tree",
+				"agents:view",
+				"agents:view_events", "agents:view_detections", "agents:view_processes",
+				"agents:view_network", "agents:view_services", "agents:view_drivers",
+				"agents:view_autoruns", "agents:view_software", "agents:view_users",
+				"agents:view_files", "agents:view_registry", "agents:view_eventlog",
+				"agents:view_captures", "agents:view_history",
+				"detections:view", "events:view", "rules:view",
+				"commands:view", "captures:view", "telemetry:view",
+			},
+		},
+	}
+
+	for _, d := range defaults {
+		id := GenerateID()
+		now := time.Now().UTC()
+		g := &fleet.UserGroup{
+			ID: id, AccountID: accountID, Name: d.name, Description: d.description,
+			Permissions: d.permissions, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := h.groups.Create(ctx, g); err != nil {
+			log.Warnf("fleet: signup: failed to seed group %q: %v", d.name, err)
+			continue
+		}
+		if d.isAdmin {
+			adminGroupID = id
+		}
+	}
+	log.Infof("fleet: seeded default groups for signup account %s", accountID)
+	return adminGroupID
+}
+
 func slugify(name string) string {
 	slug := strings.ToLower(name)
 	slug = strings.Map(func(r rune) rune {
