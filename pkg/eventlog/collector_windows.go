@@ -101,6 +101,7 @@ func (c *Collector) Errors() <-chan error {
 
 // Start begins collecting events from all configured channels.
 func (c *Collector) Start() error {
+	log.Infof("eventlog: Start() called — enabled=%v, channels=%d", c.config.Enabled, len(c.config.Channels))
 	if !c.config.Enabled || len(c.config.Channels) == 0 {
 		log.Info("eventlog: collection disabled or no channels configured")
 		return nil
@@ -251,6 +252,8 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 
 func (c *Collector) readLoop(sub *subscription) {
 	events := make([]wevtapi.EvtHandle, batchSize)
+	log.Infof("eventlog: readLoop started for channel %s", sub.channel)
+	var totalEvents uint64
 
 	for {
 		select {
@@ -273,6 +276,11 @@ func (c *Collector) readLoop(sub *subscription) {
 			returned, err := wevtapi.Next(sub.handle, events, 0)
 			if err != nil || returned == 0 {
 				break
+			}
+
+			totalEvents += uint64(returned)
+			if totalEvents%1000 == 0 || totalEvents <= 10 {
+				log.Infof("eventlog: channel %s — %d events received so far", sub.channel, totalEvents)
 			}
 
 			for i := uint32(0); i < returned; i++ {
