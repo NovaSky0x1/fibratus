@@ -216,9 +216,10 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 		log.Warnf("eventlog: couldn't load bookmark for %s, starting from future events: %v", ch.Name, err)
 	}
 
-	// Always subscribe to future events only (bookmarks are used for persistence after restart)
-	var flags wevtapi.EvtSubscribeFlags = wevtapi.EvtSubscribeToFutureEvents
-	// Ignore any loaded bookmark — start fresh from future events to avoid backlog
+	// Subscribe starting at oldest record to catch existing events immediately.
+	// This validates the subscription is working, then bookmarks track position.
+	var flags wevtapi.EvtSubscribeFlags = wevtapi.EvtSubscribeStartAtOldestRecord
+	// Ignore any loaded bookmark for now
 	if bookmark != 0 {
 		wevtapi.Close(bookmark)
 		bookmark = 0
