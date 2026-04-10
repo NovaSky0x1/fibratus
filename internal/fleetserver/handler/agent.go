@@ -161,10 +161,7 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 // List handles GET /api/v1/orgs/{org_id}/agents
 func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
-	}
+	accountID := ctxutil.AccountIDFromContext(r.Context())
 
 	opts := fleet.AgentListOptions{
 		ListOptions: fleet.ListOptions{
@@ -174,6 +171,30 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 		},
 		GroupID: r.URL.Query().Get("group_id"),
 		Status:  fleet.AgentStatus(r.URL.Query().Get("status")),
+	}
+
+	// If no org ID, aggregate across all orgs in the account
+	if orgID == "" {
+		if accountID == "" {
+			writeError(w, http.StatusBadRequest, "org or account context required")
+			return
+		}
+		orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
+		allAgents := make([]*fleet.Agent, 0)
+		total := 0
+		for _, org := range orgs {
+			agents, t, err := h.agents.List(r.Context(), org.ID, opts)
+			if err != nil {
+				continue
+			}
+			allAgents = append(allAgents, agents...)
+			total += t
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{
+			Data: allAgents,
+			Meta: &fleet.Pagination{Total: total, Page: opts.Page, PerPage: opts.PerPage},
+		})
+		return
 	}
 
 	agents, total, err := h.agents.List(r.Context(), orgID, opts)
