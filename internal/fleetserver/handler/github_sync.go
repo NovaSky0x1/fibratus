@@ -31,6 +31,7 @@ import (
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/qlparser"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/sigma"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/validator"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
@@ -316,19 +317,38 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 			continue
 		}
 
-		if err := validator.ValidateRuleYAML(content); err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", file.Name, err))
-			result.Skipped++
-			continue
-		}
-
 		var rule fleet.Rule
-		if err := parseYAMLRule(content, &rule); err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: parse error: %v", file.Name, err))
-			result.Skipped++
-			continue
+		isSigma := false
+
+		if err := validator.ValidateRuleYAML(content); err != nil {
+			// Not a valid Fibratus rule — try SIGMA conversion
+			convResult := sigma.Convert(content)
+			if convResult.Success && convResult.FibratusYAML != "" {
+				isSigma = true
+				converted := []byte(convResult.FibratusYAML)
+				if parseErr := parseYAMLRule(converted, &rule); parseErr != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("%s: sigma conversion parse error: %v", file.Name, parseErr))
+					result.Skipped++
+					continue
+				}
+				rule.RawYAML = convResult.FibratusYAML
+				log.Infof("fleet: GitHub sync: converted SIGMA rule %q → %q", convResult.SigmaTitle, rule.Name)
+			} else if convResult.Unconvertible {
+				result.Skipped++
+				continue
+			} else {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", file.Name, err))
+				result.Skipped++
+				continue
+			}
+		} else {
+			if err := parseYAMLRule(content, &rule); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: parse error: %v", file.Name, err))
+				result.Skipped++
+				continue
+			}
+			rule.RawYAML = string(content)
 		}
-		rule.RawYAML = string(content)
 		if rule.Version == "" {
 			rule.Version = "1.0.0"
 		}
@@ -363,6 +383,9 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 
 		// Apply to each target org
 		rule.Source = source
+		if isSigma {
+			rule.Source = "sigma:" + source
+		}
 		for _, targetOrg := range targetOrgIDs {
 			rule.OrgID = targetOrg
 			syncedIDs[targetOrg] = append(syncedIDs[targetOrg], rule.ID)

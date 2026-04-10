@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
+import type { SigmaConversionResult, SigmaBatchResult } from '../../lib/api'
 
 // ================================================================
 // Toggle Switch
@@ -72,6 +73,13 @@ export default function TelemetryTab() {
   const [editId, setEditId] = useState<string | null>(null)
   const [syncResult, setSyncResult] = useState<Record<string, unknown> | null>(null)
 
+  // ── SIGMA Converter state ────────────────────────────────────
+  const [sigmaInput, setSigmaInput] = useState('')
+  const [sigmaResult, setSigmaResult] = useState<SigmaConversionResult | null>(null)
+  const [sigmaBatchResult, setSigmaBatchResult] = useState<SigmaBatchResult | null>(null)
+  const [sigmaTab, setSigmaTab] = useState<'convert' | 'sigmahq'>('convert')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // ── Event Log Queries ───────────────────────────────────────
 
   const { data: settingsData } = useQuery({
@@ -141,6 +149,72 @@ export default function TelemetryTab() {
       queryClient.invalidateQueries({ queryKey: ['rules'] })
     },
   })
+
+  // ── SIGMA Converter Mutations ────────────────────────────────
+
+  const convertMutation = useMutation({
+    mutationFn: (yaml: string) => api.convertSigmaRule(yaml),
+    onSuccess: (res) => {
+      if (res.data) setSigmaResult(res.data as SigmaConversionResult)
+    },
+  })
+
+  const importMutation = useMutation({
+    mutationFn: (yaml: string) => api.importSigmaRule(yaml),
+    onSuccess: (res) => {
+      if (res.data) setSigmaResult(res.data as SigmaConversionResult)
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  const importBatchMutation = useMutation({
+    mutationFn: (rules: string[]) => api.importSigmaBatch(rules),
+    onSuccess: (res) => {
+      if (res.data) setSigmaBatchResult(res.data as SigmaBatchResult)
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  // ── SIGMA Handlers ─────────────────────────────────────────
+
+  const handleSigmaConvert = () => {
+    if (!sigmaInput.trim()) return
+    convertMutation.mutate(sigmaInput)
+  }
+
+  const handleSigmaImport = () => {
+    if (!sigmaResult?.fibratus_yaml) return
+    importMutation.mutate(sigmaInput)
+  }
+
+  const handleSigmaFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    if (files.length === 1) {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const content = ev.target?.result as string
+        setSigmaInput(content)
+        convertMutation.mutate(content)
+      }
+      reader.readAsText(files[0])
+    } else {
+      // Batch upload
+      const promises = Array.from(files).map(file =>
+        new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = (ev) => resolve(ev.target?.result as string)
+          reader.readAsText(file)
+        })
+      )
+      Promise.all(promises).then(rules => {
+        importBatchMutation.mutate(rules)
+      })
+    }
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   // ── Event Log Handlers ──────────────────────────────────────
 
@@ -490,6 +564,296 @@ export default function TelemetryTab() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/* SIGMA Rule Converter                                      */}
+      {/* ══════════════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">SIGMA Rule Converter</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+              Convert SIGMA detection rules to Fibratus format. Supports process creation, file, registry, network, DNS, image load, driver load, and Windows Event Log rules.
+            </p>
+          </div>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="mt-4 flex gap-1 rounded-lg bg-gray-100 dark:bg-slate-800 p-1 w-fit">
+          <button
+            onClick={() => setSigmaTab('convert')}
+            className={'rounded-md px-4 py-1.5 text-sm font-medium transition-colors ' +
+              (sigmaTab === 'convert'
+                ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 shadow-sm'
+                : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300')
+            }
+          >
+            Convert Rule
+          </button>
+          <button
+            onClick={() => setSigmaTab('sigmahq')}
+            className={'rounded-md px-4 py-1.5 text-sm font-medium transition-colors ' +
+              (sigmaTab === 'sigmahq'
+                ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 shadow-sm'
+                : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300')
+            }
+          >
+            SigmaHQ Sync
+          </button>
+        </div>
+
+        {/* Convert Tab */}
+        {sigmaTab === 'convert' && (
+          <div className="mt-4 space-y-4">
+            {/* Input area */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-gray-700 dark:text-slate-300">SIGMA Rule (YAML)</label>
+                <div className="flex gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".yml,.yaml"
+                    multiple
+                    onChange={handleSigmaFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-md border border-gray-300 dark:border-slate-600 px-3 py-1 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                  >
+                    Upload File(s)
+                  </button>
+                  <button
+                    onClick={handleSigmaConvert}
+                    disabled={convertMutation.isPending || !sigmaInput.trim()}
+                    className="rounded-md bg-fibratus-600 px-4 py-1 text-xs font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+                  >
+                    {convertMutation.isPending ? 'Converting...' : 'Convert'}
+                  </button>
+                </div>
+              </div>
+              <textarea
+                value={sigmaInput}
+                onChange={e => { setSigmaInput(e.target.value); setSigmaResult(null) }}
+                placeholder={'title: Suspicious Process Creation\nid: 12345678-1234-1234-1234-123456789abc\nstatus: test\nlogsource:\n  category: process_creation\n  product: windows\ndetection:\n  selection:\n    Image|endswith: \'\\\\cmd.exe\'\n    CommandLine|contains: \'whoami\'\n  condition: selection\nlevel: medium'}
+                className="w-full h-48 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-3 py-2 text-xs font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500 resize-y"
+              />
+            </div>
+
+            {/* Conversion Result */}
+            {sigmaResult && (
+              <div className={'rounded-xl border p-4 shadow-sm ' + (
+                sigmaResult.success
+                  ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/10'
+                  : sigmaResult.unconvertible
+                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-900/10'
+                    : 'border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-900/10'
+              )}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium ' + (
+                      sigmaResult.success
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                        : sigmaResult.unconvertible
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                    )}>
+                      {sigmaResult.success ? 'Converted' : sigmaResult.unconvertible ? 'Not Convertible' : 'Failed'}
+                    </span>
+                    {sigmaResult.sigma_title && (
+                      <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{sigmaResult.sigma_title}</span>
+                    )}
+                  </div>
+                  {sigmaResult.success && (
+                    <button
+                      onClick={handleSigmaImport}
+                      disabled={importMutation.isPending}
+                      className="rounded-md bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {importMutation.isPending ? 'Importing...' : 'Import as Rule'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Errors */}
+                {sigmaResult.errors && sigmaResult.errors.length > 0 && (
+                  <div className="mb-3">
+                    {sigmaResult.errors.map((err, i) => (
+                      <div key={i} className="text-xs text-red-600 dark:text-red-400 py-0.5">{err}</div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Reason (for unconvertible) */}
+                {sigmaResult.reason && (
+                  <div className="mb-3 text-xs text-amber-700 dark:text-amber-400">{sigmaResult.reason}</div>
+                )}
+
+                {/* Warnings */}
+                {sigmaResult.warnings && sigmaResult.warnings.length > 0 && (
+                  <div className="mb-3">
+                    {sigmaResult.warnings.map((w, i) => (
+                      <div key={i} className="text-xs text-amber-600 dark:text-amber-400 py-0.5">Warning: {w}</div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Converted YAML */}
+                {sigmaResult.fibratus_yaml && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-500 dark:text-slate-400">Fibratus Rule</span>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(sigmaResult.fibratus_yaml || '')}
+                        className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-slate-300"
+                      >
+                        Copy YAML
+                      </button>
+                    </div>
+                    <pre className="rounded-lg bg-gray-900 dark:bg-black p-3 text-xs text-emerald-400 font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
+                      {sigmaResult.fibratus_yaml}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Metadata */}
+                {sigmaResult.success && (
+                  <div className="mt-3 flex gap-4 text-[10px] text-gray-500 dark:text-slate-500">
+                    {sigmaResult.severity && <span>Severity: <strong className="text-gray-700 dark:text-slate-300">{sigmaResult.severity}</strong></span>}
+                    {sigmaResult.labels?.['technique.id'] && <span>Technique: <strong className="text-gray-700 dark:text-slate-300">{sigmaResult.labels['technique.id']}</strong></span>}
+                    {sigmaResult.labels?.['tactic.name'] && <span>Tactic: <strong className="text-gray-700 dark:text-slate-300">{sigmaResult.labels['tactic.name']}</strong></span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Batch Result */}
+            {sigmaBatchResult && (
+              <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-gray-900 dark:text-slate-100">Batch Import Result</h4>
+                  <button onClick={() => setSigmaBatchResult(null)} className="text-xs text-gray-400 hover:text-gray-600">dismiss</button>
+                </div>
+                <div className="flex gap-6 text-sm">
+                  <span className="text-gray-500 dark:text-slate-400">{sigmaBatchResult.total} total</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">{sigmaBatchResult.converted} converted</span>
+                  <span className="text-red-600 dark:text-red-400">{sigmaBatchResult.failed} failed</span>
+                  <span className="text-amber-600 dark:text-amber-400">{sigmaBatchResult.skipped} skipped</span>
+                </div>
+                {sigmaBatchResult.results.length > 0 && (
+                  <div className="mt-3 max-h-48 overflow-auto space-y-1">
+                    {sigmaBatchResult.results.map((res, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs py-0.5">
+                        <span className={'inline-flex w-16 justify-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ' + (
+                          res.success ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                            : res.unconvertible ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                        )}>
+                          {res.success ? 'OK' : res.unconvertible ? 'Skip' : 'Fail'}
+                        </span>
+                        <span className="text-gray-700 dark:text-slate-300 truncate">{res.sigma_title || res.sigma_id || `Rule ${i + 1}`}</span>
+                        {res.errors && res.errors.length > 0 && (
+                          <span className="text-red-500 dark:text-red-400 truncate">{res.errors[0]}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Info box */}
+            <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-3">
+              <p className="text-xs text-blue-700 dark:text-blue-400">
+                <strong>Supported logsources:</strong> process_creation, file_event, file_delete, registry_event, registry_set, network_connection,
+                dns_query, image_load, driver_load, process_access, create_remote_thread, and Windows Event Logs (Security, Sysmon, PowerShell, System, and more).
+                Rules with unsupported logsources (Linux, macOS, cloud) will be flagged as unconvertible.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* SigmaHQ Sync Tab */}
+        {sigmaTab === 'sigmahq' && (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-md bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 px-4 py-3">
+              <p className="text-xs text-purple-700 dark:text-purple-400">
+                <strong>SigmaHQ Integration:</strong> Connect directly to the SigmaHQ GitHub repository to sync community detection rules.
+                Use the Detection as Code section above to add <code className="bg-purple-100 dark:bg-purple-900/40 px-1 rounded">github.com/SigmaHQ/sigma</code> as a source.
+                Set the rules path to <code className="bg-purple-100 dark:bg-purple-900/40 px-1 rounded">rules/windows</code> to pull all Windows-compatible SIGMA rules.
+                Rules will be automatically converted to Fibratus format during sync.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Quick Setup: SigmaHQ</h4>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+                Add the SigmaHQ repository as a Detection as Code source to automatically sync and convert SIGMA rules.
+                Only convertible rules (Windows ETW + Event Log compatible) will be imported.
+              </p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="w-24 text-xs font-medium text-gray-500 dark:text-slate-400">Repository:</span>
+                  <code className="text-xs font-mono text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 px-2 py-1 rounded">github.com/SigmaHQ/sigma</code>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="w-24 text-xs font-medium text-gray-500 dark:text-slate-400">Branch:</span>
+                  <code className="text-xs font-mono text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 px-2 py-1 rounded">master</code>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="w-24 text-xs font-medium text-gray-500 dark:text-slate-400">Rules Path:</span>
+                  <code className="text-xs font-mono text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 px-2 py-1 rounded">rules/windows</code>
+                </div>
+                <div className="pt-2 border-t border-gray-100 dark:border-slate-700">
+                  <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                    Recommended paths for specific categories:
+                  </p>
+                  <div className="mt-1 grid grid-cols-2 gap-1">
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/process_creation</code>
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/registry</code>
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/file</code>
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/network_connection</code>
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/dns_query</code>
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/image_load</code>
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/powershell</code>
+                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/driver_load</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Conversion format note */}
+            <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">SIGMA to Fibratus Mapping</h4>
+              <div className="space-y-2 text-xs">
+                <div className="grid grid-cols-3 gap-2 text-gray-500 dark:text-slate-400 font-medium border-b border-gray-100 dark:border-slate-700 pb-1">
+                  <span>SIGMA Logsource</span><span>Fibratus Event</span><span>Key Fields</span>
+                </div>
+                {[
+                  ['process_creation', 'spawn_process', 'ps.exe, ps.cmdline, ps.parent.exe'],
+                  ['file_event', 'create_file', 'file.name, ps.exe'],
+                  ['registry_event', 'modify_registry', 'registry.path, registry.value'],
+                  ['network_connection', 'connect_socket', 'net.dip, net.dport, ps.exe'],
+                  ['dns_query', 'query_dns', 'dns.name, dns.rr, ps.exe'],
+                  ['image_load', 'load_module', 'image.name, ps.exe'],
+                  ['driver_load', 'load_driver', 'image.name, image.signature.*'],
+                  ['process_access', 'open_process', 'ps.exe, ps.access.mask'],
+                  ['Sysmon (generic)', 'eventlog_event', 'eventlog.channel, eventlog.event.id'],
+                  ['PowerShell', 'eventlog_event', 'eventlog.data[ScriptBlockText]'],
+                  ['Security Log', 'eventlog_event', 'eventlog.event.id, eventlog.data[*]'],
+                ].map(([sigma, fibratus, fields]) => (
+                  <div key={sigma} className="grid grid-cols-3 gap-2 text-gray-700 dark:text-slate-300">
+                    <span className="font-mono">{sigma}</span>
+                    <span className="font-mono text-fibratus-600 dark:text-fibratus-400">{fibratus}</span>
+                    <span className="text-gray-500 dark:text-slate-400">{fields}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -185,6 +185,7 @@ func (s *Server) Run(ctx context.Context) error {
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
+	sigmaHandler := handler.NewSigmaHandler(ruleStore, macroStore, auditStore, userStore)
 
 	// Wire org store for cross-org aggregation (account-scoped views)
 	detHandler.SetOrgStore(orgStore)
@@ -484,6 +485,22 @@ func (s *Server) Run(ctx context.Context) error {
 		case strings.HasPrefix(subpath, "/github-sync/") && r.Method == http.MethodDelete:
 			githubSyncHandler.DeleteConfig(w, r)
 
+		// SIGMA Converter
+		case subpath == "/sigma/convert" && r.Method == http.MethodPost:
+			sigmaHandler.Convert(w, r)
+		case subpath == "/sigma/convert/batch" && r.Method == http.MethodPost:
+			sigmaHandler.ConvertBatch(w, r)
+		case subpath == "/sigma/import" && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageRules, sigmaHandler.ConvertAndImport)(w, r)
+		case subpath == "/sigma/import/batch" && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageRules, sigmaHandler.ImportBatch)(w, r)
+		case subpath == "/sigma/validate" && r.Method == http.MethodPost:
+			sigmaHandler.Validate(w, r)
+		case subpath == "/sigma/logsources" && r.Method == http.MethodGet:
+			sigmaHandler.SupportedLogsources(w, r)
+		case subpath == "/sigma/field-mappings" && r.Method == http.MethodGet:
+			sigmaHandler.FieldMappings(w, r)
+
 		// Audit Log
 		case subpath == "/audit-log" && r.Method == http.MethodGet:
 			auditHandler.List(w, r)
@@ -696,6 +713,57 @@ func (s *Server) Run(ctx context.Context) error {
 		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
+	})
+
+	// Account-scoped: GitHub Sync (detection as code) — account-wide configs
+	dashMux.HandleFunc("/api/v1/account/github-sync/trigger", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			githubSyncHandler.TriggerSync(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/github-sync/", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/trigger") && r.Method == http.MethodPost:
+			githubSyncHandler.TriggerSyncOne(w, r)
+		case r.Method == http.MethodDelete:
+			githubSyncHandler.DeleteConfig(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/github-sync", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			githubSyncHandler.ListConfigs(w, r)
+		case http.MethodPost:
+			githubSyncHandler.SaveConfig(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	// Account-scoped: SIGMA converter
+	dashMux.HandleFunc("/api/v1/account/sigma/convert/batch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { sigmaHandler.ConvertBatch(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigma/convert", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { sigmaHandler.Convert(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigma/import/batch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { requirePermission(fleetauth.PermManageRules, sigmaHandler.ImportBatch)(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigma/import", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { requirePermission(fleetauth.PermManageRules, sigmaHandler.ConvertAndImport)(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigma/validate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { sigmaHandler.Validate(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigma/logsources", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet { sigmaHandler.SupportedLogsources(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigma/field-mappings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet { sigmaHandler.FieldMappings(w, r) } else { http.Error(w, "method not allowed", 405) }
 	})
 
 	dashMux.HandleFunc("/api/v1/account/settings", func(w http.ResponseWriter, r *http.Request) {

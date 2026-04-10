@@ -129,6 +129,46 @@ export interface Rule {
   updated_at: string
 }
 
+export interface SigmaConversionResult {
+  success: boolean
+  fibratus_yaml?: string
+  rule_name?: string
+  condition?: string
+  severity?: string
+  labels?: Record<string, string>
+  errors?: string[]
+  warnings?: string[]
+  unconvertible?: boolean
+  reason?: string
+  sigma_id?: string
+  sigma_title?: string
+}
+
+export interface SigmaBatchResult {
+  total: number
+  converted: number
+  failed: number
+  skipped: number
+  results: SigmaConversionResult[]
+}
+
+export interface SigmaLogsourceMapping {
+  category: string
+  product: string
+  service: string
+  event_type: string
+  macro: string
+  description: string
+  fields: Record<string, string>
+}
+
+export interface SigmaFieldMapping {
+  sigma_field: string
+  fibratus_field: string
+  category: string
+  notes: string
+}
+
 export interface Command {
   id: string
   org_id: string
@@ -480,6 +520,22 @@ export const api = {
     fetchApi<unknown>(orgPath('/github-sync/trigger'), { method: 'POST' }),
   triggerGitHubSyncOne: (id: string) =>
     fetchApi<unknown>(orgPath(`/github-sync/${id}/trigger`), { method: 'POST' }),
+
+  // SIGMA Converter
+  convertSigmaRule: (sigmaYaml: string) =>
+    fetchApi<SigmaConversionResult>(orgPath('/sigma/convert'), { method: 'POST', body: JSON.stringify({ sigma_yaml: sigmaYaml }) }),
+  convertSigmaBatch: (rules: string[]) =>
+    fetchApi<SigmaBatchResult>(orgPath('/sigma/convert/batch'), { method: 'POST', body: JSON.stringify({ rules }) }),
+  importSigmaRule: (sigmaYaml: string) =>
+    fetchApi<SigmaConversionResult>(orgPath('/sigma/import'), { method: 'POST', body: JSON.stringify({ sigma_yaml: sigmaYaml }) }),
+  importSigmaBatch: (rules: string[]) =>
+    fetchApi<SigmaBatchResult>(orgPath('/sigma/import/batch'), { method: 'POST', body: JSON.stringify({ rules }) }),
+  validateSigmaRule: (sigmaYaml: string) =>
+    fetchApi<{ convertible: boolean; unconvertible: boolean; reason: string; errors: string[]; warnings: string[]; condition: string }>(orgPath('/sigma/validate'), { method: 'POST', body: JSON.stringify({ sigma_yaml: sigmaYaml }) }),
+  getSigmaLogsources: () =>
+    fetchApi<SigmaLogsourceMapping[]>(orgPath('/sigma/logsources')),
+  getSigmaFieldMappings: () =>
+    fetchApi<SigmaFieldMapping[]>(orgPath('/sigma/field-mappings')),
 
   // Account Settings
   getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string; tamper_protection_enabled: boolean; isolation_whitelist: string[]; org_protection: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> }>('/account/settings'),
