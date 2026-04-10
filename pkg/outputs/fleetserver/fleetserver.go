@@ -154,6 +154,8 @@ var telemetryEventNames = map[string]bool{
 	"LoadImage": true, "UnloadImage": true,
 	// Thread context manipulation — injection technique indicator
 	"SetThreadContext": true,
+	// Windows Event Log — all collected events are security-relevant
+	"EventLogEvent": true,
 }
 
 var telemetryDropNames = map[string]bool{
