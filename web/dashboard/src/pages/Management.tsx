@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import AccountTab from '../components/management/AccountTab'
 import OrganizationsTab from '../components/management/OrganizationsTab'
 import UsersTab from '../components/management/UsersTab'
@@ -20,28 +20,21 @@ const allTabs: { key: Tab; label: string; perm: string }[] = [
   { key: 'audit', label: 'Audit', perm: 'audit:view' },
 ]
 
+function getInitialTab(): Tab {
+  const hash = window.location.hash.replace('#', '') as Tab
+  if (allTabs.some(t => t.key === hash)) return hash
+  return 'account'
+}
+
 export default function Management() {
   const { hasPermission, isRoot } = usePermissions()
+  const [tab, setTab] = useState<Tab>(getInitialTab)
 
   const visibleTabs = allTabs.filter(t => hasPermission(t.perm) || isRoot)
 
-  function getTabFromHash(): Tab {
-    const hash = window.location.hash.replace('#', '') as Tab
-    if (visibleTabs.some(t => t.key === hash)) return hash
-    return visibleTabs.length > 0 ? visibleTabs[0].key : 'account'
-  }
-
-  const [tab, setTab] = useState<Tab>(getTabFromHash)
-
-  useEffect(() => {
-    const handler = () => setTab(getTabFromHash())
-    window.addEventListener('hashchange', handler)
-    return () => window.removeEventListener('hashchange', handler)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleTabChange = (newTab: Tab) => {
     setTab(newTab)
-    window.location.hash = newTab
+    window.history.replaceState(null, '', `#${newTab}`)
   }
 
   if (!hasPermission('page:management') && !isRoot) {
