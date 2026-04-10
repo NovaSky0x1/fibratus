@@ -73,9 +73,10 @@ type LoginRequest struct {
 
 // LoginResponse is returned after successful authentication.
 type LoginResponse struct {
-	Token        string `json:"token"`
-	User         User   `json:"user"`
-	TOTPRequired bool   `json:"totp_required,omitempty"`
+	Token            string `json:"token"`
+	User             User   `json:"user"`
+	TOTPRequired     bool   `json:"totp_required,omitempty"`
+	MFASetupRequired bool   `json:"mfa_setup_required,omitempty"`
 }
 
 // ═══════════════════════════════════════════════════════════════

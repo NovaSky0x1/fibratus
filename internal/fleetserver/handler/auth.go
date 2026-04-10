@@ -408,6 +408,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Token: token,
 		User:  *user,
 	}
+
+	// Check if account requires 2FA but user hasn't set it up yet
+	if !user.TOTPEnabled {
+		account, _ := h.accounts.Get(r.Context(), user.AccountID)
+		if account != nil && account.Require2FA {
+			resp.MFASetupRequired = true
+		}
+	}
+
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
 }
 

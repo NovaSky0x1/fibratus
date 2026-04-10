@@ -67,8 +67,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const showManagement = permsLoading ? isAdminOrRoot : hasPermission('page:management')
   const showSuperAdmin = permsLoading ? isRoot : canSuperAdmin
 
-  // MFA enforcement: if account requires 2FA but user hasn't enabled it, block everything except Settings
-  const mfaEnforced = mfaRequired && user && !user.totp_enabled
+  // MFA enforcement is now handled in the login flow — no post-login blocking needed
 
   // Apply theme on mount and when it changes
   useEffect(() => {
@@ -277,28 +276,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Main content — z-10 so it sits above the cursor glow canvas */}
       <main className="relative z-10 pl-64">
         <div className="px-8 py-8">
-          {mfaEnforced && location.pathname !== '/management' ? (
-            <div className="max-w-2xl mx-auto mt-16">
-              <div className="rounded-xl border-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20 p-8 text-center">
-                <svg className="mx-auto h-16 w-16 text-amber-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Two-Factor Authentication Required</h2>
-                <p className="text-gray-600 dark:text-slate-400 mb-6">
-                  Your organization requires all users to enable two-factor authentication.
-                  Please set up 2FA to continue using the dashboard.
-                </p>
-                <button
-                  onClick={() => navigate('/management#account')}
-                  className="inline-flex items-center rounded-lg bg-amber-500 px-6 py-3 text-sm font-semibold text-white hover:bg-amber-600 transition-colors"
-                >
-                  Set Up 2FA Now
-                </button>
-              </div>
-            </div>
-          ) : (
-            children
-          )}
+          {children}
         </div>
       </main>
     </div>

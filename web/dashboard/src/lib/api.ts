@@ -237,6 +237,7 @@ export interface User {
 export interface AuthResponse {
   token: string
   totp_required?: boolean
+  mfa_setup_required?: boolean
   user?: User
   account_id?: string
   org_id?: string
