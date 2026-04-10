@@ -252,50 +252,49 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 
 func (c *Collector) readLoop(sub *subscription) {
 	events := make([]wevtapi.EvtHandle, batchSize)
-	log.Infof("eventlog: readLoop started for channel %s", sub.channel)
+	log.Infof("eventlog: readLoop started for channel %s (handle=%v, signal=%v)", sub.channel, sub.handle, sub.signal)
 	var totalEvents uint64
 
 	for {
-		select {
-		case <-c.stopCh:
+		if c.closed.Load() {
 			return
-		default:
 		}
 
-		// Wait for events to arrive
-		result, _ := windows.WaitForSingleObject(sub.signal, nextTimeout)
+		// Wait for the signal event to be set by EvtSubscribe
+		result, _ := windows.WaitForSingleObject(sub.signal, uint32(nextTimeout))
+		if result == windows.WAIT_TIMEOUT {
+			continue
+		}
 		if result != windows.WAIT_OBJECT_0 {
 			continue
 		}
 
-		// Reset the manual-reset event before draining
-		windows.ResetEvent(sub.signal)
-
+		// Drain all available events
 		for {
 			if c.closed.Load() {
 				return
 			}
-
 			returned, err := wevtapi.Next(sub.handle, events, 0)
-			if err != nil || returned == 0 {
+			if returned == 0 || err != nil {
 				break
 			}
 
 			totalEvents += uint64(returned)
-			if totalEvents%1000 == 0 || totalEvents <= 10 {
-				log.Infof("eventlog: channel %s — %d events received so far", sub.channel, totalEvents)
+			if totalEvents <= 10 || totalEvents%1000 == 0 {
+				log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
 			}
 
 			for i := uint32(0); i < returned; i++ {
-				evtHandle := events[i]
-				c.processEvent(sub, evtHandle)
-				// Update bookmark to latest event
+				c.processEvent(sub, events[i])
 				if sub.bookmark != 0 {
-					wevtapi.UpdateBookmark(sub.bookmark, evtHandle)
+					wevtapi.UpdateBookmark(sub.bookmark, events[i])
 				}
-				wevtapi.Close(evtHandle)
+				wevtapi.Close(events[i])
 			}
 		}
+
+		// Reset manual-reset event after draining
+		windows.ResetEvent(sub.signal)
 	}
 }
 
