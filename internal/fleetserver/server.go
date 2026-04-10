@@ -539,6 +539,22 @@ func (s *Server) Run(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	// Account-scoped: cross-org views (no org_id = aggregate all orgs)
+	dashMux.HandleFunc("/api/v1/account/agents", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			agentHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/detections", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			detHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	dashMux.HandleFunc("/api/v1/account/settings", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

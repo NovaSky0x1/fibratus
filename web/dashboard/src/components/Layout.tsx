@@ -105,11 +105,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [])
 
   const handleOrgChange = (orgId: string) => {
-    if (orgId === '' && orgs.length > 0) {
-      // "All Organizations" selected — use first org for API calls
-      // (server requires an org context for most endpoints)
-      orgId = orgs[0].id
-    }
     setCurrentOrgId(orgId)
     setCurrentOrg(orgId)
     queryClient.invalidateQueries()
@@ -183,6 +178,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onChange={(e) => handleOrgChange(e.target.value)}
             className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white focus:border-white/40 focus:outline-none [&>option]:bg-slate-800 [&>option]:text-white"
           >
+            {orgs.length > 1 && <option value="">All Organizations</option>}
             {orgs.map(org => (
               <option key={org.id} value={org.id}>{org.name}</option>
             ))}

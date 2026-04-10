@@ -33,7 +33,12 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<ApiResp
 }
 
 function orgPath(path: string): string {
-  return `/orgs/${getOrgId()}${path}`
+  const orgId = getOrgId()
+  if (!orgId) {
+    // No org selected ("All Organizations") — use account-scoped path
+    return `/account${path}`
+  }
+  return `/orgs/${orgId}${path}`
 }
 
 // ═════════════════════════════════════════════════
