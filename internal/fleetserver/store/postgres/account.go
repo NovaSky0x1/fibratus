@@ -49,7 +49,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, name, plan, COALESCE(require_2fa, false), COALESCE(tamper_protection_enabled, false),
 			COALESCE(isolation_whitelist, '[]'::jsonb), COALESCE(eventlog_enabled, false),
-			COALESCE(telemetry_retention_days, 7), COALESCE(allowed_file_extensions, 'null'::jsonb),
+			COALESCE(telemetry_retention_days, 1), COALESCE(allowed_file_extensions, 'null'::jsonb),
 			created_at, updated_at
 		 FROM accounts WHERE id = $1`, id)
 

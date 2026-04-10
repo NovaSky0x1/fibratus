@@ -391,7 +391,7 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS isolated BOOLEAN DEFAULT FALSE;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS eventlog_enabled BOOLEAN DEFAULT FALSE;
 
 -- Telemetry retention (days)
-ALTER TABLE accounts ADD COLUMN IF NOT EXISTS telemetry_retention_days INTEGER DEFAULT 7;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS telemetry_retention_days INTEGER DEFAULT 1;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS telemetry_retention_days INTEGER DEFAULT 0;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS eventlog_collection BOOLEAN DEFAULT FALSE;
 

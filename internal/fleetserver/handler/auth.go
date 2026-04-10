@@ -697,7 +697,7 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 
 	retDays := account.TelemetryRetentionDays
 	if retDays <= 0 {
-		retDays = 7
+		retDays = 1
 	}
 
 	// Include org-level settings
