@@ -1091,31 +1091,41 @@ func parseWevtutilXML(xmlData string) []map[string]interface{} {
 			}
 		}
 		if dataSection != "" {
-			// Parse <Data Name="key">value</Data> pairs
+			// Parse <Data Name='key'>value</Data> or <Data Name="key">value</Data>
 			parts := strings.Split(dataSection, "<Data ")
 			for _, p := range parts[1:] {
-				nameStart := strings.Index(p, "Name=\"")
-				if nameStart < 0 {
+				// Extract name from Name='...' or Name="..."
+				var name string
+				for _, q := range []string{"'", "\""} {
+					key := "Name=" + q
+					ns := strings.Index(p, key)
+					if ns < 0 {
+						continue
+					}
+					ns += len(key)
+					ne := strings.Index(p[ns:], q)
+					if ne < 0 {
+						continue
+					}
+					name = p[ns : ns+ne]
+					break
+				}
+				if name == "" {
 					continue
 				}
-				nameStart += 6
-				nameEnd := strings.Index(p[nameStart:], "\"")
-				if nameEnd < 0 {
-					continue
-				}
-				name := p[nameStart : nameStart+nameEnd]
 
 				valStart := strings.Index(p, ">")
 				if valStart < 0 {
 					continue
 				}
+				// Check for self-closing tag: <Data Name='X'/>
+				if valStart > 0 && p[valStart-1] == '/' {
+					data[name] = ""
+					continue
+				}
 				valEnd := strings.Index(p[valStart:], "</Data>")
 				if valEnd < 0 {
-					valEnd = strings.Index(p[valStart:], "/>")
-					if valEnd >= 0 {
-						data[name] = ""
-						continue
-					}
+					data[name] = ""
 					continue
 				}
 				data[name] = p[valStart+1 : valStart+valEnd]
@@ -1212,17 +1222,21 @@ func extractXMLAttr(xml, tag, attr string) string {
 		return ""
 	}
 	tagContent := xml[start : start+end]
-	attrKey := attr + "=\""
-	aStart := strings.Index(tagContent, attrKey)
-	if aStart < 0 {
-		return ""
+	// Try both double and single quotes: attr="val" or attr='val'
+	for _, q := range []string{"\"", "'"} {
+		attrKey := attr + "=" + q
+		aStart := strings.Index(tagContent, attrKey)
+		if aStart < 0 {
+			continue
+		}
+		aStart += len(attrKey)
+		aEnd := strings.Index(tagContent[aStart:], q)
+		if aEnd < 0 {
+			continue
+		}
+		return tagContent[aStart : aStart+aEnd]
 	}
-	aStart += len(attrKey)
-	aEnd := strings.Index(tagContent[aStart:], "\"")
-	if aEnd < 0 {
-		return ""
-	}
-	return tagContent[aStart : aStart+aEnd]
+	return ""
 }
 
 // exportEvtx exports a Windows Event Log channel to an .evtx file and returns it base64-encoded.

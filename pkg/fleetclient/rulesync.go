@@ -27,6 +27,7 @@ import (
 	"time"
 
 	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
+	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -147,7 +148,10 @@ func (c *Client) subscribeRules(onUpdate RuleSyncCallback) error {
 	orgID := c.orgID
 	c.mu.RUnlock()
 
-	currentVersion := loadFile(filepath.Join(c.dataDir, "rules-etag"))
+	currentVersion := tamper.LoadState("RulesETag")
+	if currentVersion == "" {
+		currentVersion = loadFile(filepath.Join(c.dataDir, "rules-etag")) // legacy fallback
+	}
 
 	stream, err := c.agentClient.SubscribeRules(c.grpcCtx(), &pb.RuleSubscription{
 		AgentId:        agentID,
@@ -198,7 +202,8 @@ func (c *Client) applyRuleUpdate(update *pb.RuleUpdate, onUpdate RuleSyncCallbac
 
 	// Save only the version etag to disk (not the rules themselves)
 	if update.Version != "" {
-		os.WriteFile(filepath.Join(c.dataDir, "rules-etag"), []byte(update.Version), 0o644)
+		tamper.StoreState("RulesETag", update.Version)
+		os.Remove(filepath.Join(c.dataDir, "rules-etag")) // clean up legacy file
 	}
 
 	// Clean up any old rule files that may exist from previous versions

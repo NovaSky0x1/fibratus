@@ -763,7 +763,7 @@ function EventLogCollectionSection() {
             Event Log Collection
           </h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-            Collect Windows Event Logs from enrolled agents. Enables detection rules based on Security, Sysmon, PowerShell, and other log sources.
+            Collect Windows Event Logs from enrolled agents. Enables detection rules based on Security, System, Sysmon, and other log sources.
           </p>
         </div>
         <ToggleSwitch

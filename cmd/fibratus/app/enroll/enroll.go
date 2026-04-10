@@ -201,11 +201,8 @@ func Enroll(opts EnrollOpts) (*fleet.EnrollResponse, error) {
 	// Protect the registry keys with SYSTEM-only write ACLs
 	tamper.ProtectRegistryKeys()
 
-	// Also write minimal files for backward compatibility during migration period.
-	// The data directory must exist for other state files (rules-etag, etc.)
+	// Create data directory for operational state (bookmarks, etc.)
 	os.MkdirAll(dir, 0o700)
-	os.WriteFile(filepath.Join(dir, "server-url"), []byte(opts.ServerURL), 0o644)
-	os.WriteFile(filepath.Join(dir, "org-id"), []byte(enrollResp.OrgID), 0o644)
 
 	return &enrollResp, nil
 }

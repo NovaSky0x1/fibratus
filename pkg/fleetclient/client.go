@@ -330,22 +330,11 @@ func loadFile(path string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// persistAgentID saves the agent ID to DPAPI registry and file fallback.
+// persistAgentID saves the agent ID to DPAPI-encrypted registry.
 func (c *Client) persistAgentID(id string) {
-	// Store in DPAPI registry (primary)
 	if err := tamper.StoreAgentID(id); err != nil {
 		log.Warnf("fleet: failed to persist agent ID to registry: %v", err)
 	}
-	// Also write to file for backward compatibility
-	if c.dataDir == "" {
-		return
-	}
-	path := filepath.Join(c.dataDir, agentIDFile)
-	if err := os.MkdirAll(c.dataDir, 0o755); err != nil {
-		log.Warnf("fleet: failed to create data dir: %v", err)
-		return
-	}
-	if err := os.WriteFile(path, []byte(id), 0o600); err != nil {
-		log.Warnf("fleet: failed to persist agent ID to file: %v", err)
-	}
+	// Clean up legacy file if it exists
+	os.Remove(filepath.Join(c.dataDir, agentIDFile))
 }
