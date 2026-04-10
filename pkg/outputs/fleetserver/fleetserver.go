@@ -31,6 +31,7 @@ import (
 
 	"github.com/rabbitstack/fibratus/pkg/event"
 	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
+	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	"github.com/rabbitstack/fibratus/pkg/outputs"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -468,7 +469,12 @@ func (f *fleetOutput) Publish(batch *event.Batch) error {
 	// Refresh agent ID if not set at init time
 	agentID := f.agentID
 	if agentID == "" {
-		agentID = loadEnrollmentFile("agent-id")
+		// Try DPAPI registry first, then legacy file fallback
+		if enrollData := tamper.LoadEnrollment(); enrollData != nil && enrollData.AgentID != "" {
+			agentID = enrollData.AgentID
+		} else {
+			agentID = loadEnrollmentFile("agent-id")
+		}
 	}
 
 	// Convert telemetry events to protobuf
