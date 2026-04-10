@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
+import { api, type Organization } from '../lib/api'
 import { useTableSort } from '../hooks/useTableSort'
 import SortableHeader from '../components/SortableHeader'
 
@@ -179,6 +179,15 @@ export default function Events({ agentId }: { agentId?: string } = {}) {
   const [newFilterField, setNewFilterField] = useState('ps.name')
   const [newFilterOperator, setNewFilterOperator] = useState('=')
   const [newFilterValue, setNewFilterValue] = useState('')
+
+  // Org name resolver for cross-org view
+  const { data: orgsData } = useQuery({ queryKey: ['organizations'], queryFn: () => api.getOrganizations() })
+  const orgMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    const orgs = (orgsData?.data || []) as Organization[]
+    orgs.forEach(o => { map[o.id] = o.name })
+    return map
+  }, [orgsData])
 
   // Fields sidebar
   const [showFields, setShowFields] = useState(true)
@@ -877,11 +886,12 @@ export default function Events({ agentId }: { agentId?: string } = {}) {
                 <SortableHeader label="PID" sortKey="pid" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[60px]" />
                 <SortableHeader label="Process" sortKey="process_name" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[130px]" />
                 <SortableHeader label="Agent" sortKey="agent_hostname" sort={sort} onSort={toggleSort} className="!px-3 !py-2 !text-xs w-[110px]" />
+                <th className="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 text-xs w-[100px]">Organization</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/30">
               {isLoading && (
-                <tr><td colSpan={7} className="px-3 py-16 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">
+                <tr><td colSpan={8} className="px-3 py-16 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">
                   <div className="flex items-center justify-center gap-2">
                     <svg className="animate-spin h-4 w-4 text-gray-400 dark:text-slate-500" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -902,11 +912,12 @@ export default function Events({ agentId }: { agentId?: string } = {}) {
                   rawExpanded={rawExpanded}
                   onRawToggle={() => setRawExpanded(!rawExpanded)}
                   onAddFilter={addQuickFilter}
+                  orgName={orgMap[evt.org_id] || ''}
                 />
               ))}
               {!isLoading && events.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-16 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">
+                  <td colSpan={8} className="px-3 py-16 text-center text-gray-400 dark:text-slate-500 text-sm font-sans">
                     {activeQuery
                       ? 'No events match your query.'
                       : 'No telemetry data yet. Agents will start streaming events when connected.'}
@@ -1017,7 +1028,10 @@ interface EventRowProps {
   onAddFilter: (field: string, value: string) => void
 }
 
-function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpanded, onRawToggle, onAddFilter }: EventRowProps) {
+function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpanded, onRawToggle, onAddFilter, orgName }: {
+  evt: TelemetryEvent; isExpanded: boolean; onToggle: () => void; detailTab: string; onTabChange: (t: string) => void;
+  rawExpanded: boolean; onRawToggle: () => void; onAddFilter: (field: string, value: string) => void; orgName: string
+}) {
   return (
     <>
       <tr
@@ -1064,6 +1078,9 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
           <span className="cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => { onAddFilter('agent.hostname', evt.agent_hostname) }} title="Click to filter by this agent">
             {evt.agent_hostname}
           </span>
+        </td>
+        <td className="px-3 py-1.5 text-gray-400 dark:text-slate-500 text-xs">
+          {orgName || evt.org_id?.slice(0, 8)}
         </td>
       </tr>
       {/* Preview sub-row */}
@@ -1188,7 +1205,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
 
   return (
     <tr>
-      <td colSpan={7} className="p-0">
+      <td colSpan={8} className="p-0">
         <div className="bg-blue-50/30 dark:bg-black/30 border-t border-b border-blue-100 dark:border-slate-700/50 px-4 py-4 space-y-4" onClick={(e) => e.stopPropagation()}>
           {/* ── Top section: cards ── */}
           {isEventLog && eventLogMeta ? (
