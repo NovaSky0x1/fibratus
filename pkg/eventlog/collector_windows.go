@@ -262,9 +262,6 @@ func (c *Collector) readLoop(sub *subscription) {
 
 		// Wait for the signal event to be set by EvtSubscribe
 		result, _ := windows.WaitForSingleObject(sub.signal, uint32(nextTimeout))
-		if result == windows.WAIT_TIMEOUT {
-			continue
-		}
 		if result != windows.WAIT_OBJECT_0 {
 			continue
 		}
