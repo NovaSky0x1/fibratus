@@ -696,8 +696,9 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 			"telemetry_retention_days":  orgRetDays,
 		})
 	}
+	// nil = never configured (use defaults), empty slice = permissive (no restrictions)
 	fileExts := account.AllowedFileExtensions
-	if len(fileExts) == 0 {
+	if fileExts == nil {
 		fileExts = fleet.DefaultAllowedFileExtensions
 	}
 
