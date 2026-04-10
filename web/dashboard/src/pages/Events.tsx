@@ -1166,7 +1166,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                   <span className="text-sky-600 dark:text-sky-400 text-[10px] font-bold uppercase tracking-wider">Event Log</span>
                   <span className="font-semibold text-sm text-sky-700 dark:text-sky-300 cursor-pointer hover:text-sky-900 dark:hover:text-sky-200 transition-colors" onClick={() => onAddFilter('eventlog.channel', eventLogMeta.channel)} title="Click to filter">{eventLogMeta.channel}</span>
                   <span className="rounded bg-sky-100 dark:bg-sky-500/20 px-2 py-0.5 text-xs font-bold text-sky-800 dark:text-sky-300 cursor-pointer hover:bg-sky-200 dark:hover:bg-sky-500/30 transition-colors" onClick={() => eventLogMeta.eventId !== undefined && onAddFilter('eventlog.event.id', String(eventLogMeta.eventId))} title="Click to filter">
-                    Event ID {eventLogMeta.eventId}
+                    Event ID {String(eventLogMeta.eventId ?? '')}
                   </span>
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                     eventLogMeta.level === 'Error' || eventLogMeta.level === 'Critical' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
