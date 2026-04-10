@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/event"
@@ -215,11 +216,12 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 		log.Warnf("eventlog: couldn't load bookmark for %s, starting from future events: %v", ch.Name, err)
 	}
 
-	var flags wevtapi.EvtSubscribeFlags
+	// Always subscribe to future events only (bookmarks are used for persistence after restart)
+	var flags wevtapi.EvtSubscribeFlags = wevtapi.EvtSubscribeToFutureEvents
+	// Ignore any loaded bookmark — start fresh from future events to avoid backlog
 	if bookmark != 0 {
-		flags = wevtapi.EvtSubscribeStartAfterBookmark
-	} else {
-		flags = wevtapi.EvtSubscribeToFutureEvents
+		wevtapi.Close(bookmark)
+		bookmark = 0
 	}
 
 	handle, err := wevtapi.Subscribe(ch.Name, query, bookmark, signal, flags)
@@ -260,38 +262,32 @@ func (c *Collector) readLoop(sub *subscription) {
 			return
 		}
 
-		// Wait for the signal event to be set by EvtSubscribe
-		result, _ := windows.WaitForSingleObject(sub.signal, uint32(nextTimeout))
-		if result != windows.WAIT_OBJECT_0 {
+		// Poll EvtNext directly with a timeout — more reliable than signal events
+		// across different Windows versions and service account contexts
+		returned, err := wevtapi.Next(sub.handle, events, uint32(nextTimeout))
+		if returned == 0 {
+			if err != nil {
+				// ERROR_NO_MORE_ITEMS (259) is expected when no events available
+				errno, ok := err.(syscall.Errno)
+				if !ok || errno != 259 {
+					log.Warnf("eventlog: EvtNext error on %s: %v", sub.channel, err)
+				}
+			}
 			continue
 		}
 
-		// Drain all available events
-		for {
-			if c.closed.Load() {
-				return
-			}
-			returned, err := wevtapi.Next(sub.handle, events, 0)
-			if returned == 0 || err != nil {
-				break
-			}
-
-			totalEvents += uint64(returned)
-			if totalEvents <= 10 || totalEvents%1000 == 0 {
-				log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
-			}
-
-			for i := uint32(0); i < returned; i++ {
-				c.processEvent(sub, events[i])
-				if sub.bookmark != 0 {
-					wevtapi.UpdateBookmark(sub.bookmark, events[i])
-				}
-				wevtapi.Close(events[i])
-			}
+		totalEvents += uint64(returned)
+		if totalEvents <= 10 || totalEvents%1000 == 0 {
+			log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
 		}
 
-		// Reset manual-reset event after draining
-		windows.ResetEvent(sub.signal)
+		for i := uint32(0); i < returned; i++ {
+			c.processEvent(sub, events[i])
+			if sub.bookmark != 0 {
+				wevtapi.UpdateBookmark(sub.bookmark, events[i])
+			}
+			wevtapi.Close(events[i])
+		}
 	}
 }
 
