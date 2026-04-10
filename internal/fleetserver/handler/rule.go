@@ -509,36 +509,64 @@ func parseYAMLRule(data []byte, rule *fleet.Rule) error {
 // Public Rule Validation API (no authentication required)
 // ═══════════════════════════════════════════════════════════════
 
-// PublicValidateRule handles POST /api/v1/public/validate-rule
-// Accepts raw YAML rule(s) and validates structure + condition syntax.
-// No authentication required — designed for VS Code, CI pipelines, and pre-commit hooks.
-// Rate-limited at the server level.
-func PublicValidateRule(w http.ResponseWriter, r *http.Request) {
+// ValidateRuleAPI handles POST /api/v1/validate-rule
+// Validates rule YAML + optional macros YAML. Requires API key or JWT.
+//
+// Accepts two formats:
+//   1. JSON: { "rules": "<yaml>", "macros": "<yaml>" }
+//   2. Raw YAML body (Content-Type: application/yaml) — rules only, no macros
+func ValidateRuleAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "POST required")
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 512*1024)) // 512KB max
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1024*1024)) // 1MB max
 	if err != nil || len(body) == 0 {
-		writeError(w, http.StatusBadRequest, "request body required (raw YAML)")
+		writeError(w, http.StatusBadRequest, "request body required")
+		return
+	}
+
+	var rulesYAML []byte
+	var macros map[string]*qlparser.Macro
+
+	// Detect format: JSON wrapper or raw YAML
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "application/json") || (len(body) > 0 && body[0] == '{') {
+		var req struct {
+			Rules  string `json:"rules"`
+			Macros string `json:"macros"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON: expected {\"rules\": \"<yaml>\", \"macros\": \"<yaml>\"}")
+			return
+		}
+		rulesYAML = []byte(req.Rules)
+		if req.Macros != "" {
+			macros = parseMacrosYAML([]byte(req.Macros))
+		}
+	} else {
+		// Raw YAML — check for X-Macros header pointing to inline macros
+		rulesYAML = body
+	}
+
+	if len(rulesYAML) == 0 {
+		writeError(w, http.StatusBadRequest, "rules field is required")
 		return
 	}
 
 	type RuleResult struct {
-		Name             string      `json:"name"`
-		Valid            bool        `json:"valid"`
-		SchemaErrors     []string    `json:"schema_errors,omitempty"`
-		ConditionValid   bool        `json:"condition_valid"`
-		ConditionErrors  interface{} `json:"condition_errors,omitempty"`
-		Severity         string      `json:"severity,omitempty"`
-		Version          string      `json:"version,omitempty"`
+		Name            string      `json:"name"`
+		Valid           bool        `json:"valid"`
+		SchemaErrors    []string    `json:"schema_errors,omitempty"`
+		ConditionValid  bool        `json:"condition_valid"`
+		ConditionErrors interface{} `json:"condition_errors,omitempty"`
+		Severity        string      `json:"severity,omitempty"`
+		Version         string      `json:"version,omitempty"`
 	}
 
 	results := make([]RuleResult, 0)
-
-	// Support multi-document YAML (--- separated)
-	docs := splitYAMLDocs(body)
+	docs := splitYAMLDocs(rulesYAML)
 	for _, doc := range docs {
 		if len(strings.TrimSpace(string(doc))) == 0 {
 			continue
@@ -546,12 +574,10 @@ func PublicValidateRule(w http.ResponseWriter, r *http.Request) {
 
 		result := RuleResult{}
 
-		// 1. Schema validation
 		if err := validator.ValidateRuleYAML(doc); err != nil {
 			result.SchemaErrors = append(result.SchemaErrors, err.Error())
 		}
 
-		// 2. Parse YAML to get rule fields
 		var rule fleet.Rule
 		if err := parseYAMLRule(doc, &rule); err != nil {
 			result.SchemaErrors = append(result.SchemaErrors, "YAML parse error: "+err.Error())
@@ -562,14 +588,17 @@ func PublicValidateRule(w http.ResponseWriter, r *http.Request) {
 		result.Severity = rule.Severity
 		result.Version = rule.Version
 
-		// 3. Field validation
 		if err := validator.ValidateRuleFields(rule.Name, rule.Condition, rule.Severity); err != nil {
 			result.SchemaErrors = append(result.SchemaErrors, err.Error())
 		}
 
-		// 4. Condition syntax validation (no macros in public context)
 		if rule.Condition != "" {
-			condResult := validator.ValidateCondition(rule.Condition)
+			var condResult *validator.ConditionValidationResult
+			if macros != nil {
+				condResult = validator.ValidateConditionWithMacros(rule.Condition, macros)
+			} else {
+				condResult = validator.ValidateCondition(rule.Condition)
+			}
 			result.ConditionValid = condResult.Valid
 			if !condResult.Valid {
 				result.ConditionErrors = condResult.Errors
@@ -593,6 +622,29 @@ func PublicValidateRule(w http.ResponseWriter, r *http.Request) {
 		"count":   len(results),
 		"rules":   results,
 	}})
+}
+
+// parseMacrosYAML parses a macros YAML file into a map for condition validation.
+func parseMacrosYAML(data []byte) map[string]*qlparser.Macro {
+	var rawMacros []struct {
+		Macro string   `yaml:"macro"`
+		Expr  string   `yaml:"expr"`
+		List  []string `yaml:"list"`
+	}
+	if err := yaml.Unmarshal(data, &rawMacros); err != nil {
+		return nil
+	}
+	macros := make(map[string]*qlparser.Macro, len(rawMacros))
+	for _, m := range rawMacros {
+		if m.Macro != "" {
+			macros[m.Macro] = &qlparser.Macro{
+				ID:   m.Macro,
+				Expr: m.Expr,
+				List: m.List,
+			}
+		}
+	}
+	return macros
 }
 
 // splitYAMLDocs splits a multi-document YAML byte slice by "---" separator.

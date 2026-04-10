@@ -560,26 +560,37 @@ export default function Rules() {
       <div className="mt-8 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Rule Validation API</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-          Validate detection rules from VS Code, CI pipelines, or pre-commit hooks. Requires an API key.
+          Validate detection rules with macros from VS Code, CI pipelines, or pre-commit hooks. Requires an API key (create in My Profile).
         </p>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-4">
           <div>
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Endpoint</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 select-all rounded-lg bg-gray-900 px-4 py-2.5 font-mono text-sm text-emerald-400">
-                POST {window.location.origin}/api/v1/validate-rule
-              </code>
+            <code className="block select-all rounded-lg bg-gray-900 px-4 py-2.5 font-mono text-sm text-emerald-400">
+              POST {window.location.origin}/api/v1/validate-rule
+            </code>
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">With macros (JSON body — recommended)</p>
+            <div className="rounded-lg bg-gray-900 px-4 py-3 overflow-x-auto">
+              <code className="select-all font-mono text-xs text-gray-300 whitespace-pre">{`curl -X POST ${window.location.origin}/api/v1/validate-rule \\
+  -H "X-API-Key: fib_your_key_here" \\
+  -H "Content-Type: application/json" \\
+  -d "$(jq -n \\
+    --rawfile rules rules/my_rule.yml \\
+    --rawfile macros rules/macros/macros.yml \\
+    '{rules: $rules, macros: $macros}')"`}</code>
             </div>
           </div>
 
           <div>
-            <p className="text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Usage (curl)</p>
+            <p className="text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Without macros (raw YAML body)</p>
             <div className="rounded-lg bg-gray-900 px-4 py-3 overflow-x-auto">
               <code className="select-all font-mono text-xs text-gray-300 whitespace-pre">{`curl -X POST ${window.location.origin}/api/v1/validate-rule \\
   -H "X-API-Key: fib_your_key_here" \\
   -H "Content-Type: application/yaml" \\
-  --data-binary @my-rule.yml`}</code>
+  --data-binary @rules/my_rule.yml`}</code>
             </div>
           </div>
 
@@ -591,11 +602,11 @@ export default function Rules() {
     "valid": true,
     "count": 1,
     "rules": [{
-      "name": "Suspicious PowerShell Download Cradle",
+      "name": "LSASS access from unsigned executable",
       "valid": true,
       "condition_valid": true,
       "severity": "high",
-      "version": "1.0.0"
+      "version": "1.0.3"
     }]
   }
 }`}</code>
@@ -604,7 +615,8 @@ export default function Rules() {
 
           <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2">
             <p className="text-xs text-blue-700 dark:text-blue-400">
-              Requires an API key. Create one in <strong>My Profile &rarr; API Keys</strong>. Rate limited to 30 requests/min. Supports multi-document YAML (--- separated). Max 512KB payload.
+              <strong>API key required.</strong> Create one in My Profile. Include macros via JSON body to validate rules that use macro references like <code className="text-blue-500">|spawn_process|</code>.
+              Rate limited to 30 req/min. Max 1MB payload.
             </p>
           </div>
         </div>

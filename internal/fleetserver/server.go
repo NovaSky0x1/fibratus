@@ -639,7 +639,7 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/auth/api-keys/", methodGuard(http.MethodDelete, authHandler.DeleteAPIKey))
 
 	// Rule validation (JWT or API key auth — moved from public for programmatic access)
-	dashMux.HandleFunc("/api/v1/validate-rule", methodGuard(http.MethodPost, handler.PublicValidateRule))
+	dashMux.HandleFunc("/api/v1/validate-rule", methodGuard(http.MethodPost, handler.ValidateRuleAPI))
 
 	// Wrap dashboard routes with JWT auth
 	dashAuthenticated := jwtAuth(s.config.Auth.JWTSecret, dashMux)
