@@ -136,6 +136,9 @@ export default function Users() {
                   <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                     <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">
                       {user.name}
+                      {user.role === 'root' && (
+                        <span className="ml-2 inline-flex rounded-full bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-2 py-0.5 text-[10px] font-medium">Root</span>
+                      )}
                       {isSelf && <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">(you)</span>}
                     </td>
                     <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{user.email}</td>

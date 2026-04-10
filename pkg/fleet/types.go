@@ -83,15 +83,23 @@ type User struct {
 
 // UserGroup defines a permission group with optional org restrictions.
 type UserGroup struct {
-	ID              string    `json:"id"`
-	AccountID       string    `json:"account_id"`
-	OwnerID         string    `json:"owner_id,omitempty"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	Permissions     []string  `json:"permissions"`      // list of permission strings
-	OrgRestrictions []string  `json:"org_restrictions"`  // org IDs, null/empty = all
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              string             `json:"id"`
+	AccountID       string             `json:"account_id"`
+	OwnerID         string             `json:"owner_id,omitempty"`
+	Name            string             `json:"name"`
+	Description     string             `json:"description"`
+	Permissions     []string           `json:"permissions"`       // list of permission strings
+	OrgRestrictions []string           `json:"org_restrictions"`  // org IDs, null/empty = all
+	Members         []GroupMemberRef   `json:"members,omitempty"` // populated on List
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+// GroupMemberRef is a lightweight user reference within a group.
+type GroupMemberRef struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // UserGroupMembership is a lightweight reference for user → group.

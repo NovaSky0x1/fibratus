@@ -249,6 +249,7 @@ export interface UserGroup {
   description: string
   permissions: string[]
   org_restrictions: string[]
+  members?: Array<{ id: string; name: string; email: string }>
   created_at: string
   updated_at: string
 }

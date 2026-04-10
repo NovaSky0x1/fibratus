@@ -58,8 +58,7 @@ func (s *UserGroupStore) Get(ctx context.Context, id string) (*fleet.UserGroup, 
 func (s *UserGroupStore) List(ctx context.Context, accountID string) ([]*fleet.UserGroup, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT g.id, g.account_id, g.name, g.description, g.permissions, g.org_restrictions,
-			COALESCE(g.owner_id, ''), g.created_at, g.updated_at,
-			COALESCE((SELECT COUNT(*) FROM user_group_members m WHERE m.group_id = g.id), 0) as member_count
+			COALESCE(g.owner_id, ''), g.created_at, g.updated_at
 		 FROM user_groups g WHERE g.account_id = $1 ORDER BY g.name`, accountID)
 	if err != nil {
 		return nil, err
@@ -70,16 +69,38 @@ func (s *UserGroupStore) List(ctx context.Context, accountID string) ([]*fleet.U
 	for rows.Next() {
 		g := &fleet.UserGroup{}
 		var perms, orgRestrictions []byte
-		var memberCount int
 		if err := rows.Scan(&g.ID, &g.AccountID, &g.Name, &g.Description,
-			&perms, &orgRestrictions, &g.OwnerID, &g.CreatedAt, &g.UpdatedAt, &memberCount); err != nil {
+			&perms, &orgRestrictions, &g.OwnerID, &g.CreatedAt, &g.UpdatedAt); err != nil {
 			return nil, err
 		}
 		json.Unmarshal(perms, &g.Permissions)
 		json.Unmarshal(orgRestrictions, &g.OrgRestrictions)
 		groups = append(groups, g)
 	}
-	return groups, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Populate members for each group
+	for _, g := range groups {
+		memberRows, err := s.db.QueryContext(ctx,
+			`SELECT u.id, u.name, u.email FROM users u
+			 JOIN user_group_members m ON u.id = m.user_id
+			 WHERE m.group_id = $1 ORDER BY u.name`, g.ID)
+		if err != nil {
+			continue
+		}
+		for memberRows.Next() {
+			var ref fleet.GroupMemberRef
+			if err := memberRows.Scan(&ref.ID, &ref.Name, &ref.Email); err != nil {
+				continue
+			}
+			g.Members = append(g.Members, ref)
+		}
+		memberRows.Close()
+	}
+
+	return groups, nil
 }
 
 func (s *UserGroupStore) Update(ctx context.Context, group *fleet.UserGroup) error {
