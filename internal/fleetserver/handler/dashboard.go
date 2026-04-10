@@ -31,6 +31,7 @@ import (
 type DashboardHandler struct {
 	agents     store.AgentStore
 	detections store.DetectionStore
+	orgs       store.OrgStore
 }
 
 // NewDashboardHandler creates a new dashboard handler.
@@ -38,15 +39,53 @@ func NewDashboardHandler(agents store.AgentStore, detections store.DetectionStor
 	return &DashboardHandler{agents: agents, detections: detections}
 }
 
+// SetOrgStore sets the org store for cross-org aggregation.
+func (h *DashboardHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
+
 // Overview handles GET /api/v1/orgs/{org_id}/dashboard/overview
 func (h *DashboardHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
-	}
 
 	ctx := r.Context()
+
+	// Cross-org aggregation when no org is selected
+	if orgID == "" {
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "org or account context required")
+			return
+		}
+		totalAgents, onlineAgents, offlineAgents, detCount := 0, 0, 0, 0
+		severityBreakdown := make(map[string]int)
+		for _, oid := range orgIDs {
+			sc, err := h.agents.CountByStatus(ctx, oid)
+			if err == nil {
+				for _, v := range sc {
+					totalAgents += v
+				}
+				onlineAgents += sc[fleet.AgentOnline]
+				offlineAgents += sc[fleet.AgentOffline]
+			}
+			dc, err := h.detections.Count24h(ctx, oid)
+			if err == nil {
+				detCount += dc
+			}
+			sb, err := h.detections.CountBySeverity(ctx, oid)
+			if err == nil {
+				for k, v := range sb {
+					severityBreakdown[k] += v
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{Data: fleet.FleetOverview{
+			TotalAgents:        totalAgents,
+			OnlineAgents:       onlineAgents,
+			OfflineAgents:      offlineAgents,
+			TotalDetections24h: detCount,
+			SeverityBreakdown:  severityBreakdown,
+		}})
+		return
+	}
 
 	statusCounts, err := h.agents.CountByStatus(ctx, orgID)
 	if err != nil {

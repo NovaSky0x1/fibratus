@@ -184,6 +184,13 @@ func (s *Server) Run(ctx context.Context) error {
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 
+	// Wire org store for cross-org aggregation (account-scoped views)
+	detHandler.SetOrgStore(orgStore)
+	ruleHandler.SetOrgStore(orgStore)
+	dashHandler.SetOrgStore(orgStore)
+	auditHandler.SetOrgStore(orgStore)
+	enrollTokenHandler.SetOrgStore(orgStore)
+
 	// ═══════════════════════════════════════════════════════════
 	// gRPC server for agent communication (protobuf/gRPC transport)
 	// ═══════════════════════════════════════════════════════════
@@ -550,6 +557,55 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/account/detections", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			detHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/rules", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			ruleHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/dashboard/overview", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			dashHandler.Overview(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/enrollment-tokens", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			enrollTokenHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/groups", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			groupHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/permissions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			groupHandler.GetPermissions(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/users", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			userHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/audit-log", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			auditHandler.List(w, r)
 		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}

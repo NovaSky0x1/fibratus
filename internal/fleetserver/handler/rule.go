@@ -77,8 +77,12 @@ type RuleHandler struct {
 	macros         store.MacroStore
 	audit          store.AuditStore
 	users          store.UserStore
+	orgs           store.OrgStore
 	onRuleChange   RuleChangeCallback
 }
+
+// SetOrgStore sets the org store for cross-org aggregation.
+func (h *RuleHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
 
 // NewRuleHandler creates a new rule handler.
 func NewRuleHandler(rules store.RuleStore, agents store.AgentStore, macros store.MacroStore, audit store.AuditStore, users store.UserStore) *RuleHandler {
@@ -100,14 +104,34 @@ func (h *RuleHandler) notifyRuleChange(orgID string) {
 // List handles GET /api/v1/orgs/{org_id}/rules
 func (h *RuleHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
-	}
 
 	opts := fleet.ListOptions{
 		Page:    intParam(r, "page", 1),
 		PerPage: intParam(r, "per_page", 100),
+	}
+
+	// Cross-org aggregation when no org is selected
+	if orgID == "" {
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "org or account context required")
+			return
+		}
+		allRules := make([]*fleet.Rule, 0)
+		total := 0
+		for _, oid := range orgIDs {
+			rules, t, err := h.rules.List(r.Context(), oid, opts)
+			if err != nil {
+				continue
+			}
+			allRules = append(allRules, rules...)
+			total += t
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{
+			Data: allRules,
+			Meta: &fleet.Pagination{Total: total, Page: opts.Page, PerPage: opts.PerPage},
+		})
+		return
 	}
 
 	rules, total, err := h.rules.List(r.Context(), orgID, opts)

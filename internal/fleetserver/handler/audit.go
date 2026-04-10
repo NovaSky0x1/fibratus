@@ -31,6 +31,7 @@ import (
 // AuditHandler handles audit log API requests.
 type AuditHandler struct {
 	audit store.AuditStore
+	orgs  store.OrgStore
 }
 
 // NewAuditHandler creates a new audit handler.
@@ -38,17 +39,40 @@ func NewAuditHandler(audit store.AuditStore) *AuditHandler {
 	return &AuditHandler{audit: audit}
 }
 
+// SetOrgStore sets the org store for cross-org aggregation.
+func (h *AuditHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
+
 // List handles GET /api/v1/orgs/{org_id}/audit-log
 func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
-	}
 
 	opts := fleet.ListOptions{
 		Page:    intParam(r, "page", 1),
 		PerPage: intParam(r, "per_page", 50),
+	}
+
+	// Cross-org aggregation when no org is selected
+	if orgID == "" {
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "org or account context required")
+			return
+		}
+		allEntries := make([]*fleet.AuditEntry, 0)
+		total := 0
+		for _, oid := range orgIDs {
+			entries, t, err := h.audit.List(r.Context(), oid, opts)
+			if err != nil {
+				continue
+			}
+			allEntries = append(allEntries, entries...)
+			total += t
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{
+			Data: allEntries,
+			Meta: &fleet.Pagination{Total: total, Page: opts.Page, PerPage: opts.PerPage},
+		})
+		return
 	}
 
 	entries, total, err := h.audit.List(r.Context(), orgID, opts)

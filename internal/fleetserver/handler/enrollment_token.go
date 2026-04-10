@@ -33,12 +33,16 @@ import (
 // EnrollmentTokenHandler manages enrollment tokens via the dashboard API.
 type EnrollmentTokenHandler struct {
 	tokens store.EnrollmentTokenStore
+	orgs   store.OrgStore
 }
 
 // NewEnrollmentTokenHandler creates a new enrollment token handler.
 func NewEnrollmentTokenHandler(tokens store.EnrollmentTokenStore) *EnrollmentTokenHandler {
 	return &EnrollmentTokenHandler{tokens: tokens}
 }
+
+// SetOrgStore sets the org store for cross-org aggregation.
+func (h *EnrollmentTokenHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
 
 // Create handles POST /api/v1/orgs/{org_id}/enrollment-tokens
 func (h *EnrollmentTokenHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -90,8 +94,23 @@ func (h *EnrollmentTokenHandler) Create(w http.ResponseWriter, r *http.Request) 
 // List handles GET /api/v1/orgs/{org_id}/enrollment-tokens
 func (h *EnrollmentTokenHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
+
+	// Cross-org aggregation when no org is selected
 	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "org or account context required")
+			return
+		}
+		allTokens := make([]*fleet.EnrollmentToken, 0)
+		for _, oid := range orgIDs {
+			tokens, err := h.tokens.ListByOrg(r.Context(), oid)
+			if err != nil {
+				continue
+			}
+			allTokens = append(allTokens, tokens...)
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{Data: allTokens})
 		return
 	}
 

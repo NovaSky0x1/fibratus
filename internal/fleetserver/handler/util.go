@@ -27,8 +27,32 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 )
+
+// accountOrgIDs returns all org IDs for the current user's account.
+// If orgID is already set in the context (single-org scope), it returns nil.
+func accountOrgIDs(r *http.Request, orgs store.OrgStore) []string {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID != "" {
+		return nil
+	}
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" || orgs == nil {
+		return nil
+	}
+	orgList, err := orgs.ListByAccount(r.Context(), accountID)
+	if err != nil || len(orgList) == 0 {
+		return nil
+	}
+	ids := make([]string, len(orgList))
+	for i, o := range orgList {
+		ids[i] = o.ID
+	}
+	return ids
+}
 
 // writeJSON encodes the value as JSON and writes it to the response.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

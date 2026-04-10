@@ -36,7 +36,11 @@ type DetectionHandler struct {
 	detections store.DetectionStore
 	agents     store.AgentStore
 	telemetry  store.TelemetryStore
+	orgs       store.OrgStore
 }
+
+// SetOrgStore sets the org store for cross-org aggregation.
+func (h *DetectionHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
 
 // NewDetectionHandler creates a new detection handler.
 func NewDetectionHandler(detections store.DetectionStore, agents store.AgentStore, telemetry store.TelemetryStore) *DetectionHandler {
@@ -118,10 +122,6 @@ func (h *DetectionHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 // List handles GET /api/v1/orgs/{org_id}/detections
 func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
-	}
 
 	opts := fleet.DetectionListOptions{
 		ListOptions: fleet.ListOptions{
@@ -133,6 +133,30 @@ func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
 		RuleID:   r.URL.Query().Get("rule_id"),
 		From:     r.URL.Query().Get("from"),
 		To:       r.URL.Query().Get("to"),
+	}
+
+	// Cross-org aggregation when no org is selected
+	if orgID == "" {
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "org or account context required")
+			return
+		}
+		allDetections := make([]*fleet.Detection, 0)
+		total := 0
+		for _, oid := range orgIDs {
+			dets, t, err := h.detections.List(r.Context(), oid, opts)
+			if err != nil {
+				continue
+			}
+			allDetections = append(allDetections, dets...)
+			total += t
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{
+			Data: allDetections,
+			Meta: &fleet.Pagination{Total: total, Page: opts.Page, PerPage: opts.PerPage},
+		})
+		return
 	}
 
 	detections, total, err := h.detections.List(r.Context(), orgID, opts)

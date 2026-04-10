@@ -194,12 +194,6 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
     },
   })
 
-  const toggle2FAMut = useMutation({
-    mutationFn: (data: { accountId: string; require_2fa: boolean }) =>
-      api.adminUpdateAccount(data.accountId, { require_2fa: data.require_2fa }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-accounts'] }),
-  })
-
   const retentionMut = useMutation({
     mutationFn: (data: { accountId: string; days: number }) =>
       api.adminUpdateAccount(data.accountId, { telemetry_retention_days: data.days }),
@@ -236,7 +230,6 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
               <tr>
                 <SortableHeader label="Name" sortKey="name" sort={accountSort} onSort={toggleAccountSort} />
                 <SortableHeader label="Plan" sortKey="plan" sort={accountSort} onSort={toggleAccountSort} />
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA Required</th>
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Retention</th>
                 <SortableHeader label="Orgs" sortKey="org_count" sort={accountSort} onSort={toggleAccountSort} />
                 <SortableHeader label="Users" sortKey="user_count" sort={accountSort} onSort={toggleAccountSort} />
@@ -246,7 +239,7 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && sortedAccounts.map(acct => (
                 <tr key={acct.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
@@ -255,17 +248,6 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
                   </td>
                   <td className="px-6 py-3">
                     <span className="inline-flex rounded-full bg-blue-50 dark:bg-blue-900/30 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">{acct.plan}</span>
-                  </td>
-                  <td className="px-6 py-3">
-                    <button
-                      onClick={() => toggle2FAMut.mutate({ accountId: acct.id, require_2fa: !acct.require_2fa })}
-                      disabled={toggle2FAMut.isPending}
-                      className={'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ' + (acct.require_2fa ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-slate-600')}
-                      role="switch"
-                      aria-checked={acct.require_2fa || false}
-                    >
-                      <span className={'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' + (acct.require_2fa ? 'translate-x-4' : 'translate-x-0')} />
-                    </button>
                   </td>
                   <td className="px-6 py-3">
                     <select
@@ -298,7 +280,7 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
                 </tr>
               ))}
               {!isLoading && filtered.length === 0 && (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No accounts found.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No accounts found.</td></tr>
               )}
             </tbody>
           </table>

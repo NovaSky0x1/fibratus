@@ -61,12 +61,30 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 // List handles GET /api/v1/orgs/{org_id}/users — lists users in the org.
+// When no org is selected (account-scoped), lists all users in the account.
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
+
+	// Cross-org: list all users in the account
 	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
+		accountID := ctxutil.AccountIDFromContext(r.Context())
+		if accountID == "" {
+			writeError(w, http.StatusBadRequest, "org or account context required")
+			return
+		}
+		users, err := h.users.ListByAccount(r.Context(), accountID)
+		if err != nil {
+			log.Errorf("fleet: list users by account error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		for _, u := range users {
+			u.Password = ""
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{Data: users})
 		return
 	}
+
 	users, err := h.users.ListByOrg(r.Context(), orgID)
 	if err != nil {
 		log.Errorf("fleet: list users error: %v", err)
