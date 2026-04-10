@@ -104,25 +104,61 @@ SETTINGS index_granularity = 8192,
 `
 
 var orgIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+var safeTableName = regexp.MustCompile(`[^a-z0-9_]`)
 
-// orgTable returns the per-org table name, e.g. "telemetry_e5b2a5a020211f15d58587168cc83401".
-func orgTable(orgID string) string {
+// orgTableName generates a human-readable ClickHouse table name from org name + ID.
+// e.g., "telemetry_production_e5b2a5a0" — sanitized name + 8-char ID suffix.
+func orgTableName(orgID, orgName string) string {
 	if orgID == "" || !orgIDPattern.MatchString(orgID) {
-		return "telemetry_events" // fallback to legacy shared table
+		return "telemetry_events"
 	}
-	return "telemetry_" + orgID
+	if orgName == "" {
+		return "telemetry_" + orgID[:8]
+	}
+	slug := strings.ToLower(strings.TrimSpace(orgName))
+	slug = strings.ReplaceAll(slug, " ", "_")
+	slug = strings.ReplaceAll(slug, "-", "_")
+	slug = safeTableName.ReplaceAllString(slug, "")
+	if len(slug) > 30 {
+		slug = slug[:30]
+	}
+	if slug == "" {
+		slug = "org"
+	}
+	return fmt.Sprintf("telemetry_%s_%s", slug, orgID[:8])
 }
+
+// OrgNameResolver looks up an org's name by ID. Wired by the server at startup.
+type OrgNameResolver func(orgID string) string
 
 // TelemetryStore implements store.TelemetryStore backed by ClickHouse.
 // Each organization gets its own table for data isolation and per-org retention.
 type TelemetryStore struct {
 	db            *sql.DB
-	ensuredTables sync.Map // tracks which org tables have been created
+	ensuredTables sync.Map // orgID → table name
+	orgResolver   OrgNameResolver
 }
 
 // NewTelemetryStore creates a ClickHouse-backed telemetry store.
 func NewTelemetryStore(db *sql.DB) *TelemetryStore {
 	return &TelemetryStore{db: db}
+}
+
+// SetOrgNameResolver sets the function to resolve org names for table naming.
+func (s *TelemetryStore) SetOrgNameResolver(resolver OrgNameResolver) {
+	s.orgResolver = resolver
+}
+
+// resolveTable returns the per-org table name, using the cache.
+func (s *TelemetryStore) resolveTable(orgID string) string {
+	if v, ok := s.ensuredTables.Load(orgID); ok {
+		return v.(string)
+	}
+	orgName := ""
+	if s.orgResolver != nil {
+		orgName = s.orgResolver(orgID)
+	}
+	return orgTableName(orgID, orgName)
 }
 
 // Migrate creates the legacy shared table (for backward compat) and ensures
@@ -136,23 +172,23 @@ func (s *TelemetryStore) Migrate(ctx context.Context) error {
 
 // ensureOrgTable creates the per-org table if it doesn't exist yet.
 func (s *TelemetryStore) ensureOrgTable(ctx context.Context, orgID string) string {
-	table := orgTable(orgID)
-	if _, ok := s.ensuredTables.Load(table); ok {
-		return table
+	if v, ok := s.ensuredTables.Load(orgID); ok {
+		return v.(string)
 	}
+	table := s.resolveTable(orgID)
 	ddl := orgTableSchema(table, 7)
 	if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 		log.Warnf("clickhouse: failed to create org table %s: %v", table, err)
 		return "telemetry_events" // fallback
 	}
-	s.ensuredTables.Store(table, true)
+	s.ensuredTables.Store(orgID, table)
 	log.Infof("clickhouse: created per-org table %s", table)
 	return table
 }
 
 // SetRetention updates the TTL on a per-org table.
 func (s *TelemetryStore) SetRetention(ctx context.Context, orgID string, days int) error {
-	table := orgTable(orgID)
+	table := s.resolveTable(orgID)
 	_, err := s.db.ExecContext(ctx, fmt.Sprintf(
 		"ALTER TABLE %s MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", table, days))
 	return err
@@ -253,7 +289,7 @@ func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostnam
 }
 
 func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.TelemetrySearchOpts) ([]store.TelemetryEvent, int, error) {
-	table := orgTable(orgID)
+	table := s.resolveTable(orgID)
 	query := fmt.Sprintf(`SELECT id, org_id, agent_id, agent_hostname, seq, timestamp,
 				event_name, event_category, pid, tid, process_name, process_exe,
 				process_cmdline, parent_pid, parent_name, params, metadata, raw_event
@@ -361,7 +397,7 @@ func (s *TelemetryStore) GetLatestForAgent(ctx context.Context, orgID, agentID s
 		limit = 100
 	}
 
-	table := orgTable(orgID)
+	table := s.resolveTable(orgID)
 	rows, err := s.db.QueryContext(ctx,
 		fmt.Sprintf(`SELECT id, org_id, agent_id, agent_hostname, seq, timestamp,
 			event_name, event_category, pid, tid, process_name, process_exe,
@@ -402,7 +438,7 @@ func (s *TelemetryStore) Purge(ctx context.Context, retentionDays int) (int64, e
 }
 
 func (s *TelemetryStore) CountByAgent(ctx context.Context, orgID string) (map[string]int64, error) {
-	table := orgTable(orgID)
+	table := s.resolveTable(orgID)
 	rows, err := s.db.QueryContext(ctx,
 		fmt.Sprintf(`SELECT agent_id, count() FROM %s WHERE org_id = ? GROUP BY agent_id`, table),
 		orgID,
@@ -426,7 +462,7 @@ func (s *TelemetryStore) CountByAgent(ctx context.Context, orgID string) (map[st
 
 func (s *TelemetryStore) GetFieldValues(ctx context.Context, orgID string) (map[string][]string, error) {
 	result := make(map[string][]string)
-	table := orgTable(orgID)
+	table := s.resolveTable(orgID)
 
 	queries := map[string]string{
 		"event_types":      fmt.Sprintf("SELECT DISTINCT event_name FROM %s WHERE org_id = ? AND event_name != '' ORDER BY event_name LIMIT 100", table),

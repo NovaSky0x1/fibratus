@@ -462,6 +462,8 @@ export const api = {
     fetchApi<void>(`/account/orgs/${orgId}/tamper-protection`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
   updateTelemetryRetention: (days: number) =>
     fetchApi<{ telemetry_retention_days: number }>('/account/telemetry-retention', { method: 'PUT', body: JSON.stringify({ days }) }),
+  updateOrgRetention: (orgId: string, days: number) =>
+    fetchApi<{ telemetry_retention_days: number }>(`/account/orgs/${orgId}/telemetry-retention`, { method: 'PUT', body: JSON.stringify({ days }) }),
 
   // Event Log Policy
   getEventLogPolicy: () =>

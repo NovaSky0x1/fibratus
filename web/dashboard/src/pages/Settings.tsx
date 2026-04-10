@@ -897,7 +897,7 @@ function ProtectionSettingsSection() {
     queryKey: ['account-settings'],
     queryFn: () => api.getAccountSettings(),
   })
-  const settings = settingsData?.data as { tamper_protection_enabled: boolean; isolation_whitelist: string[]; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> } | undefined
+  const settings = settingsData?.data as { tamper_protection_enabled: boolean; isolation_whitelist: string[]; telemetry_retention_days?: number; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean; telemetry_retention_days?: number }> } | undefined
   const tamperEnabled = settings?.tamper_protection_enabled ?? false
   const whitelist = settings?.isolation_whitelist ?? []
   const orgProtection = settings?.org_protection ?? []
@@ -911,6 +911,11 @@ function ProtectionSettingsSection() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['account-settings'] })
     },
+  })
+
+  const orgRetentionMutation = useMutation({
+    mutationFn: ({ orgId, days }: { orgId: string; days: number }) => api.updateOrgRetention(orgId, days),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['account-settings'] }),
   })
 
   const orgTamperMutation = useMutation({
@@ -993,11 +998,29 @@ function ProtectionSettingsSection() {
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Locked by account policy</span>
                         )}
                       </div>
-                      <ToggleSwitch
-                        enabled={effectiveEnabled}
-                        onToggle={() => handleOrgTamperToggle(org.id, org.tamper_protection_enabled)}
-                        disabled={lockedByAccount || orgToggling === org.id || orgTamperMutation.isPending}
-                      />
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-gray-500 dark:text-slate-500">Retention</span>
+                          <select
+                            value={org.telemetry_retention_days || 7}
+                            onChange={e => orgRetentionMutation.mutate({ orgId: org.id, days: Number(e.target.value) })}
+                            className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded px-1.5 py-0.5 text-[11px] text-gray-700 dark:text-slate-300"
+                          >
+                            <option value={1}>1d</option>
+                            <option value={3}>3d</option>
+                            <option value={7}>7d</option>
+                            <option value={14}>14d</option>
+                            <option value={30}>30d</option>
+                            <option value={90}>90d</option>
+                            <option value={365}>1yr</option>
+                          </select>
+                        </div>
+                        <ToggleSwitch
+                          enabled={effectiveEnabled}
+                          onToggle={() => handleOrgTamperToggle(org.id, org.tamper_protection_enabled)}
+                          disabled={lockedByAccount || orgToggling === org.id || orgTamperMutation.isPending}
+                        />
+                      </div>
                     </div>
                   )
                 })}

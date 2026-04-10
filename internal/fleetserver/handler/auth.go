@@ -525,20 +525,25 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Include org-level tamper protection status
+	retDays := account.TelemetryRetentionDays
+	if retDays <= 0 {
+		retDays = 7
+	}
+
+	// Include org-level settings
 	orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
 	orgProtection := make([]map[string]interface{}, 0, len(orgs))
 	for _, org := range orgs {
+		orgRetDays := org.TelemetryRetentionDays
+		if orgRetDays <= 0 {
+			orgRetDays = retDays // fall back to account default
+		}
 		orgProtection = append(orgProtection, map[string]interface{}{
 			"id":                        org.ID,
 			"name":                      org.Name,
 			"tamper_protection_enabled": org.TamperProtectionEnabled,
+			"telemetry_retention_days":  orgRetDays,
 		})
-	}
-
-	retDays := account.TelemetryRetentionDays
-	if retDays <= 0 {
-		retDays = 7
 	}
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"require_2fa":                account.Require2FA,
@@ -632,6 +637,56 @@ func (h *AuthHandler) UpdateOrgTamperProtection(w http.ResponseWriter, r *http.R
 
 	log.Infof("fleet: org %s tamper protection set to %v", orgID, req.Enabled)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"tamper_protection_enabled": req.Enabled}})
+}
+
+// UpdateOrgRetention handles PUT /api/v1/account/orgs/{org_id}/telemetry-retention
+func (h *AuthHandler) UpdateOrgRetention(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/orgs/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "org ID required")
+		return
+	}
+	orgID := strings.TrimSuffix(parts[len(parts)-1], "/telemetry-retention")
+	orgID = strings.TrimSuffix(orgID, "/")
+
+	var req struct {
+		Days int `json:"days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Days < 1 || req.Days > 365 {
+		writeError(w, http.StatusBadRequest, "retention must be between 1 and 365 days")
+		return
+	}
+
+	org, err := h.orgs.Get(r.Context(), orgID)
+	if err != nil || org == nil || org.AccountID != accountID {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+
+	if err := h.orgs.UpdateRetention(r.Context(), orgID, req.Days); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update org retention")
+		return
+	}
+
+	// Apply to ClickHouse TTL for this org's table
+	if h.onRetentionChange != nil {
+		if err := h.onRetentionChange(orgID, req.Days); err != nil {
+			log.Warnf("fleet: failed to update ClickHouse TTL for org %s: %v", orgID, err)
+		}
+	}
+
+	log.Infof("fleet: org %s telemetry retention set to %d days", orgID, req.Days)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]int{"telemetry_retention_days": req.Days}})
 }
 
 // ListOrganizations handles GET /api/v1/account/organizations

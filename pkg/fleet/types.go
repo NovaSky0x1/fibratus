@@ -53,6 +53,7 @@ type Organization struct {
 	Slug                    string    `json:"slug"`
 	AgentCount              int       `json:"agent_count,omitempty"`
 	TamperProtectionEnabled bool      `json:"tamper_protection_enabled"`
+	TelemetryRetentionDays  int       `json:"telemetry_retention_days"`
 	CreatedAt               time.Time `json:"created_at"`
 	UpdatedAt               time.Time `json:"updated_at"`
 }

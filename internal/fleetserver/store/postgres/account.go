@@ -176,11 +176,11 @@ func (s *OrgStore) Create(ctx context.Context, org *fleet.Organization) error {
 
 func (s *OrgStore) Get(ctx context.Context, id string) (*fleet.Organization, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, account_id, name, slug, COALESCE(tamper_protection_enabled, false), created_at, updated_at
+		`SELECT id, account_id, name, slug, COALESCE(tamper_protection_enabled, false), COALESCE(telemetry_retention_days, 0), created_at, updated_at
 		 FROM organizations WHERE id = $1`, id)
 
 	o := &fleet.Organization{}
-	err := row.Scan(&o.ID, &o.AccountID, &o.Name, &o.Slug, &o.TamperProtectionEnabled, &o.CreatedAt, &o.UpdatedAt)
+	err := row.Scan(&o.ID, &o.AccountID, &o.Name, &o.Slug, &o.TamperProtectionEnabled, &o.TelemetryRetentionDays, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -195,6 +195,7 @@ func (s *OrgStore) ListByAccount(ctx context.Context, accountID string) ([]*flee
 		`SELECT o.id, o.account_id, o.name, o.slug,
 			COALESCE((SELECT COUNT(*) FROM agents a WHERE a.org_id = o.id), 0) as agent_count,
 			COALESCE(o.tamper_protection_enabled, false),
+			COALESCE(o.telemetry_retention_days, 0),
 			o.created_at, o.updated_at
 		 FROM organizations o
 		 WHERE o.account_id = $1
@@ -207,7 +208,7 @@ func (s *OrgStore) ListByAccount(ctx context.Context, accountID string) ([]*flee
 	orgs := make([]*fleet.Organization, 0)
 	for rows.Next() {
 		o := &fleet.Organization{}
-		if err := rows.Scan(&o.ID, &o.AccountID, &o.Name, &o.Slug, &o.AgentCount, &o.TamperProtectionEnabled, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.AccountID, &o.Name, &o.Slug, &o.AgentCount, &o.TamperProtectionEnabled, &o.TelemetryRetentionDays, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, err
 		}
 		orgs = append(orgs, o)
@@ -224,5 +225,12 @@ func (s *OrgStore) UpdateTamperProtection(ctx context.Context, id string, enable
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE organizations SET tamper_protection_enabled = $2, updated_at = NOW() WHERE id = $1`,
 		id, enabled)
+	return err
+}
+
+func (s *OrgStore) UpdateRetention(ctx context.Context, id string, days int) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE organizations SET telemetry_retention_days = $2, updated_at = NOW() WHERE id = $1`,
+		id, days)
 	return err
 }

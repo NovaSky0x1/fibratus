@@ -117,6 +117,14 @@ func (s *Server) Run(ctx context.Context) error {
 		if err := chTelemetry.Migrate(ctx); err != nil {
 			return fmt.Errorf("clickhouse migrate: %w", err)
 		}
+		// Wire org name resolver so ClickHouse tables get human-readable names
+		chTelemetry.SetOrgNameResolver(func(orgID string) string {
+			org, err := orgStore.Get(ctx, orgID)
+			if err != nil || org == nil {
+				return ""
+			}
+			return org.Name
+		})
 		// Wrap with buffer for high-throughput batch inserts.
 		buffered := store.NewBufferedTelemetryStore(chTelemetry, store.BufferConfig{
 			FlushInterval: 2 * time.Second,
@@ -540,6 +548,8 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/account/orgs/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/tamper-protection") && r.Method == http.MethodPut {
 			requirePermission(fleetauth.PermManageSettings, authHandler.UpdateOrgTamperProtection)(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/telemetry-retention") && r.Method == http.MethodPut {
+			requirePermission(fleetauth.PermManageSettings, authHandler.UpdateOrgRetention)(w, r)
 		} else {
 			http.Error(w, "not found", http.StatusNotFound)
 		}
