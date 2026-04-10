@@ -1314,7 +1314,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                   {parentCmdline}
                 </div>
               )}
-              {parentRaw.sha256 && <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono break-all">SHA256: {String(parentRaw.sha256)}</span>}
+              {parentRaw.sha256 ? <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono break-all">SHA256: {String(parentRaw.sha256)}</span> : null}
             </div>
             </div>
 
