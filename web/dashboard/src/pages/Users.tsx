@@ -1,15 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type User, type UserGroup, type Organization } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
 import { useTableSort } from '../hooks/useTableSort'
 import SortableHeader from '../components/SortableHeader'
-
-const roleBadge: Record<string, string> = {
-  admin: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  analyst: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  viewer: 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-400',
-}
+import { usePermissions } from '../contexts/PermissionContext'
 
 const passwordRules = [
   { label: '12+ characters', test: (p: string) => p.length >= 12 },
@@ -21,8 +16,11 @@ const passwordRules = [
 
 export default function Users() {
   const queryClient = useQueryClient()
+  const { hasPermission } = usePermissions()
+  const canManage = hasPermission('users:manage')
+
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ email: '', name: '', password: '', role: 'viewer', org_restrictions: [] as string[], group_ids: [] as string[] })
+  const [form, setForm] = useState({ email: '', name: '', password: '', org_restrictions: [] as string[], group_ids: [] as string[] })
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [editingUser, setEditingUser] = useState<User | null>(null)
@@ -51,23 +49,19 @@ export default function Users() {
   })
   const orgs = (orgsData?.data || []) as Organization[]
 
-  // Build a map of userId -> group names
-  const userGroupMap: Record<string, string[]> = {}
-  groups.forEach(g => {
-    (g.members || []).forEach(m => {
-      if (!userGroupMap[m.id]) userGroupMap[m.id] = []
-      userGroupMap[m.id].push(g.name)
+  // Build a map of userId -> group info from group membership data
+  const userGroupMap = useMemo(() => {
+    const map: Record<string, Array<{ group_id: string; group_name: string }>> = {}
+    groups.forEach(g => {
+      (g.members || []).forEach(m => {
+        if (!map[m.id]) map[m.id] = []
+        map[m.id].push({ group_id: g.id, group_name: g.name })
+      })
     })
-  })
-
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'root'
+    return map
+  }, [groups])
 
   const { sorted: sortedUsers, sort: userSort, toggleSort: toggleUserSort } = useTableSort<User>(users, 'name', 'asc')
-
-  const roleMut = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: string }) => api.updateUserRole(id, role),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
-  })
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteUser(id),
@@ -85,14 +79,19 @@ export default function Users() {
       setError('Password does not meet all requirements.')
       return
     }
-    const resp = await api.createUser(form)
+    if (form.group_ids.length === 0) {
+      setError('At least one group must be selected.')
+      return
+    }
+    const resp = await api.createUser({ ...form, role: 'viewer' })
     if (resp.error) {
       setError(resp.error.message)
       return
     }
     queryClient.invalidateQueries({ queryKey: ['users'] })
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
     setShowCreate(false)
-    setForm({ email: '', name: '', password: '', role: 'viewer', org_restrictions: [], group_ids: [] })
+    setForm({ email: '', name: '', password: '', org_restrictions: [], group_ids: [] })
   }
 
   return (
@@ -102,7 +101,7 @@ export default function Users() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Users</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{users.length} user(s) in this organization</p>
         </div>
-        {isAdmin && (
+        {canManage && (
           <button
             onClick={() => setShowCreate(true)}
             className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"
@@ -120,19 +119,19 @@ export default function Users() {
               <tr>
                 <SortableHeader label="Name" sortKey="name" sort={userSort} onSort={toggleUserSort} />
                 <SortableHeader label="Email" sortKey="email" sort={userSort} onSort={toggleUserSort} />
-                <SortableHeader label="Role" sortKey="role" sort={userSort} onSort={toggleUserSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Groups</th>
                 <SortableHeader label="2FA" sortKey="totp_enabled" sort={userSort} onSort={toggleUserSort} />
                 <SortableHeader label="Created" sortKey="created_at" sort={userSort} onSort={toggleUserSort} />
-                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
+                {canManage && <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={canManage ? 6 : 5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && sortedUsers.map(user => {
                 const isSelf = currentUser?.id === user.id
+                const userGroups = userGroupMap[user.id] || []
                 return (
                   <tr key={user.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                     <td className="px-6 py-3 font-medium text-gray-900 dark:text-slate-100">
@@ -141,35 +140,13 @@ export default function Users() {
                     </td>
                     <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{user.email}</td>
                     <td className="px-6 py-3">
-                      {isAdmin && !isSelf ? (
-                        <select
-                          value={user.role}
-                          onChange={e => roleMut.mutate({ id: user.id, role: e.target.value })}
-                          className={'rounded-full px-2.5 py-0.5 text-xs font-medium border-0 cursor-pointer ' +
-                            (roleBadge[user.role] || roleBadge.viewer)}
-                        >
-                          {currentUser?.role === 'root' && <option value="root">Root</option>}
-                          <option value="admin">Admin</option>
-                          <option value="analyst">Analyst</option>
-                          <option value="viewer">Viewer</option>
-                        </select>
-                      ) : (
-                        <span className={'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ' +
-                          (roleBadge[user.role] || roleBadge.viewer)}>
-                          {user.role}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {(userGroupMap[user.id] || []).map(gName => (
-                          <span key={gName} className="inline-flex rounded-full bg-fibratus-50 text-fibratus-700 px-2 py-0.5 text-[10px] font-medium">
-                            {gName}
+                        {userGroups.map(g => (
+                          <span key={g.group_id} className="inline-flex rounded-full bg-fibratus-50 dark:bg-fibratus-900/20 text-fibratus-700 dark:text-fibratus-400 px-2 py-0.5 text-[10px] font-medium">
+                            {g.group_name}
                           </span>
                         ))}
-                        {!(userGroupMap[user.id] || []).length && (
-                          <span className="text-[10px] text-gray-400 dark:text-slate-500">--</span>
-                        )}
+                        {userGroups.length === 0 && <span className="text-xs text-gray-400">No groups</span>}
                       </div>
                     </td>
                     <td className="px-6 py-3">
@@ -181,99 +158,55 @@ export default function Users() {
                     <td className="px-6 py-3 text-gray-500 dark:text-slate-400 whitespace-nowrap">
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-3">
-                      <div className="flex items-center gap-3">
-                        {isAdmin && !isSelf && (
-                          <button
-                            onClick={() => setEditingUser(user)}
-                            className="text-xs text-fibratus-600 hover:underline"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        {isAdmin && !isSelf ? (
-                          deleteId === user.id ? (
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => deleteMut.mutate(user.id)}
-                                className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
-                              >
-                                Confirm
-                              </button>
-                              <button
-                                onClick={() => setDeleteId(null)}
-                                className="rounded bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-500"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
+                    {canManage && (
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-3">
+                          {!isSelf && (
                             <button
-                              onClick={() => setDeleteId(user.id)}
-                              className="text-xs text-red-600 hover:underline"
+                              onClick={() => setEditingUser(user)}
+                              className="text-xs text-fibratus-600 hover:underline"
                             >
-                              Remove
+                              Edit
                             </button>
-                          )
-                        ) : (
-                          <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
-                        )}
-                      </div>
-                    </td>
+                          )}
+                          {!isSelf ? (
+                            deleteId === user.id ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => deleteMut.mutate(user.id)}
+                                  className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  onClick={() => setDeleteId(null)}
+                                  className="rounded bg-gray-200 dark:bg-slate-600 px-2 py-1 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-500"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteId(user.id)}
+                                className="text-xs text-red-600 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}
               {!isLoading && users.length === 0 && (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No users yet.</td></tr>
+                <tr><td colSpan={canManage ? 6 : 5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No users yet.</td></tr>
               )}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* Roles permission matrix */}
-      <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
-        <h3 className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-4">Role Permissions</h3>
-        <div className="grid grid-cols-3 gap-6 text-xs">
-          <RolePermissionCard
-            role="Admin"
-            badgeClass="bg-purple-100 text-purple-700"
-            permissions={{
-              Agents:           ['View', 'Manage', 'Delete'],
-              Detections:       ['View'],
-              Events:           ['View'],
-              Rules:            ['View', 'Create/Edit/Delete'],
-              Macros:           ['View', 'Create/Edit/Delete'],
-              'Active Response': ['View', 'Execute'],
-              Settings:         ['View', 'Manage'],
-              'User Management': ['Manage Users'],
-              Audit:            ['View'],
-              Organizations:    ['Manage'],
-            }}
-          />
-          <RolePermissionCard
-            role="Analyst"
-            badgeClass="bg-blue-100 text-blue-700"
-            permissions={{
-              Agents:           ['View'],
-              Detections:       ['View'],
-              Events:           ['View'],
-              Rules:            ['View', 'Create/Edit/Delete'],
-              Macros:           ['View', 'Create/Edit/Delete'],
-              'Active Response': ['View'],
-            }}
-          />
-          <RolePermissionCard
-            role="Viewer"
-            badgeClass="bg-gray-100 text-gray-600"
-            permissions={{
-              Agents:           ['View'],
-              Detections:       ['View'],
-              Events:           ['View'],
-              Rules:            ['View'],
-              Macros:           ['View'],
-            }}
-          />
         </div>
       </div>
 
@@ -321,18 +254,33 @@ export default function Users() {
                   ))}
                 </div>
               </div>
+              {/* Group assignment */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Role</label>
-                <select
-                  value={form.role}
-                  onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none"
-                >
-                  <option value="viewer">Viewer</option>
-                  <option value="analyst">Analyst</option>
-                  <option value="admin">Admin</option>
-                  {currentUser?.role === 'root' && <option value="root">Root</option>}
-                </select>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">Groups</label>
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 dark:border-slate-700 rounded-lg p-3">
+                  {groups.length === 0 && (
+                    <p className="text-xs text-gray-400 dark:text-slate-500">No groups available. Create a group first.</p>
+                  )}
+                  {groups.map(g => (
+                    <label key={g.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.group_ids.includes(g.id)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setForm(f => ({ ...f, group_ids: [...f.group_ids, g.id] }))
+                          } else {
+                            setForm(f => ({ ...f, group_ids: f.group_ids.filter(id => id !== g.id) }))
+                          }
+                        }}
+                        className="rounded border-gray-300 text-fibratus-600 focus:ring-fibratus-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-slate-300">{g.name}</span>
+                      {g.description && <span className="text-xs text-gray-400">{g.description}</span>}
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">At least one group is required.</p>
               </div>
               {/* Org restrictions */}
               {orgs.length > 0 && (
@@ -351,7 +299,6 @@ export default function Users() {
                           checked={form.org_restrictions.length === 0 || form.org_restrictions.includes(org.id)}
                           onChange={e => {
                             if (form.org_restrictions.length === 0) {
-                              // Switching from "all" to specific — select only this one
                               setForm(f => ({ ...f, org_restrictions: [org.id] }))
                             } else if (e.target.checked) {
                               setForm(f => ({ ...f, org_restrictions: [...f.org_restrictions, org.id] }))
@@ -368,30 +315,6 @@ export default function Users() {
                   <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Leave "All" checked for unrestricted access, or select specific orgs.</p>
                 </div>
               )}
-              {/* Group assignment */}
-              {groups.length > 0 && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Groups</label>
-                  <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-2 max-h-32 overflow-auto space-y-1">
-                    {groups.map(g => (
-                      <label key={g.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer">
-                        <input type="checkbox"
-                          checked={form.group_ids.includes(g.id)}
-                          onChange={e => {
-                            if (e.target.checked) {
-                              setForm(f => ({ ...f, group_ids: [...f.group_ids, g.id] }))
-                            } else {
-                              setForm(f => ({ ...f, group_ids: f.group_ids.filter(id => id !== g.id) }))
-                            }
-                          }}
-                          className="rounded border-gray-300" />
-                        <span>{g.name}</span>
-                        {g.description && <span className="text-gray-400 dark:text-slate-500">— {g.description}</span>}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
               {error && <p className="text-xs text-red-600">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">
                 <button
@@ -403,7 +326,8 @@ export default function Users() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"
+                  disabled={form.group_ids.length === 0}
+                  className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
                 >
                   Create User
                 </button>
@@ -417,6 +341,7 @@ export default function Users() {
       {editingUser && (
         <UserEditPanel
           user={editingUser}
+          groups={groups}
           onClose={() => setEditingUser(null)}
           onDeleted={() => { setEditingUser(null) }}
         />
@@ -425,49 +350,12 @@ export default function Users() {
   )
 }
 
-const permCategoryColors: Record<string, { bg: string; text: string }> = {
-  Agents:           { bg: 'bg-blue-50',    text: 'text-blue-700' },
-  Detections:       { bg: 'bg-amber-50',   text: 'text-amber-700' },
-  Events:           { bg: 'bg-cyan-50',    text: 'text-cyan-700' },
-  Rules:            { bg: 'bg-purple-50',   text: 'text-purple-700' },
-  Macros:           { bg: 'bg-indigo-50',  text: 'text-indigo-700' },
-  'Active Response': { bg: 'bg-red-50',    text: 'text-red-700' },
-  Settings:         { bg: 'bg-gray-100',   text: 'text-gray-700' },
-  'User Management': { bg: 'bg-emerald-50', text: 'text-emerald-700' },
-  Audit:            { bg: 'bg-orange-50',  text: 'text-orange-700' },
-  Organizations:    { bg: 'bg-teal-50',    text: 'text-teal-700' },
-}
-
-function RolePermissionCard({ role, badgeClass, permissions }: {
-  role: string
-  badgeClass: string
-  permissions: Record<string, string[]>
+function UserEditPanel({ user, groups, onClose, onDeleted }: {
+  user: User
+  groups: (UserGroup & { members?: { id: string }[] })[]
+  onClose: () => void
+  onDeleted: () => void
 }) {
-  return (
-    <div>
-      <span className={`rounded-full px-2 py-0.5 font-medium ${badgeClass}`}>{role}</span>
-      <div className="mt-2 space-y-1.5">
-        {Object.entries(permissions).map(([category, perms]) => {
-          const colors = permCategoryColors[category] || { bg: 'bg-gray-100', text: 'text-gray-700' }
-          return (
-            <div key={category} className="flex items-start gap-1.5">
-              <span className="text-[10px] text-gray-500 dark:text-slate-400 w-24 shrink-0 pt-0.5">{category}:</span>
-              <div className="flex flex-wrap gap-1">
-                {perms.map(p => (
-                  <span key={p} className={`inline-flex rounded-full px-1.5 py-0 text-[10px] font-medium ${colors.bg} ${colors.text}`}>
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () => void; onDeleted: () => void }) {
   const queryClient = useQueryClient()
 
   // Profile form
@@ -485,6 +373,23 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
   const [totpConfirm, setTotpConfirm] = useState(false)
   const [totpMsg, setTotpMsg] = useState('')
   const [totpError, setTotpError] = useState('')
+
+  // Groups
+  const { data: userGroupsData, isLoading: groupsLoading } = useQuery({
+    queryKey: ['user-groups', user.id],
+    queryFn: () => api.getUserGroups(user.id),
+  })
+  const currentGroupIds = useMemo(() => {
+    const data = userGroupsData?.data || []
+    return data.map(g => g.group_id)
+  }, [userGroupsData])
+
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[] | null>(null)
+  const [groupsMsg, setGroupsMsg] = useState('')
+  const [groupsError, setGroupsError] = useState('')
+
+  // Initialize selected groups from fetched data once loaded
+  const effectiveGroupIds = selectedGroupIds !== null ? selectedGroupIds : currentGroupIds
 
   // Delete
   const [deleteConfirm, setDeleteConfirm] = useState(false)
@@ -526,6 +431,20 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
     onError: () => setTotpError('Failed to disable 2FA.'),
   })
 
+  const updateGroupsMut = useMutation({
+    mutationFn: (groupIds: string[]) => api.updateUserGroups(user.id, groupIds),
+    onSuccess: (res) => {
+      if (res.error) { setGroupsError(res.error.message); return }
+      setGroupsMsg('Group memberships updated.')
+      setGroupsError('')
+      queryClient.invalidateQueries({ queryKey: ['user-groups', user.id] })
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setTimeout(() => setGroupsMsg(''), 3000)
+    },
+    onError: () => setGroupsError('Failed to update group memberships.'),
+  })
+
   const deleteMut = useMutation({
     mutationFn: () => api.deleteUser(user.id),
     onSuccess: () => {
@@ -535,6 +454,10 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
   })
 
   const allPasswordRulesPass = passwordRules.every(r => r.test(newPassword))
+
+  const groupsChanged = selectedGroupIds !== null &&
+    (selectedGroupIds.length !== currentGroupIds.length ||
+      selectedGroupIds.some(id => !currentGroupIds.includes(id)))
 
   return (
     <SlidePanel open={true} title={user.name || user.email} onClose={onClose}>
@@ -568,6 +491,53 @@ function UserEditPanel({ user, onClose, onDeleted }: { user: User; onClose: () =
               className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
             >
               {updateProfileMut.isPending ? 'Saving...' : 'Save Profile'}
+            </button>
+          </div>
+        </div>
+
+        <hr className="border-gray-200 dark:border-slate-700" />
+
+        {/* Group Memberships Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Group Memberships</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">Assign this user to groups to control their permissions and access.</p>
+          <div className="mt-3">
+            {groupsLoading ? (
+              <p className="text-xs text-gray-400 dark:text-slate-500">Loading groups...</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 dark:border-slate-700 rounded-lg p-3">
+                {groups.length === 0 && (
+                  <p className="text-xs text-gray-400 dark:text-slate-500">No groups available.</p>
+                )}
+                {groups.map(g => (
+                  <label key={g.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={effectiveGroupIds.includes(g.id)}
+                      onChange={e => {
+                        const current = selectedGroupIds !== null ? selectedGroupIds : currentGroupIds
+                        if (e.target.checked) {
+                          setSelectedGroupIds([...current, g.id])
+                        } else {
+                          setSelectedGroupIds(current.filter(id => id !== g.id))
+                        }
+                      }}
+                      className="rounded border-gray-300 text-fibratus-600 focus:ring-fibratus-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-slate-300">{g.name}</span>
+                    {g.description && <span className="text-xs text-gray-400">{g.description}</span>}
+                  </label>
+                ))}
+              </div>
+            )}
+            {groupsError && <p className="mt-2 text-xs text-red-600">{groupsError}</p>}
+            {groupsMsg && <p className="mt-2 text-xs text-emerald-600">{groupsMsg}</p>}
+            <button
+              onClick={() => { setGroupsError(''); updateGroupsMut.mutate(effectiveGroupIds) }}
+              disabled={!groupsChanged || updateGroupsMut.isPending}
+              className="mt-3 rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+            >
+              {updateGroupsMut.isPending ? 'Saving...' : 'Save Groups'}
             </button>
           </div>
         </div>
