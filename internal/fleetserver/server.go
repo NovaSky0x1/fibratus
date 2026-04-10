@@ -159,9 +159,11 @@ func (s *Server) Run(ctx context.Context) error {
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore, macroStore, auditStore, userStore)
 	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)
 	telemetryHandler := handler.NewTelemetryHandler(telemetryStore, agentStore)
+	telemetryHandler.SetOrgStore(orgStore)
 	enrollTokenHandler := handler.NewEnrollmentTokenHandler(enrollStore)
 	dashHandler := handler.NewDashboardHandler(agentStore, detStore)
 	macroHandler := handler.NewMacroHandler(macroStore, auditStore, userStore)
+	macroHandler.SetOrgStore(orgStore)
 	auditHandler := handler.NewAuditHandler(auditStore)
 	groupStore := postgres.NewUserGroupStore(db)
 	SetGroupStore(groupStore)
@@ -554,6 +556,9 @@ func (s *Server) Run(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	dashMux.HandleFunc("/api/v1/account/detections/timeline", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet { detHandler.Timeline(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
 	dashMux.HandleFunc("/api/v1/account/detections", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			detHandler.List(w, r)
@@ -606,6 +611,28 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/account/audit-log", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			auditHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	dashMux.HandleFunc("/api/v1/account/telemetry", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			telemetryHandler.Search(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/telemetry/fields", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			telemetryHandler.GetFieldValues(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/macros", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			macroHandler.List(w, r)
 		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}

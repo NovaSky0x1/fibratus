@@ -37,7 +37,11 @@ type MacroHandler struct {
 	macros store.MacroStore
 	audit  store.AuditStore
 	users  store.UserStore
+	orgs   store.OrgStore
 }
+
+// SetOrgStore sets the org store for cross-org aggregation.
+func (h *MacroHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
 
 // NewMacroHandler creates a new macro handler.
 func NewMacroHandler(macros store.MacroStore, audit store.AuditStore, users store.UserStore) *MacroHandler {
@@ -47,6 +51,12 @@ func NewMacroHandler(macros store.MacroStore, audit store.AuditStore, users stor
 // List handles GET /api/v1/orgs/{org_id}/macros
 func (h *MacroHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) > 0 {
+			orgID = orgIDs[0] // Macros are account-wide — use first org
+		}
+	}
 	macros, err := h.macros.List(r.Context(), orgID)
 	if err != nil {
 		log.Errorf("fleet: list macros error: %v", err)

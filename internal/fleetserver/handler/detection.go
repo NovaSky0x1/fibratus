@@ -204,8 +204,13 @@ func (h *DetectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *DetectionHandler) Timeline(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) > 0 {
+			orgID = orgIDs[0]
+		} else {
+			writeError(w, http.StatusBadRequest, "org context required")
+			return
+		}
 	}
 
 	from := parseTime(r.URL.Query().Get("from"), time.Now().UTC().Add(-24*time.Hour))

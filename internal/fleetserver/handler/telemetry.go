@@ -36,7 +36,11 @@ import (
 type TelemetryHandler struct {
 	telemetry store.TelemetryStore
 	agents    store.AgentStore
+	orgs      store.OrgStore
 }
+
+// SetOrgStore sets the org store for cross-org aggregation.
+func (h *TelemetryHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
 
 // NewTelemetryHandler creates a new telemetry handler.
 func NewTelemetryHandler(telemetry store.TelemetryStore, agents store.AgentStore) *TelemetryHandler {
@@ -114,8 +118,14 @@ func (h *TelemetryHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 func (h *TelemetryHandler) Search(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
+		// Cross-org: search first org (ClickHouse per-org tables can't easily aggregate)
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) > 0 {
+			orgID = orgIDs[0] // Use first org for now
+		} else {
+			writeError(w, http.StatusBadRequest, "org context required")
+			return
+		}
 	}
 
 	q := r.URL.Query()
@@ -153,8 +163,13 @@ func (h *TelemetryHandler) Search(w http.ResponseWriter, r *http.Request) {
 func (h *TelemetryHandler) GetFieldValues(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) > 0 {
+			orgID = orgIDs[0]
+		} else {
+			writeError(w, http.StatusBadRequest, "org context required")
+			return
+		}
 	}
 
 	values, err := h.telemetry.GetFieldValues(r.Context(), orgID)
