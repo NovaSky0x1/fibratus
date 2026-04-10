@@ -601,10 +601,60 @@ func (s *Server) Run(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	// Account-scoped user management (cross-org)
+	dashMux.HandleFunc("/api/v1/account/users/", func(w http.ResponseWriter, r *http.Request) {
+		// Extract user ID and sub-resource from path
+		sub := strings.TrimPrefix(r.URL.Path, "/api/v1/account/users/")
+		sub = strings.TrimSuffix(sub, "/")
+
+		if strings.HasSuffix(sub, "/groups") {
+			// /account/users/{id}/groups
+			switch r.Method {
+			case http.MethodGet:
+				userHandler.GetUserGroups(w, r)
+			case http.MethodPut:
+				requirePermission(fleetauth.PermManageUsers, userHandler.UpdateUserGroups)(w, r)
+			default:
+				http.Error(w, "method not allowed", 405)
+			}
+			return
+		}
+
+		if strings.HasSuffix(sub, "/password") {
+			if r.Method == http.MethodPut {
+				requirePermission(fleetauth.PermManageUsers, userHandler.ResetPassword)(w, r)
+			} else {
+				http.Error(w, "method not allowed", 405)
+			}
+			return
+		}
+
+		if strings.HasSuffix(sub, "/totp") {
+			if r.Method == http.MethodDelete {
+				requirePermission(fleetauth.PermManageUsers, userHandler.DisableTOTP)(w, r)
+			} else {
+				http.Error(w, "method not allowed", 405)
+			}
+			return
+		}
+
+		// /account/users/{id} — profile update or delete
+		switch r.Method {
+		case http.MethodPut:
+			requirePermission(fleetauth.PermManageUsers, userHandler.Update)(w, r)
+		case http.MethodDelete:
+			requirePermission(fleetauth.PermManageUsers, userHandler.Delete)(w, r)
+		default:
+			http.Error(w, "method not allowed", 405)
+		}
+	})
 	dashMux.HandleFunc("/api/v1/account/users", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
 			userHandler.List(w, r)
-		} else {
+		case http.MethodPost:
+			requirePermission(fleetauth.PermManageUsers, userHandler.Create)(w, r)
+		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
