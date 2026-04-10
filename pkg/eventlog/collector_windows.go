@@ -265,47 +265,34 @@ func (c *Collector) readLoop(sub *subscription) {
 			return
 		}
 
-		// Wait for signal event — EvtSubscribe sets this when events are available.
-		result, waitErr := windows.WaitForSingleObject(sub.signal, 2000)
+		// EvtNext with INFINITE timeout blocks until events arrive.
+		// For pull-based subscriptions (signal mode), this is valid per MSDN.
+		returned, err := wevtapi.Next(sub.handle, events, 0xFFFFFFFF)
 		waitCount++
-		if waitCount <= 3 || waitCount%30 == 0 {
-			log.Infof("eventlog: %s wait #%d result=%d err=%v", sub.channel, waitCount, result, waitErr)
-		}
-		if result != windows.WAIT_OBJECT_0 {
+		if returned == 0 {
+			if err != nil {
+				errno, ok := err.(syscall.Errno)
+				if !ok || errno != 259 { // ERROR_NO_MORE_ITEMS
+					if waitCount <= 3 || waitCount%30 == 0 {
+						log.Warnf("eventlog: EvtNext on %s: %v (wait #%d)", sub.channel, err, waitCount)
+					}
+				}
+			}
 			continue
 		}
 
-		// Drain all available events (EvtNext with timeout=0 for subscriptions)
-		for {
-			if c.closed.Load() {
-				return
-			}
-			returned, err := wevtapi.Next(sub.handle, events, 0)
-			if returned == 0 {
-				if err != nil {
-					errno, ok := err.(syscall.Errno)
-					if !ok || errno != 259 { // ERROR_NO_MORE_ITEMS
-						log.Warnf("eventlog: EvtNext error on %s: %v", sub.channel, err)
-					}
-				}
-				break
-			}
-
-			totalEvents += uint64(returned)
-			if totalEvents <= 10 || totalEvents%1000 == 0 {
-				log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
-			}
-
-			for i := uint32(0); i < returned; i++ {
-				c.processEvent(sub, events[i])
-				if sub.bookmark != 0 {
-					wevtapi.UpdateBookmark(sub.bookmark, events[i])
-				}
-				wevtapi.Close(events[i])
-			}
+		totalEvents += uint64(returned)
+		if totalEvents <= 10 || totalEvents%1000 == 0 {
+			log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
 		}
 
-		// Auto-reset event resets automatically after WaitForSingleObject returns
+		for i := uint32(0); i < returned; i++ {
+			c.processEvent(sub, events[i])
+			if sub.bookmark != 0 {
+				wevtapi.UpdateBookmark(sub.bookmark, events[i])
+			}
+			wevtapi.Close(events[i])
+		}
 	}
 }
 
