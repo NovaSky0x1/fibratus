@@ -559,6 +559,16 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/account/detections/timeline", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet { detHandler.Timeline(w, r) } else { http.Error(w, "method not allowed", 405) }
 	})
+	dashMux.HandleFunc("/api/v1/account/detections/", func(w http.ResponseWriter, r *http.Request) {
+		sub := strings.TrimPrefix(r.URL.Path, "/api/v1/account/detections/")
+		if strings.HasSuffix(sub, "/process-tree") {
+			detHandler.ProcessTree(w, r)
+		} else if strings.HasSuffix(sub, "/process-context") {
+			detHandler.ProcessContext(w, r)
+		} else {
+			detHandler.Get(w, r)
+		}
+	})
 	dashMux.HandleFunc("/api/v1/account/detections", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			detHandler.List(w, r)

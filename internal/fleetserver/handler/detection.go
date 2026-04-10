@@ -176,8 +176,13 @@ func (h *DetectionHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *DetectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) > 0 {
+			orgID = orgIDs[0]
+		} else {
+			writeError(w, http.StatusBadRequest, "org context required")
+			return
+		}
 	}
 
 	parts := strings.Split(r.URL.Path, "/detections/")
@@ -257,8 +262,14 @@ func (h *DetectionHandler) MitreHeatmap(w http.ResponseWriter, r *http.Request) 
 func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	if orgID == "" {
-		writeError(w, http.StatusBadRequest, "org context required")
-		return
+		// Cross-org: try to get orgID from the detection itself
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) > 0 {
+			orgID = orgIDs[0] // Will be overridden by detection's actual org below
+		} else {
+			writeError(w, http.StatusBadRequest, "org context required")
+			return
+		}
 	}
 
 	parts := strings.Split(r.URL.Path, "/detections/")
@@ -273,14 +284,25 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Try to find the detection — if cross-org, search all orgs
 	det, err := h.detections.Get(r.Context(), orgID, detID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+	if (err != nil || det == nil) && ctxutil.OrgIDFromContext(r.Context()) == "" {
+		// Cross-org: search all orgs for this detection
+		for _, oid := range accountOrgIDs(r, h.orgs) {
+			det, err = h.detections.Get(r.Context(), oid, detID)
+			if err == nil && det != nil {
+				orgID = oid
+				break
+			}
+		}
 	}
-	if det == nil {
+	if err != nil || det == nil {
 		writeError(w, http.StatusNotFound, "detection not found")
 		return
+	}
+	// Use the detection's own org for telemetry lookup (correct ClickHouse table)
+	if det.OrgID != "" {
+		orgID = det.OrgID
 	}
 
 	// Extract the triggering PID(s) and the known ancestry from detection events.
