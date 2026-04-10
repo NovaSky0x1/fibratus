@@ -40,7 +40,8 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-
 
 // AuthHandler handles authentication API requests.
 // RetentionCallback is called when telemetry retention changes to update ClickHouse TTL.
-type RetentionCallback func(days int) error
+// orgID identifies which organization's table to update.
+type RetentionCallback func(orgID string, days int) error
 
 type AuthHandler struct {
 	accounts       store.AccountStore
@@ -576,10 +577,13 @@ func (h *AuthHandler) UpdateTelemetryRetention(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Apply to ClickHouse TTL
+	// Apply to ClickHouse TTL for all orgs in this account
 	if h.onRetentionChange != nil {
-		if err := h.onRetentionChange(req.Days); err != nil {
-			log.Warnf("fleet: failed to update ClickHouse TTL: %v", err)
+		orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
+		for _, org := range orgs {
+			if err := h.onRetentionChange(org.ID, req.Days); err != nil {
+				log.Warnf("fleet: failed to update ClickHouse TTL for org %s: %v", org.ID, err)
+			}
 		}
 	}
 

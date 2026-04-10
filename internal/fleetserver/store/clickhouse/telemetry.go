@@ -23,7 +23,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -31,13 +33,48 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Schema is the ClickHouse DDL for the telemetry table.
+// orgTableSchema generates the ClickHouse DDL for a per-org telemetry table.
 // Uses compression codecs optimized for EDR telemetry:
 //   - ZSTD for large/variable string columns (high compression)
 //   - Delta+ZSTD for monotonic numerics (PIDs, sequence numbers)
 //   - DoubleDelta+ZSTD for timestamps (extremely compact for time-series)
 //   - LowCardinality for enum-like columns (event names, categories)
-const Schema = `
+func orgTableSchema(tableName string, retentionDays int) string {
+	if retentionDays <= 0 {
+		retentionDays = 7
+	}
+	return fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS %s (
+    id             UInt64,
+    org_id         LowCardinality(String),
+    agent_id       LowCardinality(String),
+    agent_hostname LowCardinality(String),
+    seq            UInt64      CODEC(Delta, ZSTD(1)),
+    timestamp      DateTime64(6, 'UTC') CODEC(DoubleDelta, ZSTD(1)),
+    event_name     LowCardinality(String),
+    event_category LowCardinality(String),
+    pid            UInt32      CODEC(Delta, ZSTD(1)),
+    tid            UInt32      CODEC(Delta, ZSTD(1)),
+    process_name   LowCardinality(String),
+    process_exe    String      CODEC(ZSTD(3)),
+    process_cmdline String     CODEC(ZSTD(3)),
+    parent_pid     UInt32      CODEC(Delta, ZSTD(1)),
+    parent_name    LowCardinality(String),
+    params         String      CODEC(ZSTD(3)),
+    metadata       String      CODEC(ZSTD(3)),
+    raw_event      String      CODEC(ZSTD(1))
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(timestamp)
+ORDER BY (agent_id, timestamp, pid)
+TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE
+SETTINGS index_granularity = 8192,
+         min_bytes_for_wide_part = 10485760,
+         merge_with_ttl_timeout = 86400
+`, tableName, retentionDays)
+}
+
+// Legacy shared table schema for backward compatibility during migration.
+const legacySchema = `
 CREATE TABLE IF NOT EXISTS telemetry_events (
     id             UInt64,
     org_id         LowCardinality(String),
@@ -66,9 +103,21 @@ SETTINGS index_granularity = 8192,
          merge_with_ttl_timeout = 86400
 `
 
+var orgIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+
+// orgTable returns the per-org table name, e.g. "telemetry_e5b2a5a020211f15d58587168cc83401".
+func orgTable(orgID string) string {
+	if orgID == "" || !orgIDPattern.MatchString(orgID) {
+		return "telemetry_events" // fallback to legacy shared table
+	}
+	return "telemetry_" + orgID
+}
+
 // TelemetryStore implements store.TelemetryStore backed by ClickHouse.
+// Each organization gets its own table for data isolation and per-org retention.
 type TelemetryStore struct {
-	db *sql.DB
+	db            *sql.DB
+	ensuredTables sync.Map // tracks which org tables have been created
 }
 
 // NewTelemetryStore creates a ClickHouse-backed telemetry store.
@@ -76,14 +125,37 @@ func NewTelemetryStore(db *sql.DB) *TelemetryStore {
 	return &TelemetryStore{db: db}
 }
 
-// Migrate creates the telemetry table if it doesn't exist.
+// Migrate creates the legacy shared table (for backward compat) and ensures
+// the database exists. Per-org tables are created on first ingest.
 func (s *TelemetryStore) Migrate(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, Schema); err != nil {
+	if _, err := s.db.ExecContext(ctx, legacySchema); err != nil {
 		return err
 	}
-	// Update TTL on existing table (safe to run repeatedly)
-	s.db.ExecContext(ctx, `ALTER TABLE telemetry_events MODIFY TTL toDateTime(timestamp) + INTERVAL 7 DAY DELETE`)
 	return nil
+}
+
+// ensureOrgTable creates the per-org table if it doesn't exist yet.
+func (s *TelemetryStore) ensureOrgTable(ctx context.Context, orgID string) string {
+	table := orgTable(orgID)
+	if _, ok := s.ensuredTables.Load(table); ok {
+		return table
+	}
+	ddl := orgTableSchema(table, 7)
+	if _, err := s.db.ExecContext(ctx, ddl); err != nil {
+		log.Warnf("clickhouse: failed to create org table %s: %v", table, err)
+		return "telemetry_events" // fallback
+	}
+	s.ensuredTables.Store(table, true)
+	log.Infof("clickhouse: created per-org table %s", table)
+	return table
+}
+
+// SetRetention updates the TTL on a per-org table.
+func (s *TelemetryStore) SetRetention(ctx context.Context, orgID string, days int) error {
+	table := orgTable(orgID)
+	_, err := s.db.ExecContext(ctx, fmt.Sprintf(
+		"ALTER TABLE %s MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", table, days))
+	return err
 }
 
 // BulkIngest inserts a batch of events using a single prepared statement
@@ -99,11 +171,12 @@ func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostnam
 		return fmt.Errorf("begin: %w", err)
 	}
 
+	table := s.ensureOrgTable(ctx, orgID)
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO telemetry_events (id, org_id, agent_id, agent_hostname, seq, timestamp,
+		fmt.Sprintf(`INSERT INTO %s (id, org_id, agent_id, agent_hostname, seq, timestamp,
 			event_name, event_category, pid, tid, process_name, process_exe,
 			process_cmdline, parent_pid, parent_name, params, metadata, raw_event) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, table))
 	if err != nil {
 		tx.Rollback()
 		return fmt.Errorf("prepare: %w", err)
@@ -180,11 +253,12 @@ func (s *TelemetryStore) BulkIngest(ctx context.Context, orgID, agentID, hostnam
 }
 
 func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.TelemetrySearchOpts) ([]store.TelemetryEvent, int, error) {
-	query := `SELECT id, org_id, agent_id, agent_hostname, seq, timestamp,
+	table := orgTable(orgID)
+	query := fmt.Sprintf(`SELECT id, org_id, agent_id, agent_hostname, seq, timestamp,
 				event_name, event_category, pid, tid, process_name, process_exe,
 				process_cmdline, parent_pid, parent_name, params, metadata, raw_event
-			  FROM telemetry_events WHERE org_id = ?`
-	countQuery := `SELECT count() FROM telemetry_events WHERE org_id = ?`
+			  FROM %s WHERE org_id = ?`, table)
+	countQuery := fmt.Sprintf(`SELECT count() FROM %s WHERE org_id = ?`, table)
 	args := []interface{}{orgID}
 
 	if opts.AgentID != "" {
@@ -287,12 +361,13 @@ func (s *TelemetryStore) GetLatestForAgent(ctx context.Context, orgID, agentID s
 		limit = 100
 	}
 
+	table := orgTable(orgID)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, org_id, agent_id, agent_hostname, seq, timestamp,
+		fmt.Sprintf(`SELECT id, org_id, agent_id, agent_hostname, seq, timestamp,
 			event_name, event_category, pid, tid, process_name, process_exe,
 			process_cmdline, parent_pid, parent_name, params, metadata, raw_event
-		 FROM telemetry_events WHERE org_id = ? AND agent_id = ?
-		 ORDER BY timestamp DESC LIMIT ?`,
+		 FROM %s WHERE org_id = ? AND agent_id = ?
+		 ORDER BY timestamp DESC LIMIT ?`, table),
 		orgID, agentID, limit,
 	)
 	if err != nil {
@@ -327,8 +402,9 @@ func (s *TelemetryStore) Purge(ctx context.Context, retentionDays int) (int64, e
 }
 
 func (s *TelemetryStore) CountByAgent(ctx context.Context, orgID string) (map[string]int64, error) {
+	table := orgTable(orgID)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT agent_id, count() FROM telemetry_events WHERE org_id = ? GROUP BY agent_id`,
+		fmt.Sprintf(`SELECT agent_id, count() FROM %s WHERE org_id = ? GROUP BY agent_id`, table),
 		orgID,
 	)
 	if err != nil {
@@ -350,12 +426,13 @@ func (s *TelemetryStore) CountByAgent(ctx context.Context, orgID string) (map[st
 
 func (s *TelemetryStore) GetFieldValues(ctx context.Context, orgID string) (map[string][]string, error) {
 	result := make(map[string][]string)
+	table := orgTable(orgID)
 
 	queries := map[string]string{
-		"event_types":      "SELECT DISTINCT event_name FROM telemetry_events WHERE org_id = ? AND event_name != '' ORDER BY event_name LIMIT 100",
-		"event_categories": "SELECT DISTINCT event_category FROM telemetry_events WHERE org_id = ? AND event_category != '' ORDER BY event_category LIMIT 50",
-		"process_names":    "SELECT process_name FROM telemetry_events WHERE org_id = ? AND process_name != '' GROUP BY process_name ORDER BY count() DESC LIMIT 50",
-		"agents":           "SELECT DISTINCT agent_hostname FROM telemetry_events WHERE org_id = ? AND agent_hostname != '' ORDER BY agent_hostname LIMIT 50",
+		"event_types":      fmt.Sprintf("SELECT DISTINCT event_name FROM %s WHERE org_id = ? AND event_name != '' ORDER BY event_name LIMIT 100", table),
+		"event_categories": fmt.Sprintf("SELECT DISTINCT event_category FROM %s WHERE org_id = ? AND event_category != '' ORDER BY event_category LIMIT 50", table),
+		"process_names":    fmt.Sprintf("SELECT process_name FROM %s WHERE org_id = ? AND process_name != '' GROUP BY process_name ORDER BY count() DESC LIMIT 50", table),
+		"agents":           fmt.Sprintf("SELECT DISTINCT agent_hostname FROM %s WHERE org_id = ? AND agent_hostname != '' ORDER BY agent_hostname LIMIT 50", table),
 	}
 
 	for key, query := range queries {

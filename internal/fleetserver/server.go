@@ -242,8 +242,9 @@ func (s *Server) Run(ctx context.Context) error {
 	captureHandler.SetCommandPushCallback(cmdPushCallback)
 	authHandler.SetCommandPushCallback(cmdPushCallback)
 	if chDB != nil {
-		authHandler.SetRetentionCallback(func(days int) error {
-			_, err := chDB.Exec(fmt.Sprintf("ALTER TABLE fibratus.telemetry_events MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", days))
+		authHandler.SetRetentionCallback(func(orgID string, days int) error {
+			table := "telemetry_" + orgID
+			_, err := chDB.Exec(fmt.Sprintf("ALTER TABLE %s MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", table, days))
 			return err
 		})
 	}

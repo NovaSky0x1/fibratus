@@ -1498,7 +1498,7 @@ function SystemTab() {
           <div><span className="text-gray-500 dark:text-slate-400 text-xs">Server</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">{window.location.origin}</p></div>
           <div><span className="text-gray-500 dark:text-slate-400 text-xs">Version</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">Fleet v1.0</p></div>
           <div>
-            <span className="text-gray-500 dark:text-slate-400 text-xs">Telemetry Retention</span>
+            <span className="text-gray-500 dark:text-slate-400 text-xs">ClickHouse Telemetry Retention</span>
             <div className="flex items-center gap-2 mt-1">
               <select
                 value={retentionDays || 7}
