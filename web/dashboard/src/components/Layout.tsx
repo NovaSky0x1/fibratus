@@ -60,7 +60,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isRoot = user?.role === 'root'
 
   // Permission-based access control (augments role checks)
-  const { hasPermission, hasAnyPermission, loading: permsLoading, isRoot: isRootPerm } = usePermissions()
+  const { hasPermission, hasAnyPermission, loading: permsLoading } = usePermissions()
   const canManage = hasAnyPermission('settings:view', 'settings:manage', 'users:manage', 'settings:enrollment')
   const canSuperAdmin = hasPermission('admin:panel')
   const showManagement = permsLoading ? isAdminOrRoot : canManage
