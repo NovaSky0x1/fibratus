@@ -69,7 +69,7 @@ export default function AccountTab() {
   // ── Mutations ────────────────────────────────────────────────
 
   const updateSettingsMut = useMutation({
-    mutationFn: (data: { require_2fa?: boolean; tamper_protection_enabled?: boolean; isolation_whitelist?: string[] }) =>
+    mutationFn: (data: { require_2fa?: boolean; tamper_protection_enabled?: boolean; isolation_whitelist?: string[]; allowed_file_extensions?: string[] }) =>
       api.updateAccountSettings(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['account-settings'] })
@@ -312,7 +312,7 @@ export default function AccountTab() {
       {/* ── File Access Compliance ────────────────────────────── */}
       <FileAccessComplianceSection
         extensions={settings?.allowed_file_extensions || []}
-        onSave={(exts) => updateSettingsMut.mutate({ allowed_file_extensions: exts } as any)}
+        onSave={(exts) => updateSettingsMut.mutate({ ...currentSettings(), allowed_file_extensions: exts })}
         saving={updateSettingsMut.isPending}
       />
 

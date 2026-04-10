@@ -623,8 +623,8 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Update file access compliance policy
-	if len(req.AllowedFileExtensions) > 0 {
+	// Update file access compliance policy (empty array = permissive/no restrictions)
+	if req.AllowedFileExtensions != nil {
 		if err := h.accounts.UpdateFilePolicy(r.Context(), accountID, req.AllowedFileExtensions); err != nil {
 			log.Warnf("fleet: failed to update file policy for account %s: %v", accountID, err)
 		}
