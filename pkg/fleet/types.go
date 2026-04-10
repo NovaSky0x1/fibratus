@@ -108,6 +108,20 @@ type UserGroupMembership struct {
 	GroupName string `json:"group_name"`
 }
 
+// APIKey represents a user-generated API key for programmatic access.
+type APIKey struct {
+	ID         string     `json:"id"`
+	UserID     string     `json:"user_id"`
+	AccountID  string     `json:"account_id"`
+	Name       string     `json:"name"`
+	KeyPrefix  string     `json:"key_prefix"`   // first 8 chars for identification
+	KeyHash    string     `json:"-"`             // never sent to client
+	PlainKey   string     `json:"key,omitempty"` // only set on creation, never stored
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+}
+
 // UserOrg maps a user's access and role within a specific organization.
 type UserOrg struct {
 	UserID string `json:"user_id"`

@@ -176,6 +176,9 @@ func (s *Server) Run(ctx context.Context) error {
 	eventLogPolicyStore := postgres.NewEventLogPolicyStore(db)
 	eventLogPolicyHandler := handler.NewEventLogPolicyHandler(eventLogPolicyStore, agentStore, commandStore)
 	authHandler.SetEventLogPolicyStore(eventLogPolicyStore)
+	apiKeyStoreInst := postgres.NewAPIKeyStore(db)
+	authHandler.SetAPIKeyStore(apiKeyStoreInst)
+	SetAPIKeyStore(apiKeyStoreInst)
 	authHandler.SetGroupStore(groupStore)
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
@@ -278,7 +281,6 @@ func (s *Server) Run(ctx context.Context) error {
 	// Rate limiters
 	loginLimiter := newRateLimiter(10, time.Minute)
 	signupLimiter := newRateLimiter(3, 5*time.Minute)
-	publicValidateLimiter := newRateLimiter(30, time.Minute)
 
 	mux := http.NewServeMux()
 
@@ -292,9 +294,6 @@ func (s *Server) Run(ctx context.Context) error {
 	// Auth routes (signup/login — no auth required, rate limited)
 	mux.HandleFunc("/api/v1/auth/signup", methodGuard(http.MethodPost, rateLimit(signupLimiter, authHandler.Signup)))
 	mux.HandleFunc("/api/v1/auth/login", methodGuard(http.MethodPost, rateLimit(loginLimiter, authHandler.Login)))
-
-	// Public rule validation API (rate limited, no auth)
-	mux.HandleFunc("/api/v1/public/validate-rule", rateLimit(publicValidateLimiter, handler.PublicValidateRule))
 
 	// Enrollment route (token-based auth, no API key or JWT needed)
 	mux.HandleFunc("/api/v1/enroll", methodGuard(http.MethodPost, enrollHandler.Enroll))
@@ -626,6 +625,22 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/auth/me/password", methodGuard(http.MethodPut, authHandler.ChangeMyPassword))
 	dashMux.HandleFunc("/api/v1/auth/me", methodGuard(http.MethodGet, authHandler.GetCurrentUser))
 
+	// API key management (JWT or API key auth)
+	dashMux.HandleFunc("/api/v1/auth/api-keys", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			authHandler.ListAPIKeys(w, r)
+		case http.MethodPost:
+			authHandler.CreateAPIKey(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/auth/api-keys/", methodGuard(http.MethodDelete, authHandler.DeleteAPIKey))
+
+	// Rule validation (JWT or API key auth — moved from public for programmatic access)
+	dashMux.HandleFunc("/api/v1/validate-rule", methodGuard(http.MethodPost, handler.PublicValidateRule))
+
 	// Wrap dashboard routes with JWT auth
 	dashAuthenticated := jwtAuth(s.config.Auth.JWTSecret, dashMux)
 
@@ -645,14 +660,16 @@ func (s *Server) Run(ctx context.Context) error {
 	rootMux.HandleFunc("/api/v1/auth/totp/", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/me/", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/me", dashAuthenticated.ServeHTTP)
+	rootMux.HandleFunc("/api/v1/auth/api-keys", dashAuthenticated.ServeHTTP)
+	rootMux.HandleFunc("/api/v1/auth/api-keys/", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/", mux.ServeHTTP)
 
 	// Route dispatcher — determines auth path based on URL prefix
 	rootMux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Public routes (no auth required) — TOTP and /me routes require JWT
-		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/") && !strings.HasPrefix(path, "/api/v1/auth/me")) || path == "/api/v1/enroll" || path == "/api/v1/agents/register" || strings.HasPrefix(path, "/api/v1/public/") {
+		// Public routes (no auth required) — TOTP, /me, and /api-keys routes require JWT
+		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/") && !strings.HasPrefix(path, "/api/v1/auth/me") && !strings.HasPrefix(path, "/api/v1/auth/api-keys")) || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
 			mux.ServeHTTP(w, r)
 			return
 		}

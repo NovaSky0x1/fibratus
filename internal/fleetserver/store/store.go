@@ -166,6 +166,14 @@ type AuditStore interface {
 	List(ctx context.Context, orgID string, opts fleet.ListOptions) ([]*fleet.AuditEntry, int, error)
 }
 
+// APIKeyStore manages user API key persistence.
+type APIKeyStore interface {
+	Create(ctx context.Context, key *fleet.APIKey) error
+	List(ctx context.Context, userID string) ([]*fleet.APIKey, error)
+	Delete(ctx context.Context, id, userID string) error
+	ValidateKey(ctx context.Context, keyHash string) (*fleet.APIKey, error)
+}
+
 // UserGroupStore manages user group persistence.
 type UserGroupStore interface {
 	Create(ctx context.Context, group *fleet.UserGroup) error

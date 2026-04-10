@@ -20,12 +20,15 @@ package fleetserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
+	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -41,25 +44,55 @@ func SetGroupStore(store interface {
 	groupPermissionStore = store
 }
 
+// apiKeyStore is used by jwtAuth to validate API key authentication as a fallback.
+var apiKeyStore interface {
+	ValidateKey(ctx context.Context, keyHash string) (*fleet.APIKey, error)
+}
+
+// SetAPIKeyStore sets the API key store used for programmatic API key authentication.
+func SetAPIKeyStore(s interface {
+	ValidateKey(ctx context.Context, keyHash string) (*fleet.APIKey, error)
+}) {
+	apiKeyStore = s
+}
+
 // jwtAuth validates a JWT Bearer token and injects user context.
+// Falls back to X-API-Key header for programmatic API key authentication.
 func jwtAuth(secret string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") {
-			http.Error(w, `{"error":{"code":401,"message":"missing or invalid authorization header"}}`, http.StatusUnauthorized)
+		if strings.HasPrefix(auth, "Bearer ") {
+			tokenStr := strings.TrimPrefix(auth, "Bearer ")
+			claims, err := fleetauth.ValidateJWT(secret, tokenStr)
+			if err != nil {
+				http.Error(w, `{"error":{"code":401,"message":"invalid or expired token"}}`, http.StatusUnauthorized)
+				return
+			}
+			ctx := ctxutil.WithUserContext(r.Context(), claims.Sub, claims.AccountID, claims.Role)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
-		tokenStr := strings.TrimPrefix(auth, "Bearer ")
 
-		claims, err := fleetauth.ValidateJWT(secret, tokenStr)
-		if err != nil {
-			http.Error(w, `{"error":{"code":401,"message":"invalid or expired token"}}`, http.StatusUnauthorized)
-			return
+		// Check for API key auth (X-API-Key header)
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey != "" && apiKeyStore != nil {
+			keyHash := hashAPIKeyMiddleware(apiKey)
+			keyData, err := apiKeyStore.ValidateKey(r.Context(), keyHash)
+			if err == nil && keyData != nil {
+				ctx := ctxutil.WithUserContext(r.Context(), keyData.UserID, keyData.AccountID, "member")
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
 		}
 
-		ctx := ctxutil.WithUserContext(r.Context(), claims.Sub, claims.AccountID, claims.Role)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		http.Error(w, `{"error":{"code":401,"message":"missing or invalid authorization header"}}`, http.StatusUnauthorized)
 	})
+}
+
+// hashAPIKeyMiddleware returns the SHA-256 hash of an API key as a hex string.
+func hashAPIKeyMiddleware(key string) string {
+	h := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(h[:])
 }
 
 // agentAuth validates agent requests via API key OR client certificate.

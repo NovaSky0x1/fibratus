@@ -556,11 +556,11 @@ export default function Rules() {
       </SlidePanel>
 
       {/* Delete confirmation dialog */}
-      {/* ── Public Validation API Docs ── */}
+      {/* ── Validation API Docs ── */}
       <div className="mt-8 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Rule Validation API</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-          Public API for validating detection rules from VS Code, CI pipelines, or pre-commit hooks. No authentication required.
+          Validate detection rules from VS Code, CI pipelines, or pre-commit hooks. Requires an API key.
         </p>
 
         <div className="mt-4 space-y-3">
@@ -568,7 +568,7 @@ export default function Rules() {
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Endpoint</p>
             <div className="flex items-center gap-2">
               <code className="flex-1 select-all rounded-lg bg-gray-900 px-4 py-2.5 font-mono text-sm text-emerald-400">
-                POST {window.location.origin}/api/v1/public/validate-rule
+                POST {window.location.origin}/api/v1/validate-rule
               </code>
             </div>
           </div>
@@ -576,7 +576,8 @@ export default function Rules() {
           <div>
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Usage (curl)</p>
             <div className="rounded-lg bg-gray-900 px-4 py-3 overflow-x-auto">
-              <code className="select-all font-mono text-xs text-gray-300 whitespace-pre">{`curl -X POST ${window.location.origin}/api/v1/public/validate-rule \\
+              <code className="select-all font-mono text-xs text-gray-300 whitespace-pre">{`curl -X POST ${window.location.origin}/api/v1/validate-rule \\
+  -H "X-API-Key: fib_your_key_here" \\
   -H "Content-Type: application/yaml" \\
   --data-binary @my-rule.yml`}</code>
             </div>
@@ -603,7 +604,7 @@ export default function Rules() {
 
           <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2">
             <p className="text-xs text-blue-700 dark:text-blue-400">
-              Rate limited to 30 requests/min. Supports multi-document YAML (--- separated). Max 512KB payload.
+              Requires an API key. Create one in <strong>My Profile &rarr; API Keys</strong>. Rate limited to 30 requests/min. Supports multi-document YAML (--- separated). Max 512KB payload.
             </p>
           </div>
         </div>

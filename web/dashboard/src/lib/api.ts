@@ -279,6 +279,14 @@ export const api = {
   verifyTOTP: (code: string) => fetchApi<{ enabled: boolean; recovery_codes: string[] }>('/auth/totp/verify', { method: 'POST', body: JSON.stringify({ code }) }),
   disableTOTP: (password: string) => fetchApi<{ status: string }>('/auth/totp/disable', { method: 'POST', body: JSON.stringify({ password }) }),
 
+  // API Keys
+  createAPIKey: (data: { name: string }) =>
+    fetchApi<{ id: string; name: string; key_prefix: string; key: string; created_at: string }>('/auth/api-keys', { method: 'POST', body: JSON.stringify(data) }),
+  listAPIKeys: () =>
+    fetchApi<Array<{ id: string; name: string; key_prefix: string; created_at: string; last_used_at?: string; expires_at?: string }>>('/auth/api-keys'),
+  deleteAPIKey: (id: string) =>
+    fetchApi<void>(`/auth/api-keys/${id}`, { method: 'DELETE' }),
+
   // User profile
   getCurrentUser: () => fetchApi<User>('/auth/me'),
   getMyPermissions: () => fetchApi<string[]>('/auth/me/permissions'),

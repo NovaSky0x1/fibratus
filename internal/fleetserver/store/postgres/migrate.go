@@ -467,6 +467,22 @@ CREATE TABLE IF NOT EXISTS eventlog_policies (
     UNIQUE(org_id)
 );
 CREATE INDEX IF NOT EXISTS idx_eventlog_policies_org ON eventlog_policies(org_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- User API keys: programmatic access for CI/IDE integrations
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS user_api_keys (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id  TEXT NOT NULL,
+    name        TEXT NOT NULL DEFAULT '',
+    key_prefix  TEXT NOT NULL DEFAULT '',
+    key_hash    TEXT NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+    expires_at  TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON user_api_keys(key_hash);
 `
 
 // Migrate runs the database schema migrations.

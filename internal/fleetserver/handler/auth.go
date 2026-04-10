@@ -20,6 +20,9 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -52,6 +55,7 @@ type AuthHandler struct {
 	commands       store.CommandStore
 	eventlogPolicy store.EventLogPolicyStore
 	groups         store.UserGroupStore
+	apiKeys        store.APIKeyStore
 	jwtSecret      string
 	onCmdCreated   CommandPushCallback
 	onRetentionChange RetentionCallback
@@ -87,6 +91,11 @@ func (h *AuthHandler) SetCommandPushCallback(cb CommandPushCallback) {
 // SetGroupStore sets the user group store for permission resolution.
 func (h *AuthHandler) SetGroupStore(s store.UserGroupStore) {
 	h.groups = s
+}
+
+// SetAPIKeyStore sets the API key store for programmatic access key management.
+func (h *AuthHandler) SetAPIKeyStore(s store.APIKeyStore) {
+	h.apiKeys = s
 }
 
 // propagateTamperProtection queues set_tamper_protection commands to all
@@ -942,6 +951,95 @@ func (h *AuthHandler) DeleteOrganization(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// CreateAPIKey handles POST /api/v1/auth/api-keys
+func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	// Generate a random API key: fib_<32 random hex chars>
+	plainKey := "fib_" + generateRandomHex(32)
+	keyHash := hashAPIKey(plainKey)
+
+	key := &fleet.APIKey{
+		ID:        GenerateID(),
+		UserID:    userID,
+		AccountID: accountID,
+		Name:      req.Name,
+		KeyPrefix: plainKey[:12], // "fib_" + first 8 hex chars
+		KeyHash:   keyHash,
+		PlainKey:  plainKey,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := h.apiKeys.Create(r.Context(), key); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create API key")
+		return
+	}
+
+	log.Infof("fleet: API key created by user %s: %s (%s)", userID, key.Name, key.KeyPrefix)
+	writeJSON(w, http.StatusCreated, fleet.Response{Data: key})
+}
+
+// ListAPIKeys handles GET /api/v1/auth/api-keys
+func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	keys, err := h.apiKeys.List(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: keys})
+}
+
+// DeleteAPIKey handles DELETE /api/v1/auth/api-keys/{id}
+func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	parts := strings.Split(r.URL.Path, "/api-keys/")
+	if len(parts) < 2 || parts[1] == "" {
+		writeError(w, http.StatusBadRequest, "key ID required")
+		return
+	}
+	keyID := strings.TrimSuffix(parts[1], "/")
+	if err := h.apiKeys.Delete(r.Context(), keyID, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete key")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// generateRandomHex returns n random bytes encoded as a hex string.
+func generateRandomHex(n int) string {
+	bytes := make([]byte, n)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
+// hashAPIKey returns the SHA-256 hash of an API key as a hex string.
+func hashAPIKey(key string) string {
+	h := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(h[:])
 }
 
 // slugify converts a name to a URL-friendly slug.

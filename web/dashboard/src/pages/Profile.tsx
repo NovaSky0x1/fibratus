@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type User } from '../lib/api'
+import { api, type User, type ApiResponse } from '../lib/api'
 
 const passwordRules = [
   { label: '12+ characters', test: (p: string) => p.length >= 12 },
@@ -403,7 +403,202 @@ export default function Profile() {
             </div>
           )}
         </div>
+
+        {/* ── API Keys ────────────────────────────────────── */}
+        <APIKeysSection />
       </div>
+    </div>
+  )
+}
+
+// ── API Keys Section ──────────────────────────────────────────
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+      className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-600"
+    >
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  )
+}
+
+function APIKeysSection() {
+  const queryClient = useQueryClient()
+
+  const { data: keysData, isLoading } = useQuery({
+    queryKey: ['api-keys'],
+    queryFn: () => api.listAPIKeys(),
+  })
+  const keys = (keysData?.data || []) as Array<{ id: string; name: string; key_prefix: string; created_at: string; last_used_at?: string; expires_at?: string }>
+
+  const [showCreate, setShowCreate] = useState(false)
+  const [keyName, setKeyName] = useState('')
+  const [createdKey, setCreatedKey] = useState<{ name: string; key: string } | null>(null)
+  const [createError, setCreateError] = useState('')
+  const [revokeConfirm, setRevokeConfirm] = useState<string | null>(null)
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string }) => api.createAPIKey(data),
+    onSuccess: (res: ApiResponse<{ id: string; name: string; key_prefix: string; key: string; created_at: string }>) => {
+      if (res.error) { setCreateError(res.error.message); return }
+      const data = res.data
+      if (data) {
+        setCreatedKey({ name: data.name, key: data.key })
+        setShowCreate(false)
+        setKeyName('')
+        setCreateError('')
+        queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      }
+    },
+    onError: () => setCreateError('Failed to create API key'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteAPIKey(id),
+    onSuccess: () => {
+      setRevokeConfirm(null)
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+    },
+  })
+
+  const cardClass = 'rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50'
+
+  return (
+    <div className={cardClass}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">API Keys</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            Create keys for programmatic API access. Keys inherit your group permissions.
+          </p>
+        </div>
+        {!showCreate && !createdKey && (
+          <button
+            onClick={() => { setShowCreate(true); setCreateError('') }}
+            className="rounded-lg bg-fibratus-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-fibratus-700"
+          >
+            Create Key
+          </button>
+        )}
+      </div>
+
+      {/* Create key form */}
+      {showCreate && (
+        <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
+          <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Key Name</label>
+          <input
+            type="text"
+            value={keyName}
+            onChange={(e) => { setKeyName(e.target.value); setCreateError('') }}
+            className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-4 py-2.5 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
+            placeholder="e.g. CI Pipeline, VS Code Extension"
+          />
+          {createError && (
+            <div className="rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-2 text-sm text-red-700 dark:text-red-400">{createError}</div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => createMutation.mutate({ name: keyName })}
+              disabled={!keyName.trim() || createMutation.isPending}
+              className="rounded-lg bg-fibratus-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Creating...' : 'Create'}
+            </button>
+            <button
+              onClick={() => { setShowCreate(false); setKeyName(''); setCreateError('') }}
+              className="text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Newly created key display */}
+      {createdKey && (
+        <div className="mt-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-300 dark:border-emerald-800 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">API key created: {createdKey.name}</p>
+            <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">This key will not be shown again. Copy it now and store it securely.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <code className="flex-1 select-all rounded-lg border border-emerald-200 dark:border-emerald-700 bg-white dark:bg-slate-800 px-4 py-2.5 font-mono text-sm text-gray-900 dark:text-slate-100 break-all">{createdKey.key}</code>
+            <CopyBtn text={createdKey.key} />
+          </div>
+          <button
+            onClick={() => setCreatedKey(null)}
+            className="text-sm font-medium text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
+      {/* Existing keys table */}
+      {isLoading ? (
+        <p className="mt-4 text-sm text-gray-400 dark:text-slate-500">Loading API keys...</p>
+      ) : keys.length > 0 ? (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-slate-700">
+                <th className="pb-2 pr-4 font-medium text-gray-500 dark:text-slate-400">Name</th>
+                <th className="pb-2 pr-4 font-medium text-gray-500 dark:text-slate-400">Key Prefix</th>
+                <th className="pb-2 pr-4 font-medium text-gray-500 dark:text-slate-400">Created</th>
+                <th className="pb-2 pr-4 font-medium text-gray-500 dark:text-slate-400">Last Used</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-slate-400">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+              {keys.map((k) => (
+                <tr key={k.id}>
+                  <td className="py-2.5 pr-4 text-gray-900 dark:text-slate-100 font-medium">{k.name}</td>
+                  <td className="py-2.5 pr-4">
+                    <code className="font-mono text-xs text-gray-600 dark:text-slate-400">{k.key_prefix}...</code>
+                  </td>
+                  <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-slate-400">
+                    {new Date(k.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-slate-400">
+                    {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never'}
+                  </td>
+                  <td className="py-2.5">
+                    {revokeConfirm === k.id ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => deleteMutation.mutate(k.id)}
+                          disabled={deleteMutation.isPending}
+                          className="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
+                        >
+                          {deleteMutation.isPending ? 'Revoking...' : 'Confirm'}
+                        </button>
+                        <button
+                          onClick={() => setRevokeConfirm(null)}
+                          className="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setRevokeConfirm(k.id)}
+                        className="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : !createdKey && (
+        <p className="mt-4 text-sm text-gray-400 dark:text-slate-500">No API keys yet. Create one to get started.</p>
+      )}
     </div>
   )
 }
