@@ -326,27 +326,53 @@ export default function AccountTab() {
 // File Access Compliance Section
 // ================================================================
 
-const COMPLIANCE_PRESETS: Record<string, string[]> = {
-  'CMMC / HIPAA (Strict)': ['.exe', '.dll', '.sys', '.drv', '.ps1', '.bat', '.cmd', '.lnk', '.log', '.evtx', '.dmp', '.pf', '.reg'],
-  'Standard (Default)': [
-    '.exe', '.dll', '.sys', '.drv', '.ocx', '.cpl', '.scr', '.com',
-    '.ps1', '.psm1', '.psd1', '.bat', '.cmd', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta',
-    '.lnk', '.url', '.reg', '.inf', '.ini', '.cfg', '.conf', '.config', '.xml', '.json', '.yaml', '.yml', '.toml',
-    '.log', '.evtx', '.etl', '.dmp', '.mdmp', '.pf', '.manifest', '.cat', '.mum',
-    '.cer', '.crt', '.pem', '.p7b', '.pfx', '.job',
-  ],
-  'Permissive (All Files)': [],
+const PRESETS = {
+  strict: {
+    name: 'CMMC / HIPAA (Strict)',
+    description: 'Only executables, scripts, logs, and forensic artifacts. Blocks all documents, images, archives, and data files.',
+    extensions: ['.exe', '.dll', '.sys', '.drv', '.ps1', '.bat', '.cmd', '.lnk', '.log', '.evtx', '.dmp', '.pf', '.reg'],
+  },
+  standard: {
+    name: 'Standard',
+    description: 'Security-relevant files including configs, certificates, and system metadata. Blocks documents, images, and archives.',
+    extensions: [
+      '.exe', '.dll', '.sys', '.drv', '.ocx', '.cpl', '.scr', '.com',
+      '.ps1', '.psm1', '.psd1', '.bat', '.cmd', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta',
+      '.lnk', '.url', '.reg', '.inf', '.ini', '.cfg', '.conf', '.config', '.xml', '.json', '.yaml', '.yml', '.toml',
+      '.log', '.evtx', '.etl', '.dmp', '.mdmp', '.pf', '.manifest', '.cat', '.mum',
+      '.cer', '.crt', '.pem', '.p7b', '.pfx', '.job',
+    ],
+  },
+  permissive: {
+    name: 'Permissive',
+    description: 'No file type restrictions. All files can be downloaded. Not recommended for regulated environments.',
+    extensions: [],
+  },
+}
+
+function detectActivePreset(extensions: string[]): string {
+  if (extensions.length === 0) return 'permissive'
+  const sorted = [...extensions].sort().join(',')
+  if (sorted === [...PRESETS.strict.extensions].sort().join(',')) return 'strict'
+  if (sorted === [...PRESETS.standard.extensions].sort().join(',')) return 'standard'
+  return 'custom'
 }
 
 function FileAccessComplianceSection({ extensions, onSave, saving }: { extensions: string[]; onSave: (exts: string[]) => void; saving: boolean }) {
   const [editing, setEditing] = useState(false)
   const [editExts, setEditExts] = useState<string[]>(extensions)
   const [newExt, setNewExt] = useState('')
+  const [showExts, setShowExts] = useState(false)
 
-  const handlePreset = (preset: string) => {
-    const exts = COMPLIANCE_PRESETS[preset]
-    setEditExts(exts)
-    onSave(exts)
+  const activePreset = detectActivePreset(extensions)
+  const presetInfo = activePreset === 'custom'
+    ? { name: 'Custom Policy', description: `${extensions.length} allowed extensions (manually configured)` }
+    : PRESETS[activePreset as keyof typeof PRESETS]
+
+  const handlePreset = (key: string) => {
+    const preset = PRESETS[key as keyof typeof PRESETS]
+    setEditExts(preset.extensions)
+    onSave(preset.extensions)
     setEditing(false)
   }
 
@@ -355,99 +381,119 @@ function FileAccessComplianceSection({ extensions, onSave, saving }: { extension
     if (!ext) return
     if (!ext.startsWith('.')) ext = '.' + ext
     if (editExts.includes(ext)) return
-    const updated = [...editExts, ext].sort()
-    setEditExts(updated)
+    setEditExts([...editExts, ext].sort())
     setNewExt('')
   }
 
-  const handleRemoveExt = (ext: string) => {
-    setEditExts(editExts.filter(e => e !== ext))
-  }
+  const handleRemoveExt = (ext: string) => setEditExts(editExts.filter(e => e !== ext))
 
-  const handleSave = () => {
-    onSave(editExts)
-    setEditing(false)
-  }
+  const handleSave = () => { onSave(editExts); setEditing(false) }
+
+  const presetColor = activePreset === 'strict'
+    ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20'
+    : activePreset === 'standard'
+      ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20'
+      : activePreset === 'permissive'
+        ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20'
+        : 'border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20'
+
+  const presetTextColor = activePreset === 'strict'
+    ? 'text-red-800 dark:text-red-300'
+    : activePreset === 'standard'
+      ? 'text-blue-800 dark:text-blue-300'
+      : activePreset === 'permissive'
+        ? 'text-amber-800 dark:text-amber-300'
+        : 'text-purple-800 dark:text-purple-300'
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">File Access Compliance</h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-            Controls which file types can be downloaded from endpoints. Only files with allowed extensions
-            can be retrieved — all others are blocked for CMMC/HIPAA compliance.
-          </p>
-        </div>
-        {!editing && (
-          <button onClick={() => { setEditExts(extensions); setEditing(true) }}
-            className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700">
-            Edit Policy
-          </button>
-        )}
-      </div>
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">File Access Compliance</h3>
+      <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+        Restricts which file types analysts can download from endpoints. Applies to all organizations in this account.
+      </p>
 
-      {/* Presets */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {Object.keys(COMPLIANCE_PRESETS).map(preset => (
-          <button key={preset} onClick={() => handlePreset(preset)}
-            className={'rounded-md px-3 py-1.5 text-xs font-medium border transition-colors ' +
-              (preset.includes('Strict')
-                ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
-                : preset.includes('Standard')
-                  ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30'
-                  : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30')
-            }>
-            {preset}
-          </button>
-        ))}
-      </div>
-
-      {/* Current extensions */}
-      <div className="mt-4">
-        <p className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">
-          {extensions.length === 0 ? 'All files allowed (no restrictions)' : `${extensions.length} allowed extension(s)`}
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          {(editing ? editExts : extensions).map(ext => (
-            <span key={ext} className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-slate-700 px-2.5 py-0.5 text-xs font-mono text-gray-700 dark:text-slate-300">
-              {ext}
-              {editing && (
-                <button onClick={() => handleRemoveExt(ext)} className="text-red-400 hover:text-red-600 ml-0.5">&times;</button>
-              )}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Edit mode */}
-      {editing && (
-        <div className="mt-4 space-y-3">
-          <div className="flex gap-2">
-            <input
-              type="text" value={newExt} onChange={e => setNewExt(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddExt()}
-              placeholder=".ext"
-              className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none"
-            />
-            <button onClick={handleAddExt} className="rounded-lg bg-fibratus-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-fibratus-700">Add</button>
+      {/* Active policy indicator */}
+      <div className={'mt-4 rounded-lg border px-4 py-3 ' + presetColor}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className={'text-sm font-semibold ' + presetTextColor}>{presetInfo.name}</p>
+            <p className={'text-xs mt-0.5 ' + presetTextColor + ' opacity-80'}>{presetInfo.description}</p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving} className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50">
-              {saving ? 'Saving...' : 'Save Policy'}
+          {!editing && (
+            <button onClick={() => { setEditExts(extensions); setEditing(true) }}
+              className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-600">
+              Change Policy
             </button>
-            <button onClick={() => setEditing(false)} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">Cancel</button>
+          )}
+        </div>
+      </div>
+
+      {/* Editing: preset selection */}
+      {editing && (
+        <div className="mt-4 space-y-4">
+          <p className="text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Select a policy</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {Object.entries(PRESETS).map(([key, preset]) => (
+              <button key={key} onClick={() => handlePreset(key)}
+                className={'rounded-lg border p-4 text-left transition-all hover:shadow-md ' +
+                  (key === 'strict' ? 'border-red-200 dark:border-red-800 hover:border-red-400' :
+                   key === 'standard' ? 'border-blue-200 dark:border-blue-800 hover:border-blue-400' :
+                   'border-amber-200 dark:border-amber-800 hover:border-amber-400')
+                }>
+                <p className={'text-sm font-semibold ' +
+                  (key === 'strict' ? 'text-red-700 dark:text-red-400' :
+                   key === 'standard' ? 'text-blue-700 dark:text-blue-400' :
+                   'text-amber-700 dark:text-amber-400')
+                }>{preset.name}</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">{preset.description}</p>
+                <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-2">
+                  {preset.extensions.length === 0 ? 'No restrictions' : `${preset.extensions.length} extensions`}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          {/* Custom editing */}
+          <div className="border-t border-gray-100 dark:border-slate-700 pt-4">
+            <p className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">Or customize extensions:</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {editExts.map(ext => (
+                <span key={ext} className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-xs font-mono text-gray-700 dark:text-slate-300">
+                  {ext}
+                  <button onClick={() => handleRemoveExt(ext)} className="text-red-400 hover:text-red-600">&times;</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input type="text" value={newExt} onChange={e => setNewExt(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddExt()} placeholder=".ext"
+                className="w-32 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none" />
+              <button onClick={handleAddExt} className="rounded-lg bg-gray-200 dark:bg-slate-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-300 dark:hover:bg-slate-500">Add</button>
+              <div className="flex-1" />
+              <button onClick={handleSave} disabled={saving} className="rounded-lg bg-fibratus-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-fibratus-700 disabled:opacity-50">
+                {saving ? 'Saving...' : 'Save Custom Policy'}
+              </button>
+              <button onClick={() => setEditing(false)} className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700">Cancel</button>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="mt-4 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3">
-        <p className="text-xs text-amber-800 dark:text-amber-300">
-          <strong>Compliance note:</strong> When restrictions are active, analysts can see that files exist on endpoints
-          (needed for investigation) but cannot download file content for non-allowed types. This prevents
-          accidental exposure of CUI, PHI, or PII through the EDR platform.
-        </p>
-      </div>
+      {/* Collapsible extension list (not editing) */}
+      {!editing && extensions.length > 0 && (
+        <div className="mt-3">
+          <button onClick={() => setShowExts(!showExts)} className="text-xs text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
+            {showExts ? 'Hide' : 'Show'} {extensions.length} allowed extensions
+          </button>
+          {showExts && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {extensions.map(ext => (
+                <span key={ext} className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-gray-500 dark:text-slate-400">{ext}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
