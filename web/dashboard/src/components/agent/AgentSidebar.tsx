@@ -17,6 +17,7 @@ import {
   Terminal,
   Zap,
   Clock,
+  ScrollText,
 } from 'lucide-react'
 import type { Agent } from '../../lib/api'
 
@@ -71,6 +72,7 @@ export const sectionGroups: SectionGroup[] = [
     items: [
       { id: 'files', label: 'Files', icon: FolderOpen },
       { id: 'registry', label: 'Registry', icon: Database },
+      { id: 'eventviewer', label: 'Event Viewer', icon: ScrollText },
     ],
   },
 ]

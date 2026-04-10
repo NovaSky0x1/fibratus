@@ -256,9 +256,12 @@ const (
 	CmdStartCapture        = "start_capture"
 	CmdStopCapture         = "stop_capture"
 	CmdYaraScan            = "yara_scan"
-	CmdSetTamperProtection = "set_tamper_protection"
-	CmdSetEventLogPolicy   = "set_eventlog_policy"
-	CmdLogoffUser          = "logoff_user"
+	CmdSetTamperProtection  = "set_tamper_protection"
+	CmdSetEventLogPolicy    = "set_eventlog_policy"
+	CmdLogoffUser           = "logoff_user"
+	CmdListEventLogChannels = "list_eventlog_channels"
+	CmdQueryEventLog        = "query_eventlog"
+	CmdExportEvtx           = "export_evtx"
 )
 
 // Command status values

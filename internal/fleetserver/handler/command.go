@@ -54,6 +54,10 @@ var allowedCommandTypes = map[string]bool{
 	fleet.CmdYaraScan:            true,
 	fleet.CmdSetTamperProtection: true,
 	fleet.CmdLogoffUser:          true,
+
+	fleet.CmdListEventLogChannels: true,
+	fleet.CmdQueryEventLog:        true,
+	fleet.CmdExportEvtx:           true,
 }
 
 // CommandHandler handles command queue API requests.

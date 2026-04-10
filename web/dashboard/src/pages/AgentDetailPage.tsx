@@ -19,6 +19,7 @@ import AgentTerminal from '../components/agent/AgentTerminal'
 import AgentResponse from '../components/agent/AgentResponse'
 import AgentCommandHistory from '../components/agent/AgentCommandHistory'
 import AgentCaptures from '../components/agent/AgentCaptures'
+import AgentEventViewer from '../components/agent/AgentEventViewer'
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -92,6 +93,7 @@ export default function AgentDetailPage() {
           {activeSection === 'registry' && <AgentRegistry agentId={agent.id} />}
           {activeSection === 'terminal' && <AgentTerminal agentId={agent.id} hostname={agent.hostname} />}
           {activeSection === 'captures' && <AgentCaptures agentId={agent.id} />}
+          {activeSection === 'eventviewer' && <AgentEventViewer agentId={agent.id} />}
           {activeSection === 'response' && <AgentResponse agentId={agent.id} agent={agent} />}
           {activeSection === 'history' && <AgentCommandHistory agentId={agent.id} />}
         </div>
@@ -113,6 +115,7 @@ function sectionDescription(section: string): string {
     software: 'Installed software and applications',
     users: 'Local user accounts and sessions',
     files: 'Remote file system browser',
+    eventviewer: 'Remote Windows Event Viewer',
     registry: 'Windows registry browser',
     terminal: 'Interactive remote shell',
     captures: 'Kernel event captures (.kcap) for deep investigations',

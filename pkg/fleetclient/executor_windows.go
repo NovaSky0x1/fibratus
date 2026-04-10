@@ -20,6 +20,7 @@ package fleetclient
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -108,6 +109,12 @@ func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
 		return e.setEventLogPolicy(cmd)
 	case fleet.CmdLogoffUser:
 		return e.logoffUser(cmd)
+	case fleet.CmdListEventLogChannels:
+		return e.listEventLogChannels(cmd)
+	case fleet.CmdQueryEventLog:
+		return e.queryEventLog(cmd)
+	case fleet.CmdExportEvtx:
+		return e.exportEvtx(cmd)
 	default:
 		return nil, fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
@@ -893,4 +900,379 @@ func truncate(s string, maxLen int) string {
 		return s[:maxLen] + "\n... (truncated)"
 	}
 	return s
+}
+
+// ══════════════════════════════════════════════════════
+// Remote Event Viewer commands
+// ══════════════════════════════════════════════════════
+
+// listEventLogChannels enumerates available Windows Event Log channels.
+func (e *WindowsExecutor) listEventLogChannels(cmd *fleet.Command) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "wevtutil", "el").Output()
+	if err != nil {
+		return nil, fmt.Errorf("wevtutil el: %v", err)
+	}
+
+	type channelInfo struct {
+		Name     string `json:"name"`
+		Records  int64  `json:"records"`
+		Enabled  bool   `json:"enabled"`
+		MaxSize  int64  `json:"max_size"`
+	}
+
+	var channels []channelInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+		ch := channelInfo{Name: name, Enabled: true}
+		// Get record count and size for important channels
+		if isImportantChannel(name) {
+			info, _ := exec.CommandContext(ctx, "wevtutil", "gli", name).Output()
+			for _, l := range strings.Split(string(info), "\n") {
+				l = strings.TrimSpace(l)
+				if strings.HasPrefix(l, "numberOfLogRecords:") {
+					fmt.Sscanf(strings.TrimPrefix(l, "numberOfLogRecords:"), "%d", &ch.Records)
+				}
+				if strings.HasPrefix(l, "maxSize:") {
+					fmt.Sscanf(strings.TrimPrefix(l, "maxSize:"), "%d", &ch.MaxSize)
+				}
+				if strings.HasPrefix(l, "enabled:") {
+					ch.Enabled = strings.TrimSpace(strings.TrimPrefix(l, "enabled:")) == "true"
+				}
+			}
+		}
+		channels = append(channels, ch)
+	}
+
+	return json.Marshal(map[string]interface{}{
+		"channels": channels,
+		"total":    len(channels),
+	})
+}
+
+func isImportantChannel(name string) bool {
+	important := []string{
+		"Security", "System", "Application",
+		"Microsoft-Windows-Sysmon/Operational",
+		"Microsoft-Windows-PowerShell/Operational",
+		"Microsoft-Windows-Windows Defender/Operational",
+		"Microsoft-Windows-TaskScheduler/Operational",
+		"Microsoft-Windows-TerminalServices-LocalSessionManager/Operational",
+		"Microsoft-Windows-WMI-Activity/Operational",
+		"Microsoft-Windows-CodeIntegrity/Operational",
+	}
+	for _, c := range important {
+		if strings.EqualFold(name, c) {
+			return true
+		}
+	}
+	return false
+}
+
+// queryEventLog queries events from a Windows Event Log channel using wevtutil.
+func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		Channel string `json:"channel"`
+		Count   int    `json:"count"`
+		Query   string `json:"query"`   // XPath query filter
+		EventID int    `json:"event_id"` // Filter by event ID
+		Level   int    `json:"level"`    // 0=all, 1=critical, 2=error, 3=warning, 4=info
+		Reverse bool   `json:"reverse"`  // newest first (default true)
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	if payload.Channel == "" {
+		payload.Channel = "Security"
+	}
+	if payload.Count <= 0 || payload.Count > 500 {
+		payload.Count = 100
+	}
+
+	// Build XPath query
+	xpath := payload.Query
+	if xpath == "" {
+		var filters []string
+		if payload.EventID > 0 {
+			filters = append(filters, fmt.Sprintf("EventID=%d", payload.EventID))
+		}
+		if payload.Level > 0 {
+			filters = append(filters, fmt.Sprintf("Level=%d", payload.Level))
+		}
+		if len(filters) > 0 {
+			xpath = fmt.Sprintf("*[System[%s]]", strings.Join(filters, " and "))
+		} else {
+			xpath = "*"
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	args := []string{"qe", payload.Channel, "/c:" + fmt.Sprintf("%d", payload.Count), "/f:xml"}
+	if payload.Reverse || xpath == "*" {
+		args = append(args, "/rd:true")
+	}
+	if xpath != "*" {
+		args = append(args, "/q:"+xpath)
+	}
+
+	out, err := exec.CommandContext(ctx, "wevtutil", args...).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("wevtutil qe %s: %s: %v", payload.Channel, truncate(string(out), 500), err)
+	}
+
+	// Parse XML events into structured JSON
+	events := parseWevtutilXML(string(out))
+
+	return json.Marshal(map[string]interface{}{
+		"channel": payload.Channel,
+		"events":  events,
+		"count":   len(events),
+		"query":   xpath,
+	})
+}
+
+// parseWevtutilXML does a simple parse of wevtutil XML output into structured maps.
+// Each <Event> block becomes a JSON object with System and EventData fields.
+func parseWevtutilXML(xmlData string) []map[string]interface{} {
+	var events []map[string]interface{}
+
+	// Split on <Event blocks
+	blocks := strings.Split(xmlData, "<Event ")
+	for _, block := range blocks[1:] { // skip first empty split
+		evt := make(map[string]interface{})
+
+		// Extract System fields
+		if provider := extractXMLAttr(block, "Provider", "Name"); provider != "" {
+			evt["provider"] = provider
+		}
+		if eventID := extractXMLValue(block, "EventID"); eventID != "" {
+			evt["event_id"] = eventID
+		}
+		if level := extractXMLValue(block, "Level"); level != "" {
+			evt["level"] = level
+		}
+		if task := extractXMLValue(block, "Task"); task != "" {
+			evt["task"] = task
+		}
+		if opcode := extractXMLValue(block, "Opcode"); opcode != "" {
+			evt["opcode"] = opcode
+		}
+		if keywords := extractXMLValue(block, "Keywords"); keywords != "" {
+			evt["keywords"] = keywords
+		}
+		if timeCreated := extractXMLAttr(block, "TimeCreated", "SystemTime"); timeCreated != "" {
+			evt["timestamp"] = timeCreated
+		}
+		if eventRecordID := extractXMLValue(block, "EventRecordID"); eventRecordID != "" {
+			evt["record_id"] = eventRecordID
+		}
+		if channel := extractXMLValue(block, "Channel"); channel != "" {
+			evt["channel"] = channel
+		}
+		if computer := extractXMLValue(block, "Computer"); computer != "" {
+			evt["computer"] = computer
+		}
+		if security := extractXMLAttr(block, "Security", "UserID"); security != "" {
+			evt["user_id"] = security
+		}
+
+		// Extract EventData fields
+		data := make(map[string]string)
+		dataSection := ""
+		if idx := strings.Index(block, "<EventData>"); idx >= 0 {
+			if endIdx := strings.Index(block[idx:], "</EventData>"); endIdx >= 0 {
+				dataSection = block[idx : idx+endIdx]
+			}
+		}
+		if dataSection != "" {
+			// Parse <Data Name="key">value</Data> pairs
+			parts := strings.Split(dataSection, "<Data ")
+			for _, p := range parts[1:] {
+				nameStart := strings.Index(p, "Name=\"")
+				if nameStart < 0 {
+					continue
+				}
+				nameStart += 6
+				nameEnd := strings.Index(p[nameStart:], "\"")
+				if nameEnd < 0 {
+					continue
+				}
+				name := p[nameStart : nameStart+nameEnd]
+
+				valStart := strings.Index(p, ">")
+				if valStart < 0 {
+					continue
+				}
+				valEnd := strings.Index(p[valStart:], "</Data>")
+				if valEnd < 0 {
+					valEnd = strings.Index(p[valStart:], "/>")
+					if valEnd >= 0 {
+						data[name] = ""
+						continue
+					}
+					continue
+				}
+				data[name] = p[valStart+1 : valStart+valEnd]
+			}
+		}
+		if len(data) > 0 {
+			evt["data"] = data
+		}
+
+		// Also try UserData section (some events use this instead)
+		if len(data) == 0 {
+			if idx := strings.Index(block, "<UserData>"); idx >= 0 {
+				if endIdx := strings.Index(block[idx:], "</UserData>"); endIdx >= 0 {
+					userData := block[idx : idx+endIdx]
+					// Extract simple element values
+					udata := make(map[string]string)
+					parts := strings.Split(userData, "<")
+					for _, p := range parts {
+						if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "!") || strings.HasPrefix(p, "?") {
+							continue
+						}
+						tagEnd := strings.IndexAny(p, " >")
+						if tagEnd < 0 {
+							continue
+						}
+						tag := p[:tagEnd]
+						if tag == "UserData" || tag == "" {
+							continue
+						}
+						valStart := strings.Index(p, ">")
+						if valStart < 0 {
+							continue
+						}
+						val := p[valStart+1:]
+						if val != "" {
+							udata[tag] = val
+						}
+					}
+					if len(udata) > 0 {
+						evt["data"] = udata
+					}
+				}
+			}
+		}
+
+		if len(evt) > 0 {
+			events = append(events, evt)
+		}
+	}
+	return events
+}
+
+func extractXMLValue(xml, tag string) string {
+	open := "<" + tag + ">"
+	close := "</" + tag + ">"
+	start := strings.Index(xml, open)
+	if start < 0 {
+		// Try self-closing with attributes
+		open2 := "<" + tag + " "
+		start = strings.Index(xml, open2)
+		if start >= 0 {
+			end := strings.Index(xml[start:], ">")
+			if end >= 0 {
+				inner := xml[start : start+end]
+				if strings.HasSuffix(inner, "/") {
+					return ""
+				}
+				// Has content after >
+				contentStart := start + end + 1
+				closeIdx := strings.Index(xml[contentStart:], close)
+				if closeIdx >= 0 {
+					return xml[contentStart : contentStart+closeIdx]
+				}
+			}
+		}
+		return ""
+	}
+	start += len(open)
+	end := strings.Index(xml[start:], close)
+	if end < 0 {
+		return ""
+	}
+	return xml[start : start+end]
+}
+
+func extractXMLAttr(xml, tag, attr string) string {
+	open := "<" + tag + " "
+	start := strings.Index(xml, open)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(xml[start:], ">")
+	if end < 0 {
+		return ""
+	}
+	tagContent := xml[start : start+end]
+	attrKey := attr + "=\""
+	aStart := strings.Index(tagContent, attrKey)
+	if aStart < 0 {
+		return ""
+	}
+	aStart += len(attrKey)
+	aEnd := strings.Index(tagContent[aStart:], "\"")
+	if aEnd < 0 {
+		return ""
+	}
+	return tagContent[aStart : aStart+aEnd]
+}
+
+// exportEvtx exports a Windows Event Log channel to an .evtx file and returns it base64-encoded.
+func (e *WindowsExecutor) exportEvtx(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		Channel string `json:"channel"`
+		Query   string `json:"query"` // optional XPath filter
+	}
+	json.Unmarshal(cmd.Payload, &payload)
+
+	if payload.Channel == "" {
+		return nil, fmt.Errorf("channel is required")
+	}
+
+	// Export to temp file
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("fibratus-evtx-%d.evtx", time.Now().UnixNano()))
+	defer os.Remove(tmpFile)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	args := []string{"epl", payload.Channel, tmpFile}
+	if payload.Query != "" {
+		args = append(args, "/q:"+payload.Query)
+	}
+
+	out, err := exec.CommandContext(ctx, "wevtutil", args...).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("wevtutil epl: %s: %v", truncate(string(out), 500), err)
+	}
+
+	// Read the file
+	data, err := os.ReadFile(tmpFile)
+	if err != nil {
+		return nil, fmt.Errorf("read evtx: %v", err)
+	}
+
+	info, _ := os.Stat(tmpFile)
+	size := int64(0)
+	if info != nil {
+		size = info.Size()
+	}
+
+	// Base64 encode for transport (files are typically 1-50MB)
+	encoded := base64.StdEncoding.EncodeToString(data)
+
+	return json.Marshal(map[string]interface{}{
+		"channel":  payload.Channel,
+		"filename": filepath.Base(tmpFile),
+		"size":     size,
+		"data":     encoded,
+	})
 }
