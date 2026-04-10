@@ -34,6 +34,7 @@ type AccountStore interface {
 	Delete(ctx context.Context, id string) error
 	UpdateSettings(ctx context.Context, id string, require2FA bool, tamperProtection *bool, isolationWhitelist []string, eventlogEnabled *bool) error
 	UpdateRetention(ctx context.Context, id string, days int) error
+	UpdateFilePolicy(ctx context.Context, id string, extensions []string) error
 	UpdateProfile(ctx context.Context, id, name, plan string) error
 }
 

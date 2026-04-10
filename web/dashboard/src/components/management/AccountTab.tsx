@@ -36,6 +36,7 @@ interface AccountSettings {
   require_2fa: boolean
   tamper_protection_enabled: boolean
   isolation_whitelist: string[]
+  allowed_file_extensions: string[]
   telemetry_retention_days: number
   eventlog_enabled: boolean
   org_protection: Array<{
@@ -99,15 +100,23 @@ export default function AccountTab() {
 
   // ── Handlers ─────────────────────────────────────────────────
 
+  // Always include current values to prevent Go zero-value overwriting
+  const currentSettings = () => ({
+    require_2fa: settings?.require_2fa ?? false,
+    tamper_protection_enabled: tamperEnabled,
+    eventlog_enabled: settings?.eventlog_enabled ?? false,
+    isolation_whitelist: whitelist,
+  })
+
   const handleToggle2FA = () => {
     if (!settings) return
-    updateSettingsMut.mutate({ require_2fa: !settings.require_2fa })
+    updateSettingsMut.mutate({ ...currentSettings(), require_2fa: !settings.require_2fa })
   }
 
   const handleTamperToggle = async () => {
     setTamperToggling(true)
     try {
-      await updateSettingsMut.mutateAsync({ tamper_protection_enabled: !tamperEnabled })
+      await updateSettingsMut.mutateAsync({ ...currentSettings(), tamper_protection_enabled: !tamperEnabled })
     } finally {
       setTamperToggling(false)
     }
@@ -121,12 +130,12 @@ export default function AccountTab() {
   const handleAddWhitelist = () => {
     const entry = newWhitelistEntry.trim()
     if (!entry || whitelist.includes(entry)) return
-    updateSettingsMut.mutate({ isolation_whitelist: [...whitelist, entry] })
+    updateSettingsMut.mutate({ ...currentSettings(), isolation_whitelist: [...whitelist, entry] })
     setNewWhitelistEntry('')
   }
 
   const handleRemoveWhitelist = (entry: string) => {
-    updateSettingsMut.mutate({ isolation_whitelist: whitelist.filter(e => e !== entry) })
+    updateSettingsMut.mutate({ ...currentSettings(), isolation_whitelist: whitelist.filter(e => e !== entry) })
   }
 
   // ── Loading ──────────────────────────────────────────────────
@@ -313,8 +322,145 @@ export default function AccountTab() {
         )}
       </div>
 
+      {/* ── File Access Compliance ────────────────────────────── */}
+      <FileAccessComplianceSection
+        extensions={settings?.allowed_file_extensions || []}
+        onSave={(exts) => updateSettingsMut.mutate({ allowed_file_extensions: exts } as any)}
+        saving={updateSettingsMut.isPending}
+      />
+
       {/* ── Your Security ─────────────────────────────────────── */}
       <SecuritySection />
+    </div>
+  )
+}
+
+// ================================================================
+// File Access Compliance Section
+// ================================================================
+
+const COMPLIANCE_PRESETS: Record<string, string[]> = {
+  'CMMC / HIPAA (Strict)': ['.exe', '.dll', '.sys', '.drv', '.ps1', '.bat', '.cmd', '.lnk', '.log', '.evtx', '.dmp', '.pf', '.reg'],
+  'Standard (Default)': [
+    '.exe', '.dll', '.sys', '.drv', '.ocx', '.cpl', '.scr', '.com',
+    '.ps1', '.psm1', '.psd1', '.bat', '.cmd', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta',
+    '.lnk', '.url', '.reg', '.inf', '.ini', '.cfg', '.conf', '.config', '.xml', '.json', '.yaml', '.yml', '.toml',
+    '.log', '.evtx', '.etl', '.dmp', '.mdmp', '.pf', '.manifest', '.cat', '.mum',
+    '.cer', '.crt', '.pem', '.p7b', '.pfx', '.job',
+  ],
+  'Permissive (All Files)': [],
+}
+
+function FileAccessComplianceSection({ extensions, onSave, saving }: { extensions: string[]; onSave: (exts: string[]) => void; saving: boolean }) {
+  const [editing, setEditing] = useState(false)
+  const [editExts, setEditExts] = useState<string[]>(extensions)
+  const [newExt, setNewExt] = useState('')
+
+  const handlePreset = (preset: string) => {
+    const exts = COMPLIANCE_PRESETS[preset]
+    setEditExts(exts)
+    onSave(exts)
+    setEditing(false)
+  }
+
+  const handleAddExt = () => {
+    let ext = newExt.trim().toLowerCase()
+    if (!ext) return
+    if (!ext.startsWith('.')) ext = '.' + ext
+    if (editExts.includes(ext)) return
+    const updated = [...editExts, ext].sort()
+    setEditExts(updated)
+    setNewExt('')
+  }
+
+  const handleRemoveExt = (ext: string) => {
+    setEditExts(editExts.filter(e => e !== ext))
+  }
+
+  const handleSave = () => {
+    onSave(editExts)
+    setEditing(false)
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">File Access Compliance</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            Controls which file types can be downloaded from endpoints. Only files with allowed extensions
+            can be retrieved — all others are blocked for CMMC/HIPAA compliance.
+          </p>
+        </div>
+        {!editing && (
+          <button onClick={() => { setEditExts(extensions); setEditing(true) }}
+            className="rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700">
+            Edit Policy
+          </button>
+        )}
+      </div>
+
+      {/* Presets */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {Object.keys(COMPLIANCE_PRESETS).map(preset => (
+          <button key={preset} onClick={() => handlePreset(preset)}
+            className={'rounded-md px-3 py-1.5 text-xs font-medium border transition-colors ' +
+              (preset.includes('Strict')
+                ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
+                : preset.includes('Standard')
+                  ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                  : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30')
+            }>
+            {preset}
+          </button>
+        ))}
+      </div>
+
+      {/* Current extensions */}
+      <div className="mt-4">
+        <p className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">
+          {extensions.length === 0 ? 'All files allowed (no restrictions)' : `${extensions.length} allowed extension(s)`}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {(editing ? editExts : extensions).map(ext => (
+            <span key={ext} className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-slate-700 px-2.5 py-0.5 text-xs font-mono text-gray-700 dark:text-slate-300">
+              {ext}
+              {editing && (
+                <button onClick={() => handleRemoveExt(ext)} className="text-red-400 hover:text-red-600 ml-0.5">&times;</button>
+              )}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Edit mode */}
+      {editing && (
+        <div className="mt-4 space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="text" value={newExt} onChange={e => setNewExt(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddExt()}
+              placeholder=".ext"
+              className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:outline-none"
+            />
+            <button onClick={handleAddExt} className="rounded-lg bg-fibratus-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-fibratus-700">Add</button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving} className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Policy'}
+            </button>
+            <button onClick={() => setEditing(false)} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3">
+        <p className="text-xs text-amber-800 dark:text-amber-300">
+          <strong>Compliance note:</strong> When restrictions are active, analysts can see that files exist on endpoints
+          (needed for investigation) but cannot download file content for non-allowed types. This prevents
+          accidental exposure of CUI, PHI, or PII through the EDR platform.
+        </p>
+      </div>
     </div>
   )
 }

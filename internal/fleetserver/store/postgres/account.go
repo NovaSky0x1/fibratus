@@ -138,6 +138,13 @@ func (s *AccountStore) UpdateSettings(ctx context.Context, id string, require2FA
 	return nil
 }
 
+func (s *AccountStore) UpdateFilePolicy(ctx context.Context, id string, extensions []string) error {
+	extJSON, _ := json.Marshal(extensions)
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE accounts SET allowed_file_extensions = $2, updated_at = NOW() WHERE id = $1`, id, extJSON)
+	return err
+}
+
 func (s *AccountStore) UpdateRetention(ctx context.Context, id string, days int) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE accounts SET telemetry_retention_days = $2, updated_at = NOW() WHERE id = $1`, id, days)

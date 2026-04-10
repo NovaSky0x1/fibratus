@@ -614,6 +614,7 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		TamperProtectionEnabled *bool    `json:"tamper_protection_enabled,omitempty"`
 		EventLogEnabled         *bool    `json:"eventlog_enabled,omitempty"`
 		IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
+		AllowedFileExtensions   []string `json:"allowed_file_extensions,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -623,6 +624,13 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 	if err := h.accounts.UpdateSettings(r.Context(), accountID, req.Require2FA, req.TamperProtectionEnabled, req.IsolationWhitelist, req.EventLogEnabled); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update settings")
 		return
+	}
+
+	// Update file access compliance policy
+	if len(req.AllowedFileExtensions) > 0 {
+		if err := h.accounts.UpdateFilePolicy(r.Context(), accountID, req.AllowedFileExtensions); err != nil {
+			log.Warnf("fleet: failed to update file policy for account %s: %v", accountID, err)
+		}
 	}
 
 	log.Infof("fleet: account %s settings updated (2fa=%v, tamper=%v, eventlog=%v)", accountID, req.Require2FA, req.TamperProtectionEnabled, req.EventLogEnabled)
@@ -653,6 +661,7 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		"tamper_protection_enabled":  account.TamperProtectionEnabled,
 		"eventlog_enabled":           account.EventLogEnabled,
 		"isolation_whitelist":        account.IsolationWhitelist,
+		"allowed_file_extensions":    account.AllowedFileExtensions,
 	}})
 }
 
@@ -690,6 +699,11 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 			"telemetry_retention_days":  orgRetDays,
 		})
 	}
+	fileExts := account.AllowedFileExtensions
+	if len(fileExts) == 0 {
+		fileExts = fleet.DefaultAllowedFileExtensions
+	}
+
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"require_2fa":                account.Require2FA,
 		"account_name":               account.Name,
@@ -698,6 +712,7 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 		"eventlog_enabled":            account.EventLogEnabled,
 		"telemetry_retention_days":    retDays,
 		"isolation_whitelist":         account.IsolationWhitelist,
+		"allowed_file_extensions":     fileExts,
 		"org_protection":             orgProtection,
 	}})
 }
