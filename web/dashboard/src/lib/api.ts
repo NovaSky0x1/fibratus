@@ -323,6 +323,10 @@ export const api = {
     fetchApi<{ status: string }>(orgPath(`/users/${id}/totp`), { method: 'DELETE' }),
   deleteUser: (id: string) =>
     fetchApi<{ status: string }>(orgPath(`/users/${id}`), { method: 'DELETE' }),
+  getUserGroups: (userId: string) =>
+    fetchApi<Array<{ group_id: string; group_name: string }>>(orgPath(`/users/${userId}/groups`)),
+  updateUserGroups: (userId: string, groupIds: string[]) =>
+    fetchApi<void>(orgPath(`/users/${userId}/groups`), { method: 'PUT', body: JSON.stringify({ group_ids: groupIds }) }),
 
   // User Groups
   getGroups: () => fetchApi<unknown[]>(orgPath('/groups')),

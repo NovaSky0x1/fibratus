@@ -136,7 +136,7 @@ func extractCertField(field, prefix string) string {
 }
 
 // requirePermission returns a middleware that checks if the authenticated user
-// has the required permission based on their role or group memberships.
+// has the required permission based on their group memberships.
 func requirePermission(perm fleetauth.Permission, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		role := ctxutil.RoleFromContext(r.Context())
@@ -147,13 +147,7 @@ func requirePermission(perm fleetauth.Permission, next http.HandlerFunc) http.Ha
 			return
 		}
 
-		// Check role-based permissions (fast path)
-		if fleetauth.HasPermission(role, perm) {
-			next(w, r)
-			return
-		}
-
-		// Check group-based permissions
+		// All permissions come from group memberships
 		if groupPermissionStore != nil {
 			userID := ctxutil.UserIDFromContext(r.Context())
 			if userID != "" {

@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api, type User } from '../lib/api'
 import AccountTab from '../components/management/AccountTab'
 import OrganizationsTab from '../components/management/OrganizationsTab'
 import UsersTab from '../components/management/UsersTab'
@@ -8,47 +6,45 @@ import GroupsTab from '../components/management/GroupsTab'
 import EnrollmentTab from '../components/management/EnrollmentTab'
 import TelemetryTab from '../components/management/TelemetryTab'
 import AuditTab from '../components/management/AuditTab'
+import { usePermissions } from '../contexts/PermissionContext'
 
 type Tab = 'account' | 'organizations' | 'users' | 'groups' | 'enrollment' | 'telemetry' | 'audit'
 
-const tabs: { key: Tab; label: string }[] = [
-  { key: 'account', label: 'Account' },
-  { key: 'organizations', label: 'Organizations' },
-  { key: 'users', label: 'Users' },
-  { key: 'groups', label: 'User Groups' },
-  { key: 'enrollment', label: 'Enrollment' },
-  { key: 'telemetry', label: 'Telemetry' },
-  { key: 'audit', label: 'Audit' },
+const allTabs: { key: Tab; label: string; perm: string }[] = [
+  { key: 'account', label: 'Account', perm: 'settings:view' },
+  { key: 'organizations', label: 'Organizations', perm: 'organizations:manage' },
+  { key: 'users', label: 'Users', perm: 'users:manage' },
+  { key: 'groups', label: 'User Groups', perm: 'users:groups' },
+  { key: 'enrollment', label: 'Enrollment', perm: 'enrollment:view' },
+  { key: 'telemetry', label: 'Telemetry', perm: 'telemetry:view' },
+  { key: 'audit', label: 'Audit', perm: 'audit:view' },
 ]
 
-function getTabFromHash(): Tab {
-  const hash = window.location.hash.replace('#', '') as Tab
-  if (tabs.some(t => t.key === hash)) return hash
-  return 'account'
-}
-
 export default function Management() {
-  const [tab, setTab] = useState<Tab>(getTabFromHash)
+  const { hasPermission, isRoot } = usePermissions()
 
-  const { data: currentUserData } = useQuery({
-    queryKey: ['current-user'],
-    queryFn: () => api.getCurrentUser(),
-  })
-  const currentUser = currentUserData?.data as User | undefined
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'root'
+  const visibleTabs = allTabs.filter(t => hasPermission(t.perm) || isRoot)
+
+  function getTabFromHash(): Tab {
+    const hash = window.location.hash.replace('#', '') as Tab
+    if (visibleTabs.some(t => t.key === hash)) return hash
+    return visibleTabs.length > 0 ? visibleTabs[0].key : 'account'
+  }
+
+  const [tab, setTab] = useState<Tab>(getTabFromHash)
 
   useEffect(() => {
     const handler = () => setTab(getTabFromHash())
     window.addEventListener('hashchange', handler)
     return () => window.removeEventListener('hashchange', handler)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTabChange = (newTab: Tab) => {
     setTab(newTab)
     window.location.hash = newTab
   }
 
-  if (currentUser && !isAdmin) {
+  if (!hasPermission('page:management') && !isRoot) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
@@ -58,7 +54,7 @@ export default function Management() {
             </svg>
           </div>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Access Denied</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">You need an admin or root role to access management.</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">You do not have permission to access management.</p>
         </div>
       </div>
     )
@@ -74,7 +70,7 @@ export default function Management() {
       </div>
 
       <div className="mt-6 flex gap-1 border-b border-gray-200 dark:border-slate-700 overflow-x-auto">
-        {tabs.map(t => (
+        {visibleTabs.map(t => (
           <button
             key={t.key}
             onClick={() => handleTabChange(t.key)}

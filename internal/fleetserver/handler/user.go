@@ -315,3 +315,80 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	log.Infof("fleet: user %s deleted from org %s", userID, orgID)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "deleted"}})
 }
+
+// GetUserGroups handles GET /api/v1/orgs/{org_id}/users/{id}/groups
+func (h *UserHandler) GetUserGroups(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/users/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+	userID := strings.TrimSuffix(parts[1], "/groups")
+	userID = strings.TrimSuffix(userID, "/")
+
+	memberships, err := h.groups.GetUserGroups(r.Context(), userID)
+	if err != nil {
+		log.Errorf("fleet: get user groups error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: memberships})
+}
+
+// UpdateUserGroups handles PUT /api/v1/orgs/{org_id}/users/{id}/groups
+func (h *UserHandler) UpdateUserGroups(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/users/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "user ID required")
+		return
+	}
+	userID := strings.TrimSuffix(parts[1], "/groups")
+	userID = strings.TrimSuffix(userID, "/")
+
+	var req struct {
+		GroupIDs []string `json:"group_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Get current memberships
+	current, err := h.groups.GetUserGroups(r.Context(), userID)
+	if err != nil {
+		log.Errorf("fleet: get user groups error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Build sets for diff
+	currentSet := make(map[string]bool, len(current))
+	for _, m := range current {
+		currentSet[m.GroupID] = true
+	}
+	desiredSet := make(map[string]bool, len(req.GroupIDs))
+	for _, gid := range req.GroupIDs {
+		desiredSet[gid] = true
+	}
+
+	// Add new memberships
+	for _, gid := range req.GroupIDs {
+		if !currentSet[gid] {
+			if err := h.groups.AddMember(r.Context(), userID, gid); err != nil {
+				log.Errorf("fleet: add group member error: %v", err)
+			}
+		}
+	}
+
+	// Remove old memberships
+	for _, m := range current {
+		if !desiredSet[m.GroupID] {
+			if err := h.groups.RemoveMember(r.Context(), userID, m.GroupID); err != nil {
+				log.Errorf("fleet: remove group member error: %v", err)
+			}
+		}
+	}
+
+	log.Infof("fleet: user %s groups updated to %v", userID, req.GroupIDs)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated"}})
+}

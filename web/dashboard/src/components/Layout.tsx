@@ -6,13 +6,13 @@ import { usePermissions } from '../contexts/PermissionContext'
 import CursorGlow from './CursorGlow'
 
 const navigation = [
-  { name: 'Overview', href: '/', perm: null },
-  { name: 'Agents', href: '/agents', perm: 'agents:view' },
-  { name: 'Detections', href: '/detections', perm: 'detections:view' },
-  { name: 'Events', href: '/events', perm: 'events:view' },
-  { name: 'Rules', href: '/rules', perm: 'rules:view' },
-  { name: 'Macros', href: '/macros', perm: 'settings:macros' },
-  { name: 'Audit Log', href: '/audit-log', perm: 'audit:view' },
+  { name: 'Overview', href: '/', perm: 'page:overview' },
+  { name: 'Agents', href: '/agents', perm: 'page:agents' },
+  { name: 'Detections', href: '/detections', perm: 'page:detections' },
+  { name: 'Events', href: '/events', perm: 'page:events' },
+  { name: 'Rules', href: '/rules', perm: 'page:rules' },
+  { name: 'Macros', href: '/macros', perm: 'page:macros' },
+  { name: 'Audit Log', href: '/audit-log', perm: 'page:audit' },
 ]
 
 function getInitialTheme(): 'dark' | 'light' {
@@ -60,10 +60,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isRoot = user?.role === 'root'
 
   // Permission-based access control (augments role checks)
-  const { hasPermission, hasAnyPermission, loading: permsLoading } = usePermissions()
-  const canManage = hasAnyPermission('settings:view', 'settings:manage', 'users:manage', 'settings:enrollment')
+  const { hasPermission, loading: permsLoading } = usePermissions()
   const canSuperAdmin = hasPermission('admin:panel')
-  const showManagement = permsLoading ? isAdminOrRoot : canManage
+  const showManagement = permsLoading ? isAdminOrRoot : hasPermission('page:management')
   const showSuperAdmin = permsLoading ? isRoot : canSuperAdmin
 
   // MFA enforcement: if account requires 2FA but user hasn't enabled it, block everything except Settings
@@ -252,9 +251,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {user && (
             <div className="px-3 mb-3">
               <p className="text-sm font-medium text-white truncate">{user.name || user.email}</p>
-              <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/70 mt-1">
-                {user.role}
-              </span>
             </div>
           )}
           <div className="flex items-center gap-2">

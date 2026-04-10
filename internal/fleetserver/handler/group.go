@@ -186,40 +186,77 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 // GetPermissions handles GET /api/v1/orgs/{org_id}/permissions — returns all available permissions.
 func (h *GroupHandler) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	permissions := []map[string]string{
+		// Pages
+		{"id": "page:overview", "name": "Overview Page", "category": "Pages"},
+		{"id": "page:agents", "name": "Agents Page", "category": "Pages"},
+		{"id": "page:detections", "name": "Detections Page", "category": "Pages"},
+		{"id": "page:events", "name": "Events Page", "category": "Pages"},
+		{"id": "page:rules", "name": "Rules Page", "category": "Pages"},
+		{"id": "page:macros", "name": "Macros Page", "category": "Pages"},
+		{"id": "page:audit", "name": "Audit Log Page", "category": "Pages"},
+		{"id": "page:management", "name": "Management Page", "category": "Pages"},
+		{"id": "page:process_tree", "name": "Process Tree Page", "category": "Pages"},
 		// Agents
 		{"id": "agents:view", "name": "View Agents", "category": "Agents"},
 		{"id": "agents:manage", "name": "Manage Agents", "category": "Agents"},
 		{"id": "agents:delete", "name": "Delete Agents", "category": "Agents"},
+		// Agent Detail Tabs
+		{"id": "agents:view_events", "name": "Events Tab", "category": "Agent Detail"},
+		{"id": "agents:view_detections", "name": "Detections Tab", "category": "Agent Detail"},
+		{"id": "agents:view_processes", "name": "Processes Tab", "category": "Agent Detail"},
+		{"id": "agents:view_network", "name": "Network Tab", "category": "Agent Detail"},
+		{"id": "agents:view_services", "name": "Services Tab", "category": "Agent Detail"},
+		{"id": "agents:view_drivers", "name": "Drivers Tab", "category": "Agent Detail"},
+		{"id": "agents:view_autoruns", "name": "Autoruns Tab", "category": "Agent Detail"},
+		{"id": "agents:view_software", "name": "Software Tab", "category": "Agent Detail"},
+		{"id": "agents:view_users", "name": "Users Tab", "category": "Agent Detail"},
+		{"id": "agents:view_files", "name": "File Browser Tab", "category": "Agent Detail"},
+		{"id": "agents:view_registry", "name": "Registry Tab", "category": "Agent Detail"},
+		{"id": "agents:view_eventlog", "name": "Event Viewer Tab", "category": "Agent Detail"},
+		{"id": "agents:view_terminal", "name": "Terminal Tab", "category": "Agent Detail"},
+		{"id": "agents:view_captures", "name": "Captures Tab", "category": "Agent Detail"},
+		{"id": "agents:view_history", "name": "Command History Tab", "category": "Agent Detail"},
 		// Detections
 		{"id": "detections:view", "name": "View Detections", "category": "Detections"},
+		{"id": "detections:manage", "name": "Manage Detections", "category": "Detections"},
 		// Events
 		{"id": "events:view", "name": "View Events", "category": "Events"},
 		// Rules
 		{"id": "rules:view", "name": "View Rules", "category": "Rules"},
 		{"id": "rules:manage", "name": "Create/Edit/Delete Rules", "category": "Rules"},
-		// Active Response — General
+		// Active Response
 		{"id": "commands:view", "name": "View Command History", "category": "Active Response"},
-		{"id": "commands:execute", "name": "Execute Commands (generic)", "category": "Active Response"},
-		// Active Response — Granular
-		{"id": "response:isolate", "name": "Isolate Agent (network isolation)", "category": "Response Actions"},
+		{"id": "commands:execute", "name": "Execute Commands", "category": "Active Response"},
+		// Response Actions
+		{"id": "response:isolate", "name": "Isolate Agent", "category": "Response Actions"},
 		{"id": "response:unisolate", "name": "Unisolate Agent", "category": "Response Actions"},
 		{"id": "response:kill_process", "name": "Kill Process", "category": "Response Actions"},
-		{"id": "response:run_command", "name": "Run Remote Command (shell)", "category": "Response Actions"},
+		{"id": "response:run_command", "name": "Run Remote Command", "category": "Response Actions"},
 		{"id": "response:browse_files", "name": "Browse Filesystem", "category": "Response Actions"},
 		{"id": "response:download_file", "name": "Download/Collect Files", "category": "Response Actions"},
-		{"id": "response:collect_info", "name": "Collect System Information", "category": "Response Actions"},
+		{"id": "response:collect_info", "name": "Collect System Info", "category": "Response Actions"},
 		{"id": "response:uninstall", "name": "Uninstall Agent", "category": "Response Actions"},
+		// Captures
+		{"id": "captures:view", "name": "View Captures", "category": "Captures"},
+		{"id": "captures:create", "name": "Create Captures", "category": "Captures"},
+		{"id": "captures:delete", "name": "Delete Captures", "category": "Captures"},
+		// Telemetry
+		{"id": "telemetry:view", "name": "View Telemetry", "category": "Telemetry"},
+		{"id": "telemetry:configure", "name": "Configure Telemetry", "category": "Telemetry"},
 		// Settings
 		{"id": "settings:view", "name": "View Settings", "category": "Settings"},
 		{"id": "settings:manage", "name": "Manage Settings", "category": "Settings"},
-		{"id": "settings:enrollment", "name": "Manage Enrollment Tokens", "category": "Settings"},
-		{"id": "settings:github_sync", "name": "Configure GitHub Rule Sync", "category": "Settings"},
 		{"id": "settings:macros", "name": "Manage Macros", "category": "Settings"},
+		// Enrollment
+		{"id": "enrollment:view", "name": "View Enrollment Tokens", "category": "Enrollment"},
+		{"id": "enrollment:manage", "name": "Manage Enrollment Tokens", "category": "Enrollment"},
+		// GitHub Sync
+		{"id": "github_sync:view", "name": "View Sync Configs", "category": "GitHub Sync"},
+		{"id": "github_sync:manage", "name": "Manage Sync Configs", "category": "GitHub Sync"},
 		// User Management
 		{"id": "users:manage", "name": "Manage Users", "category": "User Management"},
 		{"id": "users:groups", "name": "Manage User Groups", "category": "User Management"},
-		// Audit
-		{"id": "audit:view", "name": "View Audit Log", "category": "Audit"},
+		{"id": "audit:view", "name": "View Audit Log", "category": "User Management"},
 		// Organizations
 		{"id": "organizations:manage", "name": "Manage Organizations", "category": "Organizations"},
 	}

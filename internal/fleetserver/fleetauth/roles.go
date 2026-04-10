@@ -3,82 +3,199 @@ package fleetauth
 import "sort"
 
 // Roles define the permission levels for fleet server users.
+// Only "root" has inherent permissions. All other users get permissions
+// exclusively from their user group memberships.
 const (
-	RoleRoot    = "root"    // Super admin: cross-account access, manage all accounts/orgs/users
-	RoleAdmin   = "admin"   // Account admin: manage users, rules, agents, settings, active response within their account
-	RoleAnalyst = "analyst" // Investigation: view/manage detections, events, rules. No active response or settings.
-	RoleViewer  = "viewer"  // Read-only: view detections, events, agents. No modifications.
+	RoleRoot    = "root"    // Super admin: cross-account, bypasses all permission checks
+	RoleMember  = "member"  // Default role for all non-root users — permissions come from groups
+	// Legacy roles kept for backward compatibility (treated same as member)
+	RoleAdmin   = "admin"
+	RoleAnalyst = "analyst"
+	RoleViewer  = "viewer"
 )
 
-// Permission defines a specific action that can be checked against a role.
+// Permission defines a specific action that can be checked against a user's group memberships.
 type Permission string
 
 const (
-	// Agent permissions
-	PermViewAgents          Permission = "agents:view"
-	PermManageAgents        Permission = "agents:manage"
-	PermDeleteAgents        Permission = "agents:delete"
+	// ═══════════════════════════════════════════════════════════
+	// Page Access
+	// ═══════════════════════════════════════════════════════════
+	PermPageOverview    Permission = "page:overview"
+	PermPageAgents      Permission = "page:agents"
+	PermPageDetections  Permission = "page:detections"
+	PermPageEvents      Permission = "page:events"
+	PermPageRules       Permission = "page:rules"
+	PermPageMacros      Permission = "page:macros"
+	PermPageAudit       Permission = "page:audit"
+	PermPageManagement  Permission = "page:management"
+	PermPageProcessTree Permission = "page:process_tree"
 
-	// Detection permissions
-	PermViewDetections      Permission = "detections:view"
+	// ═══════════════════════════════════════════════════════════
+	// Agents
+	// ═══════════════════════════════════════════════════════════
+	PermViewAgents   Permission = "agents:view"
+	PermManageAgents Permission = "agents:manage"
+	PermDeleteAgents Permission = "agents:delete"
 
-	// Event permissions
-	PermViewEvents          Permission = "events:view"
+	// ═══════════════════════════════════════════════════════════
+	// Agent Detail Tabs
+	// ═══════════════════════════════════════════════════════════
+	PermAgentsViewEvents     Permission = "agents:view_events"
+	PermAgentsViewDetections Permission = "agents:view_detections"
+	PermAgentsViewProcesses  Permission = "agents:view_processes"
+	PermAgentsViewNetwork    Permission = "agents:view_network"
+	PermAgentsViewServices   Permission = "agents:view_services"
+	PermAgentsViewDrivers    Permission = "agents:view_drivers"
+	PermAgentsViewAutoruns   Permission = "agents:view_autoruns"
+	PermAgentsViewSoftware   Permission = "agents:view_software"
+	PermAgentsViewUsers      Permission = "agents:view_users"
+	PermAgentsViewFiles      Permission = "agents:view_files"
+	PermAgentsViewRegistry   Permission = "agents:view_registry"
+	PermAgentsViewEventLog   Permission = "agents:view_eventlog"
+	PermAgentsViewTerminal   Permission = "agents:view_terminal"
+	PermAgentsViewCaptures   Permission = "agents:view_captures"
+	PermAgentsViewHistory    Permission = "agents:view_history"
 
-	// Rule permissions
-	PermViewRules           Permission = "rules:view"
-	PermManageRules         Permission = "rules:manage"
+	// ═══════════════════════════════════════════════════════════
+	// Detections
+	// ═══════════════════════════════════════════════════════════
+	PermViewDetections   Permission = "detections:view"
+	PermManageDetections Permission = "detections:manage"
 
-	// Active Response — granular command permissions
-	PermViewCommands        Permission = "commands:view"
-	PermExecuteCommands     Permission = "commands:execute"       // Generic execute (fallback)
-	PermIsolateAgent        Permission = "response:isolate"       // Network isolation
-	PermUnisolateAgent      Permission = "response:unisolate"     // Remove isolation
-	PermKillProcess         Permission = "response:kill_process"  // Kill a process by PID
-	PermRunCommand          Permission = "response:run_command"   // Execute shell commands
-	PermBrowseFilesystem    Permission = "response:browse_files"  // List directories remotely
-	PermDownloadFile        Permission = "response:download_file" // Download/collect files
-	PermCollectInfo         Permission = "response:collect_info"  // Collect system information
-	PermUninstallAgent      Permission = "response:uninstall"     // Uninstall the agent
+	// ═══════════════════════════════════════════════════════════
+	// Events
+	// ═══════════════════════════════════════════════════════════
+	PermViewEvents Permission = "events:view"
 
-	// Settings & configuration
-	PermViewSettings        Permission = "settings:view"
-	PermManageSettings      Permission = "settings:manage"
-	PermManageEnrollment    Permission = "settings:enrollment"    // Manage enrollment tokens
-	PermManageGitHubSync    Permission = "settings:github_sync"   // Configure GitHub rule sync
-	PermManageMacros        Permission = "settings:macros"        // Manage macros
+	// ═══════════════════════════════════════════════════════════
+	// Rules
+	// ═══════════════════════════════════════════════════════════
+	PermViewRules   Permission = "rules:view"
+	PermManageRules Permission = "rules:manage"
 
-	// User & group management
-	PermManageUsers         Permission = "users:manage"
-	PermManageGroups        Permission = "users:groups"           // Manage user groups
-	PermViewAuditLog        Permission = "audit:view"
+	// ═══════════════════════════════════════════════════════════
+	// Active Response
+	// ═══════════════════════════════════════════════════════════
+	PermViewCommands    Permission = "commands:view"
+	PermExecuteCommands Permission = "commands:execute"
 
-	// Organization management
+	// ═══════════════════════════════════════════════════════════
+	// Response Actions (granular)
+	// ═══════════════════════════════════════════════════════════
+	PermIsolateAgent     Permission = "response:isolate"
+	PermUnisolateAgent   Permission = "response:unisolate"
+	PermKillProcess      Permission = "response:kill_process"
+	PermRunCommand       Permission = "response:run_command"
+	PermBrowseFilesystem Permission = "response:browse_files"
+	PermDownloadFile     Permission = "response:download_file"
+	PermCollectInfo      Permission = "response:collect_info"
+	PermUninstallAgent   Permission = "response:uninstall"
+
+	// ═══════════════════════════════════════════════════════════
+	// Captures
+	// ═══════════════════════════════════════════════════════════
+	PermViewCaptures   Permission = "captures:view"
+	PermCreateCaptures Permission = "captures:create"
+	PermDeleteCaptures Permission = "captures:delete"
+
+	// ═══════════════════════════════════════════════════════════
+	// Telemetry
+	// ═══════════════════════════════════════════════════════════
+	PermViewTelemetry      Permission = "telemetry:view"
+	PermConfigureTelemetry Permission = "telemetry:configure"
+
+	// ═══════════════════════════════════════════════════════════
+	// Settings
+	// ═══════════════════════════════════════════════════════════
+	PermViewSettings   Permission = "settings:view"
+	PermManageSettings Permission = "settings:manage"
+	PermManageMacros   Permission = "settings:macros"
+
+	// ═══════════════════════════════════════════════════════════
+	// Enrollment
+	// ═══════════════════════════════════════════════════════════
+	PermViewEnrollment   Permission = "enrollment:view"
+	PermManageEnrollment Permission = "enrollment:manage"
+
+	// ═══════════════════════════════════════════════════════════
+	// GitHub Sync
+	// ═══════════════════════════════════════════════════════════
+	PermViewGitHubSync   Permission = "github_sync:view"
+	PermManageGitHubSync Permission = "github_sync:manage"
+
+	// ═══════════════════════════════════════════════════════════
+	// User Management
+	// ═══════════════════════════════════════════════════════════
+	PermManageUsers  Permission = "users:manage"
+	PermManageGroups Permission = "users:groups"
+	PermViewAuditLog Permission = "audit:view"
+
+	// ═══════════════════════════════════════════════════════════
+	// Organization Management
+	// ═══════════════════════════════════════════════════════════
 	PermManageOrganizations Permission = "organizations:manage"
 
-	// System administration (root only)
-	PermAdminPanel          Permission = "admin:panel"
-	PermManageAccounts      Permission = "accounts:manage"
+	// ═══════════════════════════════════════════════════════════
+	// System Administration (root only)
+	// ═══════════════════════════════════════════════════════════
+	PermAdminPanel     Permission = "admin:panel"
+	PermManageAccounts Permission = "accounts:manage"
 )
 
-// rolePermissions maps each role to its allowed permissions.
+// allPermissions is the canonical list of every permission in the system.
+var allPermissions = []Permission{
+	// Pages
+	PermPageOverview, PermPageAgents, PermPageDetections, PermPageEvents,
+	PermPageRules, PermPageMacros, PermPageAudit, PermPageManagement, PermPageProcessTree,
+	// Agents
+	PermViewAgents, PermManageAgents, PermDeleteAgents,
+	// Agent Detail
+	PermAgentsViewEvents, PermAgentsViewDetections, PermAgentsViewProcesses,
+	PermAgentsViewNetwork, PermAgentsViewServices, PermAgentsViewDrivers,
+	PermAgentsViewAutoruns, PermAgentsViewSoftware, PermAgentsViewUsers,
+	PermAgentsViewFiles, PermAgentsViewRegistry, PermAgentsViewEventLog,
+	PermAgentsViewTerminal, PermAgentsViewCaptures, PermAgentsViewHistory,
+	// Detections
+	PermViewDetections, PermManageDetections,
+	// Events
+	PermViewEvents,
+	// Rules
+	PermViewRules, PermManageRules,
+	// Active Response
+	PermViewCommands, PermExecuteCommands,
+	// Response Actions
+	PermIsolateAgent, PermUnisolateAgent, PermKillProcess, PermRunCommand,
+	PermBrowseFilesystem, PermDownloadFile, PermCollectInfo, PermUninstallAgent,
+	// Captures
+	PermViewCaptures, PermCreateCaptures, PermDeleteCaptures,
+	// Telemetry
+	PermViewTelemetry, PermConfigureTelemetry,
+	// Settings
+	PermViewSettings, PermManageSettings, PermManageMacros,
+	// Enrollment
+	PermViewEnrollment, PermManageEnrollment,
+	// GitHub Sync
+	PermViewGitHubSync, PermManageGitHubSync,
+	// User Management
+	PermManageUsers, PermManageGroups, PermViewAuditLog,
+	// Organizations
+	PermManageOrganizations,
+	// System Admin
+	PermAdminPanel, PermManageAccounts,
+}
+
+// rolePermissions maps roles to their default permissions.
+// Only root has inherent permissions. All other roles get permissions from groups.
 var rolePermissions = map[string]map[Permission]bool{
-	RoleRoot: {
-		PermViewAgents: true, PermManageAgents: true, PermDeleteAgents: true,
-		PermViewDetections: true, PermViewEvents: true,
-		PermViewRules: true, PermManageRules: true,
-		PermViewCommands: true, PermExecuteCommands: true,
-		PermIsolateAgent: true, PermUnisolateAgent: true, PermKillProcess: true,
-		PermRunCommand: true, PermBrowseFilesystem: true, PermDownloadFile: true,
-		PermCollectInfo: true, PermUninstallAgent: true,
-		PermViewSettings: true, PermManageSettings: true,
-		PermManageEnrollment: true, PermManageGitHubSync: true, PermManageMacros: true,
-		PermManageUsers: true, PermManageGroups: true, PermViewAuditLog: true,
-		PermManageOrganizations: true,
-		PermAdminPanel: true, PermManageAccounts: true,
-	},
-	// Non-root roles grant no permissions — all access comes from user group memberships.
-	// Roles are kept as labels for backward compatibility but do not grant permissions.
+	RoleRoot: func() map[Permission]bool {
+		m := make(map[Permission]bool, len(allPermissions))
+		for _, p := range allPermissions {
+			m[p] = true
+		}
+		return m
+	}(),
+	RoleMember:  {},
 	RoleAdmin:   {},
 	RoleAnalyst: {},
 	RoleViewer:  {},
@@ -86,8 +203,8 @@ var rolePermissions = map[string]map[Permission]bool{
 
 // AllPermissions returns all defined permission strings, sorted.
 func AllPermissions() []string {
-	perms := make([]string, 0, len(rolePermissions[RoleRoot]))
-	for p := range rolePermissions[RoleRoot] {
+	perms := make([]string, 0, len(allPermissions))
+	for _, p := range allPermissions {
 		perms = append(perms, string(p))
 	}
 	sort.Strings(perms)

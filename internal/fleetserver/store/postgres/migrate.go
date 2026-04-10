@@ -480,5 +480,13 @@ func Migrate(dsn string) error {
 		return fmt.Errorf("migrate: failed to execute schema: %w", err)
 	}
 
+	// Group-only RBAC: set all non-root users to member role.
+	// Permissions now come exclusively from group memberships.
+	_, err = db.ExecContext(context.Background(),
+		`UPDATE users SET role = 'member' WHERE role != 'root' AND role != 'member'`)
+	if err != nil {
+		return fmt.Errorf("migrate: failed to normalize user roles: %w", err)
+	}
+
 	return nil
 }

@@ -480,6 +480,10 @@ func (s *Server) Run(ctx context.Context) error {
 			requirePermission(fleetauth.PermManageUsers, userHandler.List)(w, r)
 		case subpath == "/users" && r.Method == http.MethodPost:
 			requirePermission(fleetauth.PermManageUsers, userHandler.Create)(w, r)
+		case strings.HasPrefix(subpath, "/users/") && strings.HasSuffix(subpath, "/groups") && r.Method == http.MethodGet:
+			userHandler.GetUserGroups(w, r)
+		case strings.HasPrefix(subpath, "/users/") && strings.HasSuffix(subpath, "/groups") && r.Method == http.MethodPut:
+			requirePermission(fleetauth.PermManageUsers, userHandler.UpdateUserGroups)(w, r)
 		case strings.HasPrefix(subpath, "/users/") && strings.HasSuffix(subpath, "/role") && r.Method == http.MethodPut:
 			requirePermission(fleetauth.PermManageUsers, userHandler.UpdateRole)(w, r)
 		case strings.HasPrefix(subpath, "/users/") && strings.HasSuffix(subpath, "/password") && r.Method == http.MethodPut:
