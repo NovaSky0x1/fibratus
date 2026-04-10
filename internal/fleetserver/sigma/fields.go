@@ -429,45 +429,45 @@ var sysmonGenericFields = map[string]string{
 var powershellFields = map[string]string{
 	"EventID":       "eventlog.event.id",
 	"eventid":       "eventlog.event.id",
-	"ScriptBlockText": "eventlog.data['ScriptBlockText']",
-	"HostApplication":  "eventlog.data['HostApplication']",
-	"CommandLine":      "eventlog.data['CommandLine']",
-	"Payload":          "eventlog.data['Payload']",
-	"ContextInfo":      "eventlog.data['ContextInfo']",
-	"Path":             "eventlog.data['Path']",
-	"ScriptName":       "eventlog.data['ScriptName']",
-	"CommandName":      "eventlog.data['CommandName']",
-	"CommandType":      "eventlog.data['CommandType']",
+	"ScriptBlockText": "eventlog.data[ScriptBlockText]",
+	"HostApplication":  "eventlog.data[HostApplication]",
+	"CommandLine":      "eventlog.data[CommandLine]",
+	"Payload":          "eventlog.data[Payload]",
+	"ContextInfo":      "eventlog.data[ContextInfo]",
+	"Path":             "eventlog.data[Path]",
+	"ScriptName":       "eventlog.data[ScriptName]",
+	"CommandName":      "eventlog.data[CommandName]",
+	"CommandType":      "eventlog.data[CommandType]",
 }
 
 var securityLogFields = map[string]string{
 	"EventID":         "eventlog.event.id",
 	"eventid":         "eventlog.event.id",
-	"TargetUserName":  "eventlog.data['TargetUserName']",
-	"SubjectUserName": "eventlog.data['SubjectUserName']",
-	"LogonType":       "eventlog.data['LogonType']",
-	"IpAddress":       "eventlog.data['IpAddress']",
-	"IpPort":          "eventlog.data['IpPort']",
-	"WorkstationName": "eventlog.data['WorkstationName']",
-	"ProcessName":     "eventlog.data['ProcessName']",
-	"ObjectName":      "eventlog.data['ObjectName']",
-	"ObjectType":      "eventlog.data['ObjectType']",
-	"AccessMask":      "eventlog.data['AccessMask']",
-	"ServiceName":     "eventlog.data['ServiceName']",
-	"TicketEncryptionType": "eventlog.data['TicketEncryptionType']",
-	"Status":          "eventlog.data['Status']",
-	"SubStatus":       "eventlog.data['SubStatus']",
-	"TargetDomainName": "eventlog.data['TargetDomainName']",
-	"SubjectDomainName": "eventlog.data['SubjectDomainName']",
-	"PrivilegeList":   "eventlog.data['PrivilegeList']",
-	"CommandLine":     "eventlog.data['CommandLine']",
-	"NewProcessName":  "eventlog.data['NewProcessName']",
-	"ParentProcessName": "eventlog.data['ParentProcessName']",
-	"TargetServerName": "eventlog.data['TargetServerName']",
-	"ShareName":       "eventlog.data['ShareName']",
-	"RelativeTargetName": "eventlog.data['RelativeTargetName']",
-	"TaskName":        "eventlog.data['TaskName']",
-	"TaskContent":     "eventlog.data['TaskContent']",
+	"TargetUserName":  "eventlog.data[TargetUserName]",
+	"SubjectUserName": "eventlog.data[SubjectUserName]",
+	"LogonType":       "eventlog.data[LogonType]",
+	"IpAddress":       "eventlog.data[IpAddress]",
+	"IpPort":          "eventlog.data[IpPort]",
+	"WorkstationName": "eventlog.data[WorkstationName]",
+	"ProcessName":     "eventlog.data[ProcessName]",
+	"ObjectName":      "eventlog.data[ObjectName]",
+	"ObjectType":      "eventlog.data[ObjectType]",
+	"AccessMask":      "eventlog.data[AccessMask]",
+	"ServiceName":     "eventlog.data[ServiceName]",
+	"TicketEncryptionType": "eventlog.data[TicketEncryptionType]",
+	"Status":          "eventlog.data[Status]",
+	"SubStatus":       "eventlog.data[SubStatus]",
+	"TargetDomainName": "eventlog.data[TargetDomainName]",
+	"SubjectDomainName": "eventlog.data[SubjectDomainName]",
+	"PrivilegeList":   "eventlog.data[PrivilegeList]",
+	"CommandLine":     "eventlog.data[CommandLine]",
+	"NewProcessName":  "eventlog.data[NewProcessName]",
+	"ParentProcessName": "eventlog.data[ParentProcessName]",
+	"TargetServerName": "eventlog.data[TargetServerName]",
+	"ShareName":       "eventlog.data[ShareName]",
+	"RelativeTargetName": "eventlog.data[RelativeTargetName]",
+	"TaskName":        "eventlog.data[TaskName]",
+	"TaskContent":     "eventlog.data[TaskContent]",
 }
 
 var systemLogFields = map[string]string{
@@ -475,11 +475,11 @@ var systemLogFields = map[string]string{
 	"eventid":    "eventlog.event.id",
 	"Provider":   "eventlog.provider",
 	"provider":   "eventlog.provider",
-	"DriverName": "eventlog.data['DriverName']",
-	"ImagePath":  "eventlog.data['ImagePath']",
-	"ServiceName": "eventlog.data['ServiceName']",
-	"ServiceType": "eventlog.data['ServiceType']",
-	"StartType":   "eventlog.data['StartType']",
+	"DriverName": "eventlog.data[DriverName]",
+	"ImagePath":  "eventlog.data[ImagePath]",
+	"ServiceName": "eventlog.data[ServiceName]",
+	"ServiceType": "eventlog.data[ServiceType]",
+	"StartType":   "eventlog.data[StartType]",
 }
 
 var applicationLogFields = map[string]string{
@@ -518,7 +518,7 @@ func resolveLogsource(ls Logsource) (*logsourceConfig, bool) {
 
 // mapField maps a SIGMA field name to a Fibratus field name given a logsource config.
 // If the field uses eventlog.data[...] mapping, unknown fields fall back to
-// eventlog.data['FieldName'] for maximum compatibility.
+// eventlog.data[FieldName'] for maximum compatibility.
 func mapField(sigmaField string, cfg *logsourceConfig) (string, bool) {
 	// Try exact match first
 	if f, ok := cfg.fields[sigmaField]; ok {
@@ -537,7 +537,7 @@ func mapField(sigmaField string, cfg *logsourceConfig) (string, bool) {
 	}
 	// For event log sources, fall back to eventlog.data[field]
 	if cfg.eventlogChannel != "" {
-		return "eventlog.data['" + sigmaField + "']", true
+		return "eventlog.data[" + sigmaField + "]", true
 	}
 	return "", false
 }
