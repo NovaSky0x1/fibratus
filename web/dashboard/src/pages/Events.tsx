@@ -351,7 +351,7 @@ export default function Events({ agentId }: { agentId?: string } = {}) {
 
   // Data fetching
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['telemetry', activeQuery, timePreset.label, page, customTimeActive, customFrom, customTo, filters.map(f => f.id).join(',')],
+    queryKey: ['telemetry', agentId || 'all', activeQuery, timePreset.label, page, customTimeActive, customFrom, customTo, filters.map(f => f.id).join(',')],
     queryFn: () => {
       const params: Record<string, string> = {
         limit: '100',

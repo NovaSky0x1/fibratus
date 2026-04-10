@@ -654,18 +654,18 @@ func (s *Server) Run(ctx context.Context) error {
 	// Start agent status reaper
 	go s.agentReaper(ctx, agentStore)
 
-	// Start telemetry retention purge (every hour, keep 7 days)
+	// Start telemetry retention purge (every minute, keep 10 minutes for live view)
 	go func() {
-		ticker := time.NewTicker(time.Hour)
+		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				deleted, err := telemetryStore.Purge(context.Background(), 7)
+				deleted, err := telemetryStore.Purge(context.Background(), 0)
 				if err != nil {
 					log.Warnf("fleet: telemetry purge error: %v", err)
 				} else if deleted > 0 {
-					log.Infof("fleet: purged %d telemetry events older than 7 days", deleted)
+					log.Infof("fleet: purged %d old telemetry events", deleted)
 				}
 			case <-ctx.Done():
 				return
