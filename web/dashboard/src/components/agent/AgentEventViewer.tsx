@@ -61,8 +61,6 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
   const [channels, setChannels] = useState<ChannelInfo[]>([])
   const [showAllChannels, setShowAllChannels] = useState(false)
 
-  const orgId = localStorage.getItem('selectedOrgId') || ''
-
   // Poll for a command result by ID
   const pollCommand = async (cmdId: string, maxAttempts: number, intervalMs: number): Promise<Command | null> => {
     for (let i = 0; i < maxAttempts; i++) {
