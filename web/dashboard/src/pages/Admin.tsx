@@ -1369,6 +1369,13 @@ function SystemTab() {
 
   const { data: pgTables } = useQuery({ queryKey: ['pg-tables'], queryFn: () => api.dbTablesPostgres(), staleTime: 30000 })
   const { data: chTables } = useQuery({ queryKey: ['ch-tables'], queryFn: () => api.dbTablesClickhouse(), staleTime: 30000 })
+  const { data: settingsData } = useQuery({ queryKey: ['account-settings'], queryFn: () => api.getAccountSettings() })
+  const settings = (settingsData as { data?: { telemetry_retention_days?: number } })?.data
+  const [retentionDays, setRetentionDays] = useState(0)
+  const [retentionSaving, setRetentionSaving] = useState(false)
+  useEffect(() => {
+    if (settings?.telemetry_retention_days && retentionDays === 0) setRetentionDays(settings.telemetry_retention_days)
+  }, [settings]) // eslint-disable-line
 
   const executeQuery = async () => {
     if (!query.trim()) return
@@ -1490,7 +1497,38 @@ function SystemTab() {
         <div className="grid grid-cols-4 gap-4 text-sm">
           <div><span className="text-gray-500 dark:text-slate-400 text-xs">Server</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">{window.location.origin}</p></div>
           <div><span className="text-gray-500 dark:text-slate-400 text-xs">Version</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">Fleet v1.0</p></div>
-          <div><span className="text-gray-500 dark:text-slate-400 text-xs">Retention</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">10 min (dev)</p></div>
+          <div>
+            <span className="text-gray-500 dark:text-slate-400 text-xs">Telemetry Retention</span>
+            <div className="flex items-center gap-2 mt-1">
+              <select
+                value={retentionDays || 7}
+                onChange={e => setRetentionDays(Number(e.target.value))}
+                className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded px-2 py-0.5 text-xs font-mono text-gray-900 dark:text-slate-100"
+              >
+                <option value={1}>1 day</option>
+                <option value={3}>3 days</option>
+                <option value={7}>7 days</option>
+                <option value={14}>14 days</option>
+                <option value={30}>30 days</option>
+                <option value={90}>90 days</option>
+                <option value={180}>180 days</option>
+                <option value={365}>365 days</option>
+              </select>
+              {retentionDays > 0 && retentionDays !== (settings?.telemetry_retention_days || 7) && (
+                <button
+                  disabled={retentionSaving}
+                  onClick={async () => {
+                    setRetentionSaving(true)
+                    try { await api.updateTelemetryRetention(retentionDays) } catch {}
+                    setRetentionSaving(false)
+                  }}
+                  className="rounded bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {retentionSaving ? 'Saving...' : 'Save'}
+                </button>
+              )}
+            </div>
+          </div>
           <div><span className="text-gray-500 dark:text-slate-400 text-xs">Environment</span><p className="font-mono text-gray-900 dark:text-slate-100 text-xs">Production</p></div>
         </div>
       </div>

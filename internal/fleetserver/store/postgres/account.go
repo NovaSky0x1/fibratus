@@ -47,12 +47,12 @@ func (s *AccountStore) Create(ctx context.Context, account *fleet.Account) error
 
 func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, name, plan, COALESCE(require_2fa, false), COALESCE(tamper_protection_enabled, false), COALESCE(isolation_whitelist, '[]'::jsonb), COALESCE(eventlog_enabled, false), created_at, updated_at
+		`SELECT id, name, plan, COALESCE(require_2fa, false), COALESCE(tamper_protection_enabled, false), COALESCE(isolation_whitelist, '[]'::jsonb), COALESCE(eventlog_enabled, false), COALESCE(telemetry_retention_days, 7), created_at, updated_at
 		 FROM accounts WHERE id = $1`, id)
 
 	a := &fleet.Account{}
 	var wlJSON []byte
-	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.TamperProtectionEnabled, &wlJSON, &a.EventLogEnabled, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.TamperProtectionEnabled, &wlJSON, &a.EventLogEnabled, &a.TelemetryRetentionDays, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -128,6 +128,12 @@ func (s *AccountStore) UpdateSettings(ctx context.Context, id string, require2FA
 		}
 	}
 	return nil
+}
+
+func (s *AccountStore) UpdateRetention(ctx context.Context, id string, days int) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE accounts SET telemetry_retention_days = $2, updated_at = NOW() WHERE id = $1`, id, days)
+	return err
 }
 
 func (s *AccountStore) UpdateProfile(ctx context.Context, id, name, plan string) error {

@@ -39,6 +39,9 @@ import (
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 // AuthHandler handles authentication API requests.
+// RetentionCallback is called when telemetry retention changes to update ClickHouse TTL.
+type RetentionCallback func(days int) error
+
 type AuthHandler struct {
 	accounts       store.AccountStore
 	orgs           store.OrgStore
@@ -48,6 +51,7 @@ type AuthHandler struct {
 	eventlogPolicy store.EventLogPolicyStore
 	jwtSecret      string
 	onCmdCreated   CommandPushCallback
+	onRetentionChange RetentionCallback
 }
 
 // NewAuthHandler creates a new auth handler.
@@ -65,6 +69,11 @@ func NewAuthHandler(accounts store.AccountStore, orgs store.OrgStore, users stor
 // SetEventLogPolicyStore sets the event log policy store for account-level propagation.
 func (h *AuthHandler) SetEventLogPolicyStore(s store.EventLogPolicyStore) {
 	h.eventlogPolicy = s
+}
+
+// SetRetentionCallback registers a callback for when telemetry retention changes.
+func (h *AuthHandler) SetRetentionCallback(cb RetentionCallback) {
+	h.onRetentionChange = cb
 }
 
 // SetCommandPushCallback registers a callback for instant command delivery.
@@ -526,15 +535,56 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
+	retDays := account.TelemetryRetentionDays
+	if retDays <= 0 {
+		retDays = 7
+	}
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"require_2fa":                account.Require2FA,
 		"account_name":               account.Name,
 		"plan":                        account.Plan,
 		"tamper_protection_enabled":   account.TamperProtectionEnabled,
 		"eventlog_enabled":            account.EventLogEnabled,
+		"telemetry_retention_days":    retDays,
 		"isolation_whitelist":         account.IsolationWhitelist,
 		"org_protection":             orgProtection,
 	}})
+}
+
+// UpdateTelemetryRetention handles PUT /api/v1/account/telemetry-retention
+func (h *AuthHandler) UpdateTelemetryRetention(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusUnauthorized, "account context required")
+		return
+	}
+
+	var req struct {
+		Days int `json:"days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Days < 1 || req.Days > 365 {
+		writeError(w, http.StatusBadRequest, "retention must be between 1 and 365 days")
+		return
+	}
+
+	if err := h.accounts.UpdateRetention(r.Context(), accountID, req.Days); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update retention")
+		return
+	}
+
+	// Apply to ClickHouse TTL
+	if h.onRetentionChange != nil {
+		if err := h.onRetentionChange(req.Days); err != nil {
+			log.Warnf("fleet: failed to update ClickHouse TTL: %v", err)
+		}
+	}
+
+	log.Infof("fleet: telemetry retention updated to %d days for account %s", req.Days, accountID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]int{"telemetry_retention_days": req.Days}})
 }
 
 // UpdateOrgTamperProtection handles PUT /api/v1/account/orgs/{org_id}/tamper-protection

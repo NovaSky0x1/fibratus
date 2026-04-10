@@ -460,6 +460,8 @@ export const api = {
     fetchApi<{ require_2fa: boolean; tamper_protection_enabled: boolean; isolation_whitelist: string[] }>('/account/settings', { method: 'PUT', body: JSON.stringify(data) }),
   updateOrgTamperProtection: (orgId: string, enabled: boolean) =>
     fetchApi<void>(`/account/orgs/${orgId}/tamper-protection`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  updateTelemetryRetention: (days: number) =>
+    fetchApi<{ telemetry_retention_days: number }>('/account/telemetry-retention', { method: 'PUT', body: JSON.stringify({ days }) }),
 
   // Event Log Policy
   getEventLogPolicy: () =>

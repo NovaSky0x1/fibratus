@@ -35,6 +35,7 @@ type Account struct {
 	Require2FA              bool     `json:"require_2fa"`
 	TamperProtectionEnabled bool     `json:"tamper_protection_enabled"`
 	EventLogEnabled         bool     `json:"eventlog_enabled"`
+	TelemetryRetentionDays  int      `json:"telemetry_retention_days"`
 	IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
 	OrgCount                int      `json:"org_count,omitempty"`
 	UserCount       int       `json:"user_count,omitempty"`

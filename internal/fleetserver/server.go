@@ -241,6 +241,12 @@ func (s *Server) Run(ctx context.Context) error {
 	commandHandler.SetCommandPushCallback(cmdPushCallback)
 	captureHandler.SetCommandPushCallback(cmdPushCallback)
 	authHandler.SetCommandPushCallback(cmdPushCallback)
+	if chDB != nil {
+		authHandler.SetRetentionCallback(func(days int) error {
+			_, err := chDB.Exec(fmt.Sprintf("ALTER TABLE fibratus.telemetry_events MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", days))
+			return err
+		})
+	}
 	eventLogPolicyHandler.SetCommandPushCallback(cmdPushCallback)
 	agentHandler.SetCommandDeps(commandStore, eventLogPolicyStore, cmdPushCallback)
 
@@ -520,6 +526,13 @@ func (s *Server) Run(ctx context.Context) error {
 		case http.MethodPut:
 			requirePermission(fleetauth.PermManageSettings, authHandler.UpdateAccountSettings)(w, r)
 		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/telemetry-retention", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			requirePermission(fleetauth.PermManageSettings, authHandler.UpdateTelemetryRetention)(w, r)
+		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
