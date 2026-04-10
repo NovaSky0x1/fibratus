@@ -463,6 +463,93 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
 }
 
+// UpdateMyProfile handles PUT /api/v1/auth/me — updates the current user's name.
+func (h *AuthHandler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	user, err := h.users.Get(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := h.users.UpdateProfile(r.Context(), userID, req.Name, user.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update profile")
+		return
+	}
+
+	log.Infof("fleet: user %s updated own profile", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated"}})
+}
+
+// ChangeMyPassword handles PUT /api/v1/auth/me/password — changes the current user's password.
+func (h *AuthHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
+	}
+
+	user, err := h.users.Get(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := fleetauth.CheckPassword(user.Password, req.CurrentPassword); err != nil {
+		writeError(w, http.StatusForbidden, "current password is incorrect")
+		return
+	}
+
+	if err := fleetauth.ValidatePasswordPolicy(req.NewPassword); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	hashed, err := fleetauth.HashPassword(req.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := h.users.UpdatePassword(r.Context(), userID, hashed); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to change password")
+		return
+	}
+
+	log.Infof("fleet: user %s changed own password", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "password_changed"}})
+}
+
 // GetMyPermissions handles GET /api/v1/auth/me/permissions
 // Returns the effective permission set for the current user (role + group permissions).
 func (h *AuthHandler) GetMyPermissions(w http.ResponseWriter, r *http.Request) {
@@ -503,6 +590,83 @@ func (h *AuthHandler) GetMyPermissions(w http.ResponseWriter, r *http.Request) {
 	sort.Strings(perms)
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: perms})
+}
+
+// UpdateMyProfile handles PUT /api/v1/auth/me/profile — update own name.
+func (h *AuthHandler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	if err := h.users.UpdateProfile(r.Context(), userID, req.Name, ""); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated"}})
+}
+
+// ChangeMyPassword handles PUT /api/v1/auth/me/password — change own password.
+func (h *AuthHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
+	}
+
+	// Validate new password policy
+	if err := fleetauth.ValidatePasswordPolicy(req.NewPassword); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Verify current password
+	user, err := h.users.Get(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify user")
+		return
+	}
+	if err := fleetauth.CheckPassword(user.Password, req.CurrentPassword); err != nil {
+		writeError(w, http.StatusForbidden, "current password is incorrect")
+		return
+	}
+
+	// Hash and save new password
+	hashed, err := fleetauth.HashPassword(req.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+	if err := h.users.UpdatePassword(r.Context(), userID, hashed); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update password")
+		return
+	}
+
+	log.Infof("fleet: user %s changed their password", userID)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "password_changed"}})
 }
 
 // UpdateAccountSettings handles PUT /api/v1/account/settings

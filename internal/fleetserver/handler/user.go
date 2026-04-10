@@ -108,13 +108,8 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.Role == "" {
-		req.Role = fleetauth.RoleViewer
-	}
-	if !fleetauth.ValidRole(req.Role) {
-		writeError(w, http.StatusBadRequest, "invalid role: must be root, admin, analyst, or viewer")
-		return
-	}
+	// All non-root users get the "member" role — permissions come from groups
+	req.Role = fleetauth.RoleMember
 
 	existing, _ := h.users.GetByEmail(r.Context(), req.Email)
 	if existing != nil {

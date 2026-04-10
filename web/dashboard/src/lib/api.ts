@@ -281,6 +281,10 @@ export const api = {
   // User profile
   getCurrentUser: () => fetchApi<User>('/auth/me'),
   getMyPermissions: () => fetchApi<string[]>('/auth/me/permissions'),
+  updateMyProfile: (data: { name: string }) =>
+    fetchApi<{ status: string }>('/auth/me/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  changeMyPassword: (data: { current_password: string; new_password: string }) =>
+    fetchApi<{ status: string }>('/auth/me/password', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Organizations
   getOrganizations: () => fetchApi<Organization[]>('/account/organizations'),

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
+import { useQueryClient } from '@tanstack/react-query'
 import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Account, type Organization, type User } from '../lib/api'
 import { usePermissions } from '../contexts/PermissionContext'
 import CursorGlow from './CursorGlow'
@@ -48,6 +49,7 @@ function MoonIcon({ className }: { className?: string }) {
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [currentOrg, setCurrentOrg] = useState(getCurrentOrgId())
   const [user, setUser] = useState<User | null>(null)
@@ -104,15 +106,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [])
 
   const handleOrgChange = (orgId: string) => {
-    if (orgId === '') {
-      setCurrentOrgId('')
-      setCurrentOrg('')
-      window.location.reload()
-      return
-    }
     setCurrentOrgId(orgId)
     setCurrentOrg(orgId)
-    window.location.reload()
+    queryClient.invalidateQueries()
   }
 
   const handleAccountChange = async (accountId: string) => {
@@ -194,7 +190,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="mt-4 px-3 flex-1">
-          {navigation.filter(item => !item.perm || hasPermission(item.perm)).map((item) => (
+          {navigation.filter(item => permsLoading || !item.perm || hasPermission(item.perm)).map((item) => (
             <Link
               key={item.name}
               to={item.href}

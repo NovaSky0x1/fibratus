@@ -618,6 +618,8 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/auth/totp/disable", methodGuard(http.MethodPost, totpHandler.Disable))
 	dashMux.HandleFunc("/api/v1/auth/totp/status", methodGuard(http.MethodGet, totpHandler.Status))
 	dashMux.HandleFunc("/api/v1/auth/me/permissions", methodGuard(http.MethodGet, authHandler.GetMyPermissions))
+	dashMux.HandleFunc("/api/v1/auth/me/profile", methodGuard(http.MethodPut, authHandler.UpdateMyProfile))
+	dashMux.HandleFunc("/api/v1/auth/me/password", methodGuard(http.MethodPut, authHandler.ChangeMyPassword))
 	dashMux.HandleFunc("/api/v1/auth/me", methodGuard(http.MethodGet, authHandler.GetCurrentUser))
 
 	// Wrap dashboard routes with JWT auth
