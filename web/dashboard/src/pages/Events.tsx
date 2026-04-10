@@ -1128,12 +1128,113 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
   const callstack = raw?.callstack as string[] | undefined
   const modules = (psRaw?.modules || []) as { name?: string; size?: number; sha256?: string; md5?: string }[]
 
+  const isEventLog = evt.event_category === 'eventlog'
+  // Extract eventlog metadata and data fields from params
+  const eventLogMeta = isEventLog ? {
+    channel: String(evt.params?.['eventlog.channel'] || ''),
+    eventId: evt.params?.['eventlog.event.id'],
+    provider: String(evt.params?.['eventlog.provider'] || ''),
+    level: String(evt.params?.['eventlog.level'] || ''),
+    levelId: evt.params?.['eventlog.level.id'],
+    computer: String(evt.params?.['eventlog.computer'] || ''),
+    userId: String(evt.params?.['eventlog.user.id'] || ''),
+    recordId: evt.params?.['eventlog.record.id'],
+    keywords: String(evt.params?.['eventlog.keywords'] || ''),
+    task: evt.params?.['eventlog.task'],
+    opcode: evt.params?.['eventlog.opcode'],
+  } : null
+  // Event data fields are eventlog.data.* keys
+  const eventLogData = isEventLog ? Object.entries(evt.params || {})
+    .filter(([k]) => k.startsWith('eventlog.data.'))
+    .map(([k, v]) => [k.replace('eventlog.data.', ''), v] as [string, unknown])
+    .sort(([a], [b]) => a.localeCompare(b)) : []
+  // Non-eventlog params (for the params card when eventlog)
+  const otherParams = isEventLog ? Object.entries(evt.params || {})
+    .filter(([k]) => !k.startsWith('eventlog.')) : Object.entries(evt.params || {})
+
   return (
     <tr>
       <td colSpan={7} className="p-0">
         <div className="bg-blue-50/30 dark:bg-black/30 border-t border-b border-blue-100 dark:border-slate-700/50 px-4 py-4 space-y-4" onClick={(e) => e.stopPropagation()}>
-          {/* ── Top section: 3 cards ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {/* ── Top section: cards ── */}
+          {isEventLog && eventLogMeta ? (
+            /* ═══ Event Log Layout ═══ */
+            <div className="space-y-3">
+              {/* Event Log Header Card */}
+              <div className="rounded-lg border-l-4 border-sky-500 bg-white dark:bg-slate-900/60 border-y border-r border-sky-100 dark:border-slate-700/50 p-3">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-sky-600 dark:text-sky-400 text-[10px] font-bold uppercase tracking-wider">Event Log</span>
+                  <span className="font-semibold text-sm text-sky-700 dark:text-sky-300 cursor-pointer hover:text-sky-900 dark:hover:text-sky-200 transition-colors" onClick={() => onAddFilter('eventlog.channel', eventLogMeta.channel)} title="Click to filter">{eventLogMeta.channel}</span>
+                  <span className="rounded bg-sky-100 dark:bg-sky-500/20 px-2 py-0.5 text-xs font-bold text-sky-800 dark:text-sky-300 cursor-pointer hover:bg-sky-200 dark:hover:bg-sky-500/30 transition-colors" onClick={() => eventLogMeta.eventId !== undefined && onAddFilter('eventlog.event.id', String(eventLogMeta.eventId))} title="Click to filter">
+                    Event ID {eventLogMeta.eventId}
+                  </span>
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    eventLogMeta.level === 'Error' || eventLogMeta.level === 'Critical' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
+                    eventLogMeta.level === 'Warning' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' :
+                    'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-300'
+                  }`}>{eventLogMeta.level || `Level ${eventLogMeta.levelId}`}</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-[11px]">
+                  <div><span className="text-gray-500 dark:text-slate-500">Provider </span><span className="text-gray-800 dark:text-slate-300 font-mono cursor-pointer hover:text-sky-700 dark:hover:text-sky-400 transition-colors" onClick={() => onAddFilter('eventlog.provider', eventLogMeta.provider)} title="Click to filter">{eventLogMeta.provider}</span></div>
+                  <div><span className="text-gray-500 dark:text-slate-500">Computer </span><span className="text-gray-800 dark:text-slate-300 font-mono">{eventLogMeta.computer}</span></div>
+                  {eventLogMeta.userId && <div><span className="text-gray-500 dark:text-slate-500">User SID </span><span className="text-gray-800 dark:text-slate-300 font-mono">{eventLogMeta.userId}</span></div>}
+                  {eventLogMeta.recordId !== undefined && <div><span className="text-gray-500 dark:text-slate-500">Record </span><span className="text-gray-800 dark:text-slate-300 font-mono">#{String(eventLogMeta.recordId)}</span></div>}
+                  {eventLogMeta.keywords && <div><span className="text-gray-500 dark:text-slate-500">Keywords </span><span className="text-gray-800 dark:text-slate-300 font-mono">{eventLogMeta.keywords}</span></div>}
+                  {eventLogMeta.task !== undefined && <div><span className="text-gray-500 dark:text-slate-500">Task </span><span className="text-gray-800 dark:text-slate-300 font-mono">{String(eventLogMeta.task)}</span></div>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {/* Event Data Card — the main content for eventlog events */}
+                <div className="rounded-lg border-l-4 border-sky-400 bg-white dark:bg-slate-900/60 border-y border-r border-sky-100 dark:border-slate-700/50 p-3 space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sky-600 dark:text-sky-400 text-[10px] font-bold uppercase tracking-wider">Event Data</span>
+                    <span className="text-xs text-gray-500 dark:text-slate-500">{eventLogData.length} fields</span>
+                  </div>
+                  {eventLogData.length > 0 ? (
+                    <div className="space-y-0.5 max-h-[300px] overflow-auto">
+                      {eventLogData.map(([key, value]) => (
+                        <div key={key} className="flex gap-2 rounded bg-sky-50 dark:bg-black/30 px-2 py-1">
+                          <span className="text-[11px] text-sky-700 dark:text-sky-400 whitespace-nowrap min-w-[120px] font-medium">{key}</span>
+                          <span className="text-[11px] text-gray-800 dark:text-slate-300 font-mono break-all">{String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-slate-600">No event data fields</p>
+                  )}
+                </div>
+
+                {/* Source Process Card — collapsed for eventlog */}
+                <div className="rounded-lg border-l-4 border-blue-400 bg-white dark:bg-slate-900/60 border-y border-r border-blue-100 dark:border-slate-700/50 p-3 space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider">Source Process</span>
+                    <span className="font-semibold text-sm text-blue-700 dark:text-cyan-400 cursor-pointer hover:text-blue-900 dark:hover:text-cyan-300 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
+                    <span className="text-[11px] text-gray-500 dark:text-slate-500 font-mono">PID {evt.pid}</span>
+                  </div>
+                  {evt.process_exe && <p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all">{evt.process_exe}</p>}
+                  {evt.process_cmdline && (
+                    <div className="rounded bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-gray-800 dark:text-slate-200 font-mono break-all whitespace-pre-wrap max-h-[80px] overflow-auto">
+                      {evt.process_cmdline}
+                    </div>
+                  )}
+                  {parentName && (
+                    <div className="text-[11px] text-gray-500 dark:text-slate-500">
+                      Parent: <span className="text-gray-800 dark:text-slate-300">{parentName}</span> (PID {evt.parent_pid})
+                    </div>
+                  )}
+                  {(ps.sha256 || ps.md5) && (
+                    <div className="space-y-0.5">
+                      {ps.sha256 && <p className="text-[10px] text-gray-400 dark:text-slate-500 font-mono break-all">SHA256: {ps.sha256}</p>}
+                      {ps.md5 && <p className="text-[10px] text-gray-400 dark:text-slate-500 font-mono break-all">MD5: {ps.md5}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ═══ Standard ETW Event Layout ═══ */
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             {/* Process Card */}
             <div className="rounded-lg border-l-4 border-blue-500 bg-white dark:bg-slate-900/60 border-y border-r border-blue-100 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
@@ -1232,11 +1333,11 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             <div className="rounded-lg border-l-4 border-gray-400 dark:border-slate-500 bg-white dark:bg-slate-900/60 border-y border-r border-gray-100 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-gray-600 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wider">Params</span>
-                <span className="text-xs text-gray-500 dark:text-slate-500">{Object.keys(evt.params || {}).length} fields</span>
+                <span className="text-xs text-gray-500 dark:text-slate-500">{otherParams.length} fields</span>
               </div>
-              {evt.params && Object.keys(evt.params).length > 0 ? (
+              {otherParams.length > 0 ? (
                 <div className="space-y-0.5 max-h-[200px] overflow-auto">
-                  {Object.entries(evt.params).map(([key, value]) => (
+                  {otherParams.map(([key, value]) => (
                     <div key={key} className="flex gap-2 rounded bg-gray-50 dark:bg-black/30 px-2 py-1">
                       <span className="text-[11px] text-gray-500 dark:text-slate-500 whitespace-nowrap min-w-[90px]">{key}</span>
                       <span className="text-[11px] text-gray-800 dark:text-slate-300 font-mono break-all">{String(value)}</span>
@@ -1248,6 +1349,7 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
               )}
             </div>
           </div>
+          )}
 
           {/* ── Bottom section: tabs ── */}
           <div>

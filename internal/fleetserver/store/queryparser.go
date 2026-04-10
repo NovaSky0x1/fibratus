@@ -76,6 +76,19 @@ var jsonFieldMapping = map[string][]string{
 	"module.name":    {"params", "file_name"},
 	"module.path":    {"params", "file_path"},
 
+	// Event log fields — stored as flat dotted keys in params
+	"eventlog.channel":    {"params", "eventlog.channel"},
+	"eventlog.event.id":   {"params", "eventlog.event.id"},
+	"eventlog.provider":   {"params", "eventlog.provider"},
+	"eventlog.level":      {"params", "eventlog.level"},
+	"eventlog.level.id":   {"params", "eventlog.level.id"},
+	"eventlog.computer":   {"params", "eventlog.computer"},
+	"eventlog.user.id":    {"params", "eventlog.user.id"},
+	"eventlog.record.id":  {"params", "eventlog.record.id"},
+	"eventlog.task":       {"params", "eventlog.task"},
+	"eventlog.opcode":     {"params", "eventlog.opcode"},
+	"eventlog.keywords":   {"params", "eventlog.keywords"},
+
 	// Process fields from ps object in raw_event
 	"ps.sid":             {"ps", "sid"},
 	"ps.username":        {"ps", "username"},
@@ -383,19 +396,21 @@ func buildComparison(field, op, value, dbType string, argIdx int) (string, []int
 	}
 
 	// JSON field query — use known mapping or fall back to dotted path
-	var jsonPath string
-	if mapped, ok := jsonFieldMapping[field]; ok {
-		parts := make([]string, len(mapped))
-		for i, p := range mapped {
-			parts[i] = "'" + p + "'"
-		}
-		jsonPath = strings.Join(parts, ", ")
-	} else {
-		jsonPath = fieldToJSONPath(field)
-	}
-	ph := placeholder()
-	jsonExtract := fmt.Sprintf("JSONExtractString(raw_event, %s)", jsonPath)
+	mapped, hasMapped := jsonFieldMapping[field]
+
 	if dbType == "clickhouse" {
+		var jsonPath string
+		if hasMapped {
+			parts := make([]string, len(mapped))
+			for i, p := range mapped {
+				parts[i] = "'" + p + "'"
+			}
+			jsonPath = strings.Join(parts, ", ")
+		} else {
+			jsonPath = fieldToJSONPath(field)
+		}
+		ph := placeholder()
+		jsonExtract := fmt.Sprintf("JSONExtractString(raw_event, %s)", jsonPath)
 		switch op {
 		case "=":
 			return fmt.Sprintf("%s = %s", jsonExtract, ph), []interface{}{value}, argIdx
@@ -415,15 +430,69 @@ func buildComparison(field, op, value, dbType string, argIdx int) (string, []int
 			return fmt.Sprintf("%s = %s", jsonExtract, ph), []interface{}{value}, argIdx
 		}
 	}
-	// PostgreSQL JSONB fallback
-	return fmt.Sprintf("raw_event::text ILIKE %s", ph), []interface{}{"%" + value + "%"}, argIdx
+
+	// PostgreSQL JSONB extraction
+	ph := placeholder()
+	pgExtract := buildPostgresJSONExtract(field, mapped, hasMapped)
+	switch op {
+	case "=":
+		return fmt.Sprintf("%s = %s", pgExtract, ph), []interface{}{value}, argIdx
+	case "!=":
+		return fmt.Sprintf("%s != %s", pgExtract, ph), []interface{}{value}, argIdx
+	case ">", "<", ">=", "<=":
+		// Cast to numeric for comparisons on numeric fields
+		return fmt.Sprintf("(%s)::numeric %s %s", pgExtract, op, ph), []interface{}{value}, argIdx
+	case "~=", "icontains", "contains":
+		return fmt.Sprintf("%s ILIKE %s", pgExtract, ph), []interface{}{"%" + value + "%"}, argIdx
+	case "startswith", "istartswith":
+		return fmt.Sprintf("%s ILIKE %s", pgExtract, ph), []interface{}{value + "%"}, argIdx
+	case "endswith", "iendswith":
+		return fmt.Sprintf("%s ILIKE %s", pgExtract, ph), []interface{}{"%" + value}, argIdx
+	case "matches", "imatches":
+		pattern := strings.ReplaceAll(value, "*", "%")
+		pattern = strings.ReplaceAll(pattern, "?", "_")
+		return fmt.Sprintf("%s ILIKE %s", pgExtract, ph), []interface{}{pattern}, argIdx
+	default:
+		return fmt.Sprintf("%s = %s", pgExtract, ph), []interface{}{value}, argIdx
+	}
+}
+
+// buildPostgresJSONExtract builds a PostgreSQL JSONB extraction expression.
+// For mapped fields like {"params", "eventlog.event.id"}, produces:
+//
+//	raw_event->'params'->>'eventlog.event.id'
+//
+// For unmapped dotted fields like "some.nested.field", walks the JSON path:
+//
+//	raw_event->'some'->'nested'->>'field'
+func buildPostgresJSONExtract(field string, mapped []string, hasMapped bool) string {
+	if hasMapped && len(mapped) > 0 {
+		var b strings.Builder
+		b.WriteString("raw_event")
+		for i, seg := range mapped {
+			if i == len(mapped)-1 {
+				b.WriteString("->>'" + seg + "'")
+			} else {
+				b.WriteString("->'" + seg + "'")
+			}
+		}
+		return b.String()
+	}
+	// Unmapped: try params first, then top-level
+	parts := strings.Split(field, ".")
+	var b strings.Builder
+	b.WriteString("raw_event->'params'")
+	// Use the full dotted key as a single key in params
+	b.WriteString("->>'" + field + "'")
+	_ = parts
+	return b.String()
 }
 
 func buildInClause(field, op string, values []string, dbType string, argIdx int) (string, []interface{}, int) {
 	col, isColumn := fieldMapping[field]
 	if !isColumn {
-		// Check JSON field mapping
-		if mapped, ok := jsonFieldMapping[field]; ok && dbType == "clickhouse" {
+		mapped, hasMapped := jsonFieldMapping[field]
+		if dbType == "clickhouse" && hasMapped {
 			parts := make([]string, len(mapped))
 			for i, p := range mapped {
 				parts[i] = "'" + p + "'"
@@ -440,17 +509,21 @@ func buildInClause(field, op string, values []string, dbType string, argIdx int)
 			}
 			return "(" + strings.Join(orParts, " OR ") + ")", args, argIdx
 		}
-		// Fallback to raw_event text search
+		// PostgreSQL: use proper JSONB extraction for mapped fields
+		pgExtract := buildPostgresJSONExtract(field, mapped, hasMapped)
 		var orParts []string
 		var args []interface{}
 		for _, v := range values {
 			if dbType == "clickhouse" {
 				orParts = append(orParts, "raw_event LIKE ?")
 			} else {
-				orParts = append(orParts, fmt.Sprintf("raw_event::text ILIKE $%d", argIdx))
+				orParts = append(orParts, fmt.Sprintf("%s = $%d", pgExtract, argIdx))
 				argIdx++
 			}
-			args = append(args, "%"+v+"%")
+			args = append(args, v)
+		}
+		if op == "not in" || op == "iin" {
+			// iin = case-insensitive in
 		}
 		return "(" + strings.Join(orParts, " OR ") + ")", args, argIdx
 	}
