@@ -60,6 +60,7 @@ export interface Agent {
   status: 'online' | 'offline' | 'stale'
   tamper_protection: boolean
   isolated: boolean
+  eventlog_collection: boolean
   last_heartbeat: string
   registered_at: string
 }
@@ -295,6 +296,11 @@ export const api = {
   deleteAgent: (id: string) => fetchApi<void>(orgPath(`/agents/${id}`), { method: 'DELETE' }),
   setTamperProtection: (agentId: string, enabled: boolean) =>
     fetchApi<void>(orgPath(`/agents/${agentId}/tamper-protection`), {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+  setEventLogCollection: (agentId: string, enabled: boolean) =>
+    fetchApi<void>(orgPath(`/agents/${agentId}/eventlog-collection`), {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     }),

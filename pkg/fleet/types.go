@@ -160,8 +160,9 @@ type Agent struct {
 	LastHeartbeat    time.Time         `json:"last_heartbeat"`
 	RegisteredAt     time.Time         `json:"registered_at"`
 	UpdatedAt        time.Time         `json:"updated_at"`
-	TamperProtection bool              `json:"tamper_protection"`
-	Isolated         bool              `json:"isolated"`
+	TamperProtection   bool              `json:"tamper_protection"`
+	Isolated           bool              `json:"isolated"`
+	EventLogCollection bool              `json:"eventlog_collection"`
 }
 
 // Heartbeat contains periodic status information sent by an agent.

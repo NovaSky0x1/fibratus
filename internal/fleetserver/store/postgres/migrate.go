@@ -385,8 +385,9 @@ ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tamper_protection_enabled BOO
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS tamper_protection BOOLEAN DEFAULT FALSE;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS isolated BOOLEAN DEFAULT FALSE;
 
--- Event log collection account-level toggle
+-- Event log collection
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS eventlog_enabled BOOLEAN DEFAULT FALSE;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS eventlog_collection BOOLEAN DEFAULT FALSE;
 
 -- ═══════════════════════════════════════════════════════════════
 -- Decommissioned agents — deleted agents that should auto-uninstall on reconnect

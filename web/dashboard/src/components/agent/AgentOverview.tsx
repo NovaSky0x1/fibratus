@@ -56,12 +56,17 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
     queryFn: () => api.getAccountSettings(),
     staleTime: 60000,
   })
-  const accountSettings = settingsData?.data as { tamper_protection_enabled: boolean; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> } | undefined
+  const accountSettings = settingsData?.data as { tamper_protection_enabled: boolean; eventlog_enabled: boolean; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> } | undefined
   const tamperLockedByPolicy = !!(accountSettings?.tamper_protection_enabled || accountSettings?.org_protection?.some(o => o.id === agent.org_id && o.tamper_protection_enabled))
 
   // Tamper protection state
   const [tamperResult, setTamperResult] = useState<ActionResult | null>(null)
   const [tamperToggling, setTamperToggling] = useState(false)
+
+  // Event log collection state
+  const [eventLogResult, setEventLogResult] = useState<ActionResult | null>(null)
+  const [eventLogToggling, setEventLogToggling] = useState(false)
+  const eventLogLockedByPolicy = !!accountSettings?.eventlog_enabled
 
   // Network isolation state
   const [isolationResult, setIsolationResult] = useState<ActionResult | null>(null)
@@ -97,6 +102,22 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
       setTamperResult({ success: false, message: e instanceof Error ? e.message : 'Failed to toggle tamper protection' })
     } finally {
       setTamperToggling(false)
+    }
+  }
+
+  const handleEventLogToggle = async () => {
+    setEventLogResult(null)
+    setEventLogToggling(true)
+    const newState = !agent.eventlog_collection
+    try {
+      await api.setEventLogCollection(agent.id, newState)
+      await cmdMutation.mutateAsync({ type: 'set_eventlog_policy', payload: { enabled: newState } })
+      setEventLogResult({ success: true, message: newState ? 'Event log collection enabled.' : 'Event log collection disabled.' })
+      queryClient.invalidateQueries({ queryKey: ['agent', agent.id] })
+    } catch (e) {
+      setEventLogResult({ success: false, message: e instanceof Error ? e.message : 'Failed to toggle event log collection' })
+    } finally {
+      setEventLogToggling(false)
     }
   }
 
@@ -193,6 +214,16 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
                 Tamper {agent.tamper_protection ? 'ON' : 'OFF'}
               </span>
 
+              {/* Event Log Collection */}
+              <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' +
+                (agent.eventlog_collection
+                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+              }>
+                <Info className="w-3 h-3" />
+                WEL {agent.eventlog_collection ? 'ON' : 'OFF'}
+              </span>
+
               {/* Network */}
               <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' +
                 (agent.isolated
@@ -234,8 +265,8 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
         </div>
       </div>
 
-      {/* Agent Controls — Tamper, Isolation, Uninstall */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Agent Controls — Tamper, Event Log, Isolation, Uninstall */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Tamper Protection */}
         <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm dark:shadow-slate-900/50">
           <div className="flex items-start gap-3 mb-4">
@@ -280,6 +311,52 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
             </button>
           </div>
           <ResultBanner result={tamperResult} />
+        </div>
+
+        {/* Event Log Collection */}
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm dark:shadow-slate-900/50">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400">
+              <Info className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Event Log Collection</h4>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Collect Windows Event Logs (Security, Sysmon, etc.)</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+                (agent.eventlog_collection
+                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+              }>
+                {agent.eventlog_collection ? 'Active' : 'Inactive'}
+              </span>
+              {eventLogLockedByPolicy && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                  Enforced by policy
+                </span>
+              )}
+            </div>
+            <button
+              role="switch"
+              aria-checked={agent.eventlog_collection}
+              onClick={handleEventLogToggle}
+              disabled={eventLogToggling || isPending || eventLogLockedByPolicy}
+              title={eventLogLockedByPolicy ? 'Event log collection is enforced by account policy' : undefined}
+              className={'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed ' +
+                (agent.eventlog_collection ? 'bg-blue-500' : 'bg-gray-300 dark:bg-slate-600')
+              }
+            >
+              <span
+                className={'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ' +
+                  (agent.eventlog_collection ? 'translate-x-5' : 'translate-x-0')
+                }
+              />
+            </button>
+          </div>
+          <ResultBanner result={eventLogResult} />
         </div>
 
         {/* Network Isolation */}
