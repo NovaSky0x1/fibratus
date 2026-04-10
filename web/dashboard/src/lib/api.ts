@@ -555,7 +555,7 @@ export function clearSession() {
 }
 
 export function isAuthenticated(): boolean {
-  return !!getToken() && !!getOrgId()
+  return !!getToken()
 }
 
 export function getCurrentOrgId(): string {
