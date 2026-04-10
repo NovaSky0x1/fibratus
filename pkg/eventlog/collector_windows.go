@@ -196,8 +196,9 @@ func (c *Collector) Reconfigure(config Config) {
 }
 
 func (c *Collector) subscribe(ch ChannelConfig) error {
-	// Create manual-reset signal event for EvtSubscribe notification
-	signal, err := windows.CreateEvent(nil, 1, 0, nil)
+	// Create auto-reset signal event for EvtSubscribe notification.
+	// Per MSDN: use auto-reset event with EvtSubscribe signal mode.
+	signal, err := windows.CreateEvent(nil, 0, 0, nil)
 	if err != nil {
 		return fmt.Errorf("create signal event: %w", err)
 	}
@@ -262,32 +263,44 @@ func (c *Collector) readLoop(sub *subscription) {
 			return
 		}
 
-		// Poll EvtNext directly with a timeout — more reliable than signal events
-		// across different Windows versions and service account contexts
-		returned, err := wevtapi.Next(sub.handle, events, uint32(nextTimeout))
-		if returned == 0 {
-			if err != nil {
-				// ERROR_NO_MORE_ITEMS (259) is expected when no events available
-				errno, ok := err.(syscall.Errno)
-				if !ok || errno != 259 {
-					log.Warnf("eventlog: EvtNext error on %s: %v", sub.channel, err)
-				}
-			}
+		// Wait for signal event — EvtSubscribe sets this when events are available.
+		// Use 2-second timeout so we can check closed state periodically.
+		result, _ := windows.WaitForSingleObject(sub.signal, 2000)
+		if result != windows.WAIT_OBJECT_0 {
 			continue
 		}
 
-		totalEvents += uint64(returned)
-		if totalEvents <= 10 || totalEvents%1000 == 0 {
-			log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
+		// Drain all available events (EvtNext with timeout=0 for subscriptions)
+		for {
+			if c.closed.Load() {
+				return
+			}
+			returned, err := wevtapi.Next(sub.handle, events, 0)
+			if returned == 0 {
+				if err != nil {
+					errno, ok := err.(syscall.Errno)
+					if !ok || errno != 259 { // ERROR_NO_MORE_ITEMS
+						log.Warnf("eventlog: EvtNext error on %s: %v", sub.channel, err)
+					}
+				}
+				break
+			}
+
+			totalEvents += uint64(returned)
+			if totalEvents <= 10 || totalEvents%1000 == 0 {
+				log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
+			}
+
+			for i := uint32(0); i < returned; i++ {
+				c.processEvent(sub, events[i])
+				if sub.bookmark != 0 {
+					wevtapi.UpdateBookmark(sub.bookmark, events[i])
+				}
+				wevtapi.Close(events[i])
+			}
 		}
 
-		for i := uint32(0); i < returned; i++ {
-			c.processEvent(sub, events[i])
-			if sub.bookmark != 0 {
-				wevtapi.UpdateBookmark(sub.bookmark, events[i])
-			}
-			wevtapi.Close(events[i])
-		}
+		// Auto-reset event resets automatically after WaitForSingleObject returns
 	}
 }
 
