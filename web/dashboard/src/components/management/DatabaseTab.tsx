@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 
@@ -12,7 +12,55 @@ interface QueryResult {
   error?: string
 }
 
+interface DbOverview {
+  totalTables: number
+  totalSize: string
+  extra: string
+}
+
 const browseLimit = 50
+const HISTORY_KEY = 'db-query-history'
+const MAX_HISTORY = 20
+
+function downloadCSV(columns: string[], rows: unknown[][], filename: string) {
+  const header = columns.join(',')
+  const body = rows.map(row => row.map(cell => {
+    const val = cell === null ? '' : String(cell)
+    return val.includes(',') || val.includes('"') || val.includes('\n') ? `"${val.replace(/"/g, '""')}"` : val
+  }).join(',')).join('\n')
+  const blob = new Blob([header + '\n' + body], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadJSON(columns: string[], rows: unknown[][], filename: string) {
+  const data = rows.map(row => {
+    const obj: Record<string, unknown> = {}
+    columns.forEach((col, i) => { obj[col] = row[i] })
+    return obj
+  })
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+function loadHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return []
+}
+
+function saveHistory(history: string[]) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)))
+  } catch { /* ignore */ }
+}
 
 export default function DatabaseTab() {
   const [dbType, setDbType] = useState<DbType>('postgres')
@@ -30,6 +78,22 @@ export default function DatabaseTab() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [deleting, setDeleting] = useState(false)
 
+  // New state
+  const [sortColumn, setSortColumn] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('ASC')
+  const [rowCount, setRowCount] = useState<number | null>(null)
+  const [queryHistory, setQueryHistory] = useState<string[]>(loadHistory)
+  const [showHistory, setShowHistory] = useState(false)
+  const [queryTime, setQueryTime] = useState<number | null>(null)
+  const [showInsert, setShowInsert] = useState(false)
+  const [insertValues, setInsertValues] = useState<Record<string, string>>({})
+  const [insertLoading, setInsertLoading] = useState(false)
+  const [showOperations, setShowOperations] = useState(false)
+  const [operationLoading, setOperationLoading] = useState<string | null>(null)
+  const [dropConfirmName, setDropConfirmName] = useState('')
+  const [dbOverview, setDbOverview] = useState<DbOverview | null>(null)
+  const [overviewLoading, setOverviewLoading] = useState(false)
+
   const pgTables = useQuery({
     queryKey: ['pg-tables'],
     queryFn: () => api.dbTablesPostgres(),
@@ -44,19 +108,78 @@ export default function DatabaseTab() {
 
   const tables = dbType === 'postgres' ? pgTables : chTables
 
+  // Load database overview when in tables view
+  const fetchOverview = useCallback(async () => {
+    setOverviewLoading(true)
+    try {
+      const fn = dbType === 'postgres' ? api.dbQueryPostgres : api.dbQueryClickhouse
+      if (dbType === 'postgres') {
+        const [sizeRes, connRes] = await Promise.all([
+          fn(`SELECT pg_size_pretty(sum(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename)))) AS total_size, count(*) AS table_count FROM pg_tables WHERE schemaname = 'public'`),
+          fn(`SELECT count(*) AS active_connections FROM pg_stat_activity WHERE state = 'active'`),
+        ])
+        const tableCount = sizeRes.data?.rows?.[0]?.[1] ?? 0
+        const totalSize = sizeRes.data?.rows?.[0]?.[0] ?? '0 bytes'
+        const activeConns = connRes.data?.rows?.[0]?.[0] ?? 0
+        setDbOverview({
+          totalTables: Number(tableCount),
+          totalSize: String(totalSize),
+          extra: `${activeConns} active connections`,
+        })
+      } else {
+        const res = await fn(`SELECT count() AS table_count, formatReadableSize(sum(total_bytes)) AS total_size, sum(total_rows) AS total_rows FROM system.tables WHERE database = 'fibratus'`)
+        const row = res.data?.rows?.[0]
+        setDbOverview({
+          totalTables: Number(row?.[0] ?? 0),
+          totalSize: String(row?.[1] ?? '0 B'),
+          extra: `${Number(row?.[2] ?? 0).toLocaleString()} total rows`,
+        })
+      }
+    } catch {
+      setDbOverview(null)
+    } finally {
+      setOverviewLoading(false)
+    }
+  }, [dbType])
+
+  useEffect(() => {
+    if (browseView === 'tables') fetchOverview()
+  }, [browseView, dbType, fetchOverview])
+
+  function buildDataQuery(table: string, offset: number, sortCol: string | null, sortDirection: 'ASC' | 'DESC') {
+    const quotedTable = dbType === 'postgres' ? `"${table}"` : table
+    let q = `SELECT * FROM ${quotedTable}`
+    if (sortCol) {
+      const quotedCol = dbType === 'postgres' ? `"${sortCol}"` : sortCol
+      q += ` ORDER BY ${quotedCol} ${sortDirection}`
+    }
+    q += ` LIMIT ${browseLimit} OFFSET ${offset}`
+    return q
+  }
+
   async function executeQuery() {
     if (!query.trim()) return
     setLoading(true)
     setResult(null)
+    setQueryTime(null)
+    const start = performance.now()
     try {
       const fn = dbType === 'postgres' ? api.dbQueryPostgres : api.dbQueryClickhouse
       const res = await fn(query)
+      const elapsed = performance.now() - start
+      setQueryTime(elapsed)
       if (res.data) {
         setResult(res.data)
       } else if (res.error) {
         setResult({ columns: [], rows: [], error: res.error.message })
       }
+      // Save to history
+      const trimmed = query.trim()
+      const updated = [trimmed, ...queryHistory.filter(h => h !== trimmed)].slice(0, MAX_HISTORY)
+      setQueryHistory(updated)
+      saveHistory(updated)
     } catch (err) {
+      setQueryTime(performance.now() - start)
       setResult({ columns: [], rows: [], error: String(err) })
     } finally {
       setLoading(false)
@@ -68,6 +191,12 @@ export default function DatabaseTab() {
     setBrowseView('browse')
     setBrowseOffset(0)
     setSelectedRows(new Set())
+    setSortColumn(null)
+    setSortDir('ASC')
+    setRowCount(null)
+    setShowInsert(false)
+    setShowOperations(false)
+    setDropConfirmName('')
     setTableLoading(true)
     setTableColumns(null)
     setTableData(null)
@@ -76,12 +205,14 @@ export default function DatabaseTab() {
       const schemaQuery = dbType === 'postgres'
         ? `SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '${tableName}' ORDER BY ordinal_position`
         : `SELECT name AS column_name, type AS data_type, default_expression AS column_default FROM system.columns WHERE database = 'fibratus' AND table = '${tableName}' ORDER BY position`
-      const dataQuery = dbType === 'postgres'
-        ? `SELECT * FROM "${tableName}" LIMIT ${browseLimit}`
-        : `SELECT * FROM ${tableName} LIMIT ${browseLimit}`
-      const [schemaRes, dataRes] = await Promise.all([fn(schemaQuery), fn(dataQuery)])
+      const dataQuery = buildDataQuery(tableName, 0, null, 'ASC')
+      const countQuery = dbType === 'postgres'
+        ? `SELECT COUNT(*) FROM "${tableName}"`
+        : `SELECT COUNT(*) FROM ${tableName}`
+      const [schemaRes, dataRes, countRes] = await Promise.all([fn(schemaQuery), fn(dataQuery), fn(countQuery)])
       if (schemaRes.data) setTableColumns(schemaRes.data)
       if (dataRes.data) setTableData(dataRes.data)
+      if (countRes.data?.rows?.[0]?.[0] !== undefined) setRowCount(Number(countRes.data.rows[0][0]))
     } catch {
       // silently handle
     } finally {
@@ -89,16 +220,16 @@ export default function DatabaseTab() {
     }
   }
 
-  async function loadPage(offset: number) {
+  async function loadPage(offset: number, overrideSortCol?: string | null, overrideSortDir?: 'ASC' | 'DESC') {
     if (!activeTable) return
     setBrowseOffset(offset)
     setSelectedRows(new Set())
     setTableLoading(true)
+    const sc = overrideSortCol !== undefined ? overrideSortCol : sortColumn
+    const sd = overrideSortDir !== undefined ? overrideSortDir : sortDir
     try {
       const fn = dbType === 'postgres' ? api.dbQueryPostgres : api.dbQueryClickhouse
-      const dataQuery = dbType === 'postgres'
-        ? `SELECT * FROM "${activeTable}" LIMIT ${browseLimit} OFFSET ${offset}`
-        : `SELECT * FROM ${activeTable} LIMIT ${browseLimit} OFFSET ${offset}`
+      const dataQuery = buildDataQuery(activeTable, offset, sc, sd)
       const res = await fn(dataQuery)
       if (res.data) setTableData(res.data)
     } catch {
@@ -106,6 +237,16 @@ export default function DatabaseTab() {
     } finally {
       setTableLoading(false)
     }
+  }
+
+  function handleColumnSort(col: string) {
+    let newDir: 'ASC' | 'DESC' = 'ASC'
+    if (sortColumn === col) {
+      newDir = sortDir === 'ASC' ? 'DESC' : 'ASC'
+    }
+    setSortColumn(col)
+    setSortDir(newDir)
+    loadPage(0, col, newDir)
   }
 
   async function saveCell() {
@@ -118,10 +259,7 @@ export default function DatabaseTab() {
       const escaped = editCell.value.replace(/'/g, "''")
       const updateQuery = `UPDATE "${activeTable}" SET "${col}" = '${escaped}' WHERE "${pkCol}" = '${pkVal}'`
       await api.dbQueryPostgres(updateQuery)
-      // Refresh data
-      const dataQuery = `SELECT * FROM "${activeTable}" LIMIT ${browseLimit} OFFSET ${browseOffset}`
-      const res = await api.dbQueryPostgres(dataQuery)
-      if (res.data) setTableData(res.data)
+      await loadPage(browseOffset)
       setEditCell(null)
     } catch {
       // silently handle
@@ -140,6 +278,9 @@ export default function DatabaseTab() {
       await api.dbQueryPostgres(`DELETE FROM "${activeTable}" WHERE "${pkCol}" IN (${pkVals})`)
       setSelectedRows(new Set())
       await loadPage(browseOffset)
+      // Refresh count
+      const countRes = await api.dbQueryPostgres(`SELECT COUNT(*) FROM "${activeTable}"`)
+      if (countRes.data?.rows?.[0]?.[0] !== undefined) setRowCount(Number(countRes.data.rows[0][0]))
     } catch {
       // silently handle
     } finally {
@@ -147,20 +288,86 @@ export default function DatabaseTab() {
     }
   }
 
-  async function deleteAllRows() {
-    if (!activeTable) return
-    if (!confirm(`Delete ALL rows from "${activeTable}"? This cannot be undone.`)) return
-    setDeleting(true)
+  async function insertRow() {
+    if (!activeTable || !tableColumns || dbType !== 'postgres') return
+    setInsertLoading(true)
     try {
-      const fn = dbType === 'postgres' ? api.dbQueryPostgres : api.dbQueryClickhouse
-      const q = dbType === 'postgres' ? `TRUNCATE "${activeTable}"` : `TRUNCATE TABLE ${activeTable}`
-      await fn(q)
-      setSelectedRows(new Set())
-      await loadPage(0)
+      const cols = tableColumns.rows.map(r => String(r[0]))
+      const filledCols = cols.filter(c => insertValues[c]?.trim())
+      if (filledCols.length === 0) { setInsertLoading(false); return }
+      const colList = filledCols.map(c => `"${c}"`).join(', ')
+      const valList = filledCols.map(c => {
+        const v = insertValues[c].trim()
+        if (v.toUpperCase() === 'NULL') return 'NULL'
+        if (v.toUpperCase() === 'DEFAULT') return 'DEFAULT'
+        return `'${v.replace(/'/g, "''")}'`
+      }).join(', ')
+      await api.dbQueryPostgres(`INSERT INTO "${activeTable}" (${colList}) VALUES (${valList})`)
+      setShowInsert(false)
+      setInsertValues({})
+      await loadPage(browseOffset)
+      const countRes = await api.dbQueryPostgres(`SELECT COUNT(*) FROM "${activeTable}"`)
+      if (countRes.data?.rows?.[0]?.[0] !== undefined) setRowCount(Number(countRes.data.rows[0][0]))
     } catch {
       // silently handle
     } finally {
-      setDeleting(false)
+      setInsertLoading(false)
+    }
+  }
+
+  async function runTableOperation(op: string) {
+    if (!activeTable) return
+    setOperationLoading(op)
+    try {
+      const fn = dbType === 'postgres' ? api.dbQueryPostgres : api.dbQueryClickhouse
+      const quotedTable = dbType === 'postgres' ? `"${activeTable}"` : activeTable
+      let q = ''
+      switch (op) {
+        case 'vacuum': q = `VACUUM "${activeTable}"`; break
+        case 'analyze': q = `ANALYZE "${activeTable}"`; break
+        case 'reindex': q = `REINDEX TABLE "${activeTable}"`; break
+        case 'optimize': q = `OPTIMIZE TABLE ${activeTable}`; break
+        case 'truncate':
+          if (!confirm(`TRUNCATE all rows from "${activeTable}"? This cannot be undone.`)) {
+            setOperationLoading(null)
+            return
+          }
+          q = dbType === 'postgres' ? `TRUNCATE ${quotedTable}` : `TRUNCATE TABLE ${quotedTable}`
+          break
+        case 'drop':
+          if (dropConfirmName !== activeTable) {
+            alert('Table name does not match. Type the exact table name to confirm DROP.')
+            setOperationLoading(null)
+            return
+          }
+          if (!confirm(`DROP TABLE "${activeTable}"? This will permanently destroy the table and all its data.`)) {
+            setOperationLoading(null)
+            return
+          }
+          q = `DROP TABLE ${quotedTable}`
+          break
+        default: setOperationLoading(null); return
+      }
+      await fn(q)
+      if (op === 'drop') {
+        setActiveTable(null)
+        setBrowseView('tables')
+        pgTables.refetch()
+        chTables.refetch()
+      } else {
+        await loadPage(browseOffset)
+        const countFn = dbType === 'postgres' ? api.dbQueryPostgres : api.dbQueryClickhouse
+        const countQ = dbType === 'postgres'
+          ? `SELECT COUNT(*) FROM "${activeTable}"`
+          : `SELECT COUNT(*) FROM ${activeTable}`
+        const countRes = await countFn(countQ)
+        if (countRes.data?.rows?.[0]?.[0] !== undefined) setRowCount(Number(countRes.data.rows[0][0]))
+      }
+    } catch {
+      // silently handle
+    } finally {
+      setOperationLoading(null)
+      setDropConfirmName('')
     }
   }
 
@@ -171,6 +378,9 @@ export default function DatabaseTab() {
   }
 
   const tableList = tables.data?.data
+  const sortedTableRows = tableList?.rows
+    ? [...tableList.rows].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    : null
 
   return (
     <div className="space-y-4">
@@ -230,19 +440,48 @@ export default function DatabaseTab() {
               </button>
               <span>/</span>
               <span className="text-gray-900 dark:text-slate-100 font-medium">{activeTable}</span>
+              {rowCount !== null && (
+                <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">({rowCount.toLocaleString()} rows)</span>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Database Overview Bar */}
+      {browseView === 'tables' && dbOverview && !overviewLoading && (
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 8 2 8 2s8 0 8-2V7M4 7c0 2 8 2 8 2s8 0 8-2M4 7c0-2 8-2 8-2s8 0 8 2" />
+              </svg>
+              <span className="text-sm text-gray-700 dark:text-slate-300"><span className="font-semibold">{dbOverview.totalTables}</span> tables</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 8 2 8 2s8 0 8-2V7" />
+              </svg>
+              <span className="text-sm text-gray-700 dark:text-slate-300"><span className="font-semibold">{dbOverview.totalSize}</span> total size</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="text-sm text-gray-700 dark:text-slate-300">{dbOverview.extra}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tables List View */}
       {browseView === 'tables' && (
         <div>
           {tables.isLoading ? (
             <div className="text-center py-12 text-gray-500 dark:text-slate-400">Loading tables...</div>
-          ) : tableList && tableList.columns && tableList.rows ? (
+          ) : tableList && tableList.columns && sortedTableRows ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {tableList.rows.map((row, i) => {
+              {sortedTableRows.map((row, i) => {
                 const tableName = String(row[0])
                 return (
                   <button
@@ -279,7 +518,7 @@ export default function DatabaseTab() {
       {/* Table Browse View */}
       {browseView === 'browse' && activeTable && (
         <div className="space-y-4">
-          {tableLoading ? (
+          {tableLoading && !tableData ? (
             <div className="text-center py-12 text-gray-500 dark:text-slate-400">Loading table...</div>
           ) : (
             <>
@@ -324,10 +563,55 @@ export default function DatabaseTab() {
               {tableData && (
                 <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700 dark:text-slate-300">
-                      Data {tableData.rows.length > 0 && `(${browseOffset + 1}-${browseOffset + tableData.rows.length})`}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-700 dark:text-slate-300">
+                        Data {tableData.rows.length > 0 && `(${browseOffset + 1}-${browseOffset + tableData.rows.length}`}{rowCount !== null && ` of ${rowCount.toLocaleString()}`}{tableData.rows.length > 0 && ')'}
+                      </span>
+                      {sortColumn && (
+                        <span className="text-xs text-gray-400 dark:text-slate-500">
+                          sorted by {sortColumn} {sortDir}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
+                      {/* Export buttons */}
+                      <button
+                        onClick={() => downloadCSV(tableData.columns, tableData.rows, `${activeTable}.csv`)}
+                        className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                        title="Export CSV"
+                      >
+                        CSV
+                      </button>
+                      <button
+                        onClick={() => downloadJSON(tableData.columns, tableData.rows, `${activeTable}.json`)}
+                        className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                        title="Export JSON"
+                      >
+                        JSON
+                      </button>
+                      <div className="w-px h-4 bg-gray-200 dark:bg-slate-600" />
+                      {/* Insert Row (PG only) */}
+                      {dbType === 'postgres' && tableColumns && (
+                        <button
+                          onClick={() => {
+                            setShowInsert(!showInsert)
+                            if (!showInsert) {
+                              const defaults: Record<string, string> = {}
+                              tableColumns.rows.forEach(r => {
+                                const colName = String(r[0])
+                                const colDefault = r[3]
+                                defaults[colName] = colDefault ? String(colDefault) : ''
+                              })
+                              setInsertValues(defaults)
+                            }
+                          }}
+                          className="rounded border border-green-300 dark:border-green-700 px-2 py-1 text-xs text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"
+                        >
+                          + Insert Row
+                        </button>
+                      )}
+                      <div className="w-px h-4 bg-gray-200 dark:bg-slate-600" />
+                      {/* Pagination */}
                       <button
                         onClick={() => loadPage(Math.max(0, browseOffset - browseLimit))}
                         disabled={browseOffset === 0 || tableLoading}
@@ -351,18 +635,49 @@ export default function DatabaseTab() {
                           {deleting ? 'Deleting...' : `Delete ${selectedRows.size} selected`}
                         </button>
                       )}
-                      {dbType === 'postgres' && (
-                        <button
-                          onClick={deleteAllRows}
-                          disabled={deleting}
-                          className="px-2 py-1 text-xs rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
-                        >
-                          Delete All
-                        </button>
-                      )}
                     </div>
                   </div>
-                  <div className="max-h-[600px] overflow-y-auto">
+
+                  {/* Insert Row Panel */}
+                  {showInsert && dbType === 'postgres' && tableColumns && (
+                    <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 bg-green-50/50 dark:bg-green-900/10">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-green-700 dark:text-green-400">Insert New Row</span>
+                        <button onClick={() => setShowInsert(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">Close</button>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {tableColumns.rows.map((r, i) => {
+                          const colName = String(r[0])
+                          const colType = String(r[1])
+                          return (
+                            <div key={i}>
+                              <label className="block text-xs text-gray-500 dark:text-slate-400 mb-0.5">
+                                {colName} <span className="text-gray-300 dark:text-slate-600">({colType})</span>
+                              </label>
+                              <input
+                                value={insertValues[colName] || ''}
+                                onChange={e => setInsertValues(prev => ({ ...prev, [colName]: e.target.value }))}
+                                placeholder="NULL"
+                                className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:border-green-500 dark:focus:border-green-500 focus:outline-none"
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={insertRow}
+                          disabled={insertLoading}
+                          className="px-3 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {insertLoading ? 'Inserting...' : 'Insert'}
+                        </button>
+                        <span className="text-xs text-gray-400 dark:text-slate-500">Leave blank for NULL, type DEFAULT for column default</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="max-h-[600px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-gray-50 dark:bg-slate-800 z-10">
                         <tr className="border-b border-gray-200 dark:border-slate-700">
@@ -384,7 +699,20 @@ export default function DatabaseTab() {
                           )}
                           <th className="px-2 py-2 text-left text-xs font-medium text-gray-400 dark:text-slate-500 w-10">#</th>
                           {tableData.columns.map((col, i) => (
-                            <th key={i} className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase whitespace-nowrap">{col}</th>
+                            <th
+                              key={i}
+                              onClick={() => handleColumnSort(col)}
+                              className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase whitespace-nowrap cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 select-none"
+                            >
+                              <span className="flex items-center gap-1">
+                                {col}
+                                {sortColumn === col && (
+                                  <span className="text-blue-500 dark:text-blue-400">
+                                    {sortDir === 'ASC' ? '\u2191' : '\u2193'}
+                                  </span>
+                                )}
+                              </span>
+                            </th>
                           ))}
                         </tr>
                       </thead>
@@ -459,6 +787,91 @@ export default function DatabaseTab() {
                   </div>
                 </div>
               )}
+
+              {/* Table Operations Panel */}
+              <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+                <button
+                  onClick={() => setShowOperations(!showOperations)}
+                  className="w-full px-4 py-2.5 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 flex items-center justify-between"
+                >
+                  <span className="text-sm font-medium text-gray-700 dark:text-slate-300">Operations</span>
+                  <svg className={`w-4 h-4 text-gray-400 dark:text-slate-500 transition-transform ${showOperations ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showOperations && (
+                  <div className="px-4 py-3 space-y-3">
+                    {/* Maintenance operations */}
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-slate-400 mb-2">Maintenance</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {dbType === 'postgres' && (
+                          <>
+                            <button
+                              onClick={() => runTableOperation('vacuum')}
+                              disabled={operationLoading !== null}
+                              className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                            >
+                              {operationLoading === 'vacuum' ? 'Running...' : 'VACUUM'}
+                            </button>
+                            <button
+                              onClick={() => runTableOperation('analyze')}
+                              disabled={operationLoading !== null}
+                              className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                            >
+                              {operationLoading === 'analyze' ? 'Running...' : 'ANALYZE'}
+                            </button>
+                            <button
+                              onClick={() => runTableOperation('reindex')}
+                              disabled={operationLoading !== null}
+                              className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                            >
+                              {operationLoading === 'reindex' ? 'Running...' : 'REINDEX'}
+                            </button>
+                          </>
+                        )}
+                        {dbType === 'clickhouse' && (
+                          <button
+                            onClick={() => runTableOperation('optimize')}
+                            disabled={operationLoading !== null}
+                            className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                          >
+                            {operationLoading === 'optimize' ? 'Running...' : 'OPTIMIZE TABLE'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Danger zone */}
+                    <div>
+                      <div className="text-xs text-red-500 dark:text-red-400 mb-2">Danger Zone</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => runTableOperation('truncate')}
+                          disabled={operationLoading !== null}
+                          className="rounded border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                        >
+                          {operationLoading === 'truncate' ? 'Running...' : 'TRUNCATE TABLE'}
+                        </button>
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={dropConfirmName}
+                            onChange={e => setDropConfirmName(e.target.value)}
+                            placeholder={`Type "${activeTable}" to confirm`}
+                            className="px-2 py-1 text-xs rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none w-48"
+                          />
+                          <button
+                            onClick={() => runTableOperation('drop')}
+                            disabled={operationLoading !== null || dropConfirmName !== activeTable}
+                            className="rounded border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                          >
+                            {operationLoading === 'drop' ? 'Dropping...' : 'DROP TABLE'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -470,7 +883,7 @@ export default function DatabaseTab() {
           {/* Quick table buttons */}
           {tableList && tableList.rows && (
             <div className="flex flex-wrap gap-1.5">
-              {tableList.rows.map((row, i) => (
+              {[...tableList.rows].sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map((row, i) => (
                 <button
                   key={i}
                   onClick={() => setQuery(prev => {
@@ -483,6 +896,35 @@ export default function DatabaseTab() {
                   {String(row[0])}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Query History */}
+          {queryHistory.length > 0 && (
+            <div>
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 mb-1"
+              >
+                <svg className={`w-3 h-3 transition-transform ${showHistory ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                Query History ({queryHistory.length})
+              </button>
+              {showHistory && (
+                <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 max-h-40 overflow-y-auto space-y-1">
+                  {queryHistory.map((h, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setQuery(h)}
+                      className="block w-full text-left text-xs font-mono text-gray-500 cursor-pointer hover:text-blue-600 truncate px-1 py-0.5 rounded hover:bg-gray-50 dark:hover:bg-slate-700"
+                      title={h}
+                    >
+                      {h}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -509,11 +951,16 @@ export default function DatabaseTab() {
                 {loading ? 'Executing...' : 'Execute'}
               </button>
               <button
-                onClick={() => { setQuery(''); setResult(null) }}
+                onClick={() => { setQuery(''); setResult(null); setQueryTime(null) }}
                 className="px-4 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Clear
               </button>
+              {queryTime !== null && (
+                <span className="text-xs text-gray-400 dark:text-slate-500">
+                  {result ? `${result.rows.length} row${result.rows.length !== 1 ? 's' : ''} returned in ${queryTime.toFixed(0)} ms` : `${queryTime.toFixed(0)} ms`}
+                </span>
+              )}
             </div>
           </div>
 
@@ -530,7 +977,24 @@ export default function DatabaseTab() {
                     <span className="text-xs text-gray-500 dark:text-slate-400">
                       {result.rows.length} row{result.rows.length !== 1 ? 's' : ''} returned
                       {result.affected_rows !== undefined && result.affected_rows > 0 && ` / ${result.affected_rows} affected`}
+                      {queryTime !== null && ` in ${queryTime.toFixed(0)} ms`}
                     </span>
+                    {result.columns.length > 0 && result.rows.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => downloadCSV(result.columns, result.rows, 'query-result.csv')}
+                          className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                          CSV
+                        </button>
+                        <button
+                          onClick={() => downloadJSON(result.columns, result.rows, 'query-result.json')}
+                          className="rounded border border-gray-300 dark:border-slate-600 px-2 py-1 text-xs text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                          JSON
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {result.columns.length > 0 && (
                     <div className="max-h-[600px] overflow-y-auto">

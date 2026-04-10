@@ -662,13 +662,19 @@ func (h *AuthHandler) UpdateOrgRetention(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Days < 1 || req.Days > 365 {
-		writeError(w, http.StatusBadRequest, "retention must be between 1 and 365 days")
+	if req.Days < 0 || req.Days > 365 {
+		writeError(w, http.StatusBadRequest, "retention must be between 0 and 365 days")
 		return
 	}
 
 	org, err := h.orgs.Get(r.Context(), orgID)
-	if err != nil || org == nil || org.AccountID != accountID {
+	if err != nil || org == nil {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+	// Root users can manage any org; regular users only their own account's orgs
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) && org.AccountID != accountID {
 		writeError(w, http.StatusNotFound, "organization not found")
 		return
 	}

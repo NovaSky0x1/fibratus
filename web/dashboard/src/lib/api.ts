@@ -94,6 +94,8 @@ export interface Organization {
   name: string
   slug: string
   agent_count: number
+  tamper_protection_enabled: boolean
+  telemetry_retention_days: number
 }
 
 export interface ValidationError {
