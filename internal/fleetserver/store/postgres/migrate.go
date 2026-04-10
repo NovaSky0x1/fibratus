@@ -334,6 +334,8 @@ CREATE TABLE IF NOT EXISTS user_group_members (
     PRIMARY KEY (user_id, group_id)
 );
 
+ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS owner_id TEXT REFERENCES users(id);
+
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS require_2fa BOOLEAN DEFAULT FALSE;
 ALTER TABLE global_rules ADD COLUMN IF NOT EXISTS account_id TEXT DEFAULT '';
 ALTER TABLE github_sync_configs DROP CONSTRAINT IF EXISTS github_sync_configs_pkey;

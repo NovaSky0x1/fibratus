@@ -163,6 +163,7 @@ func (s *Server) Run(ctx context.Context) error {
 	macroHandler := handler.NewMacroHandler(macroStore, auditStore, userStore)
 	auditHandler := handler.NewAuditHandler(auditStore)
 	groupStore := postgres.NewUserGroupStore(db)
+	SetGroupStore(groupStore)
 	userHandler := handler.NewUserHandler(userStore, groupStore)
 	installHandler := handler.NewInstallHandler(enrollStore,
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
@@ -173,6 +174,7 @@ func (s *Server) Run(ctx context.Context) error {
 	eventLogPolicyStore := postgres.NewEventLogPolicyStore(db)
 	eventLogPolicyHandler := handler.NewEventLogPolicyHandler(eventLogPolicyStore, agentStore, commandStore)
 	authHandler.SetEventLogPolicyStore(eventLogPolicyStore)
+	authHandler.SetGroupStore(groupStore)
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
@@ -609,6 +611,7 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/auth/totp/verify", methodGuard(http.MethodPost, totpHandler.Verify))
 	dashMux.HandleFunc("/api/v1/auth/totp/disable", methodGuard(http.MethodPost, totpHandler.Disable))
 	dashMux.HandleFunc("/api/v1/auth/totp/status", methodGuard(http.MethodGet, totpHandler.Status))
+	dashMux.HandleFunc("/api/v1/auth/me/permissions", methodGuard(http.MethodGet, authHandler.GetMyPermissions))
 	dashMux.HandleFunc("/api/v1/auth/me", methodGuard(http.MethodGet, authHandler.GetCurrentUser))
 
 	// Wrap dashboard routes with JWT auth
@@ -628,6 +631,7 @@ func (s *Server) Run(ctx context.Context) error {
 	rootMux.HandleFunc("/api/v1/agent/msi", mux.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/agent/config", mux.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/totp/", dashAuthenticated.ServeHTTP)
+	rootMux.HandleFunc("/api/v1/auth/me/", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/me", dashAuthenticated.ServeHTTP)
 	rootMux.HandleFunc("/api/v1/auth/", mux.ServeHTTP)
 
@@ -636,7 +640,7 @@ func (s *Server) Run(ctx context.Context) error {
 		path := r.URL.Path
 
 		// Public routes (no auth required) — TOTP and /me routes require JWT
-		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/") && path != "/api/v1/auth/me") || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
+		if (strings.HasPrefix(path, "/api/v1/auth/") && !strings.HasPrefix(path, "/api/v1/auth/totp/") && !strings.HasPrefix(path, "/api/v1/auth/me")) || path == "/api/v1/enroll" || path == "/api/v1/agents/register" {
 			mux.ServeHTTP(w, r)
 			return
 		}

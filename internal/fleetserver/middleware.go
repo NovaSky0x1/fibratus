@@ -19,6 +19,7 @@
 package fleetserver
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -27,6 +28,18 @@ import (
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	log "github.com/sirupsen/logrus"
 )
+
+// groupPermissionStore is used by requirePermission to check group-based permissions.
+var groupPermissionStore interface {
+	GetEffectivePermissions(ctx context.Context, userID string) ([]string, error)
+}
+
+// SetGroupStore sets the user group store used for group-based permission checks.
+func SetGroupStore(store interface {
+	GetEffectivePermissions(ctx context.Context, userID string) ([]string, error)
+}) {
+	groupPermissionStore = store
+}
 
 // jwtAuth validates a JWT Bearer token and injects user context.
 func jwtAuth(secret string, next http.Handler) http.Handler {
@@ -123,16 +136,41 @@ func extractCertField(field, prefix string) string {
 }
 
 // requirePermission returns a middleware that checks if the authenticated user
-// has the required permission based on their role.
+// has the required permission based on their role or group memberships.
 func requirePermission(perm fleetauth.Permission, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		role := ctxutil.RoleFromContext(r.Context())
-		if !fleetauth.HasPermission(role, perm) {
-			writeJSONError(w, http.StatusForbidden,
-				"insufficient permissions: requires "+string(perm))
+
+		// Root always passes
+		if fleetauth.IsRoot(role) {
+			next(w, r)
 			return
 		}
-		next(w, r)
+
+		// Check role-based permissions (fast path)
+		if fleetauth.HasPermission(role, perm) {
+			next(w, r)
+			return
+		}
+
+		// Check group-based permissions
+		if groupPermissionStore != nil {
+			userID := ctxutil.UserIDFromContext(r.Context())
+			if userID != "" {
+				perms, err := groupPermissionStore.GetEffectivePermissions(r.Context(), userID)
+				if err == nil {
+					for _, p := range perms {
+						if p == string(perm) {
+							next(w, r)
+							return
+						}
+					}
+				}
+			}
+		}
+
+		writeJSONError(w, http.StatusForbidden,
+			"insufficient permissions: requires "+string(perm))
 	}
 }
 

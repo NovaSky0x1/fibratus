@@ -1,5 +1,7 @@
 package fleetauth
 
+import "sort"
+
 // Roles define the permission levels for fleet server users.
 const (
 	RoleRoot    = "root"    // Super admin: cross-account access, manage all accounts/orgs/users
@@ -102,6 +104,29 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermViewRules: true,
 		PermViewCommands: true,
 	},
+}
+
+// AllPermissions returns all defined permission strings, sorted.
+func AllPermissions() []string {
+	perms := make([]string, 0, len(rolePermissions[RoleRoot]))
+	for p := range rolePermissions[RoleRoot] {
+		perms = append(perms, string(p))
+	}
+	sort.Strings(perms)
+	return perms
+}
+
+// RolePermissions returns the permissions granted to a given role.
+func RolePermissions(role string) []Permission {
+	perms, ok := rolePermissions[role]
+	if !ok {
+		return nil
+	}
+	result := make([]Permission, 0, len(perms))
+	for p := range perms {
+		result = append(result, p)
+	}
+	return result
 }
 
 // HasPermission checks if a role has a specific permission.

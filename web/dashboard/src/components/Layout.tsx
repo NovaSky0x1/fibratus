@@ -2,16 +2,17 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Account, type Organization, type User } from '../lib/api'
+import { usePermissions } from '../contexts/PermissionContext'
 import CursorGlow from './CursorGlow'
 
 const navigation = [
-  { name: 'Overview', href: '/' },
-  { name: 'Agents', href: '/agents' },
-  { name: 'Detections', href: '/detections' },
-  { name: 'Events', href: '/events' },
-  { name: 'Rules', href: '/rules' },
-  { name: 'Macros', href: '/macros' },
-  { name: 'Audit Log', href: '/audit-log' },
+  { name: 'Overview', href: '/', perm: null },
+  { name: 'Agents', href: '/agents', perm: 'agents:view' },
+  { name: 'Detections', href: '/detections', perm: 'detections:view' },
+  { name: 'Events', href: '/events', perm: 'events:view' },
+  { name: 'Rules', href: '/rules', perm: 'rules:view' },
+  { name: 'Macros', href: '/macros', perm: 'settings:macros' },
+  { name: 'Audit Log', href: '/audit-log', perm: 'audit:view' },
 ]
 
 function getInitialTheme(): 'dark' | 'light' {
@@ -57,6 +58,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
 
   const isRoot = user?.role === 'root'
+
+  // Permission-based access control (augments role checks)
+  const { hasPermission, hasAnyPermission, loading: permsLoading, isRoot: isRootPerm } = usePermissions()
+  const canManage = hasAnyPermission('settings:view', 'settings:manage', 'users:manage', 'settings:enrollment')
+  const canSuperAdmin = hasPermission('admin:panel')
+  const showManagement = permsLoading ? isAdminOrRoot : canManage
+  const showSuperAdmin = permsLoading ? isRoot : canSuperAdmin
+
   // MFA enforcement: if account requires 2FA but user hasn't enabled it, block everything except Settings
   const mfaEnforced = mfaRequired && user && !user.totp_enabled
 
@@ -186,7 +195,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="mt-4 px-3 flex-1">
-          {navigation.map((item) => (
+          {navigation.filter(item => !item.perm || hasPermission(item.perm)).map((item) => (
             <Link
               key={item.name}
               to={item.href}
@@ -202,11 +211,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           ))}
 
           {/* Divider before admin links */}
-          {isAdminOrRoot && (
+          {(showManagement || showSuperAdmin) && (
             <div className="my-2 border-t border-white/10" />
           )}
 
-          {isAdminOrRoot && (
+          {showManagement && (
             <Link
               to="/management"
               className={clsx(
@@ -223,7 +232,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               Management
             </Link>
           )}
-          {isRoot && (
+          {showSuperAdmin && (
             <Link
               to="/admin"
               className={clsx(

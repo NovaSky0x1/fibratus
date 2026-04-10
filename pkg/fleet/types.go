@@ -83,6 +83,7 @@ type User struct {
 type UserGroup struct {
 	ID              string    `json:"id"`
 	AccountID       string    `json:"account_id"`
+	OwnerID         string    `json:"owner_id,omitempty"`
 	Name            string    `json:"name"`
 	Description     string    `json:"description"`
 	Permissions     []string  `json:"permissions"`      // list of permission strings

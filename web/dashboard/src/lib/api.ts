@@ -279,6 +279,7 @@ export const api = {
 
   // User profile
   getCurrentUser: () => fetchApi<User>('/auth/me'),
+  getMyPermissions: () => fetchApi<string[]>('/auth/me/permissions'),
 
   // Organizations
   getOrganizations: () => fetchApi<Organization[]>('/account/organizations'),

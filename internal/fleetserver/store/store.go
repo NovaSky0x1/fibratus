@@ -174,6 +174,7 @@ type UserGroupStore interface {
 	AddMember(ctx context.Context, userID, groupID string) error
 	RemoveMember(ctx context.Context, userID, groupID string) error
 	GetUserGroups(ctx context.Context, userID string) ([]fleet.UserGroupMembership, error)
+	GetEffectivePermissions(ctx context.Context, userID string) ([]string, error)
 }
 
 // CaptureStore manages kernel capture session persistence.

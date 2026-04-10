@@ -25,6 +25,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -50,6 +51,7 @@ type AuthHandler struct {
 	agents         store.AgentStore
 	commands       store.CommandStore
 	eventlogPolicy store.EventLogPolicyStore
+	groups         store.UserGroupStore
 	jwtSecret      string
 	onCmdCreated   CommandPushCallback
 	onRetentionChange RetentionCallback
@@ -80,6 +82,11 @@ func (h *AuthHandler) SetRetentionCallback(cb RetentionCallback) {
 // SetCommandPushCallback registers a callback for instant command delivery.
 func (h *AuthHandler) SetCommandPushCallback(cb CommandPushCallback) {
 	h.onCmdCreated = cb
+}
+
+// SetGroupStore sets the user group store for permission resolution.
+func (h *AuthHandler) SetGroupStore(s store.UserGroupStore) {
+	h.groups = s
 }
 
 // propagateTamperProtection queues set_tamper_protection commands to all
@@ -454,6 +461,48 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
+}
+
+// GetMyPermissions handles GET /api/v1/auth/me/permissions
+// Returns the effective permission set for the current user (role + group permissions).
+func (h *AuthHandler) GetMyPermissions(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	userID := ctxutil.UserIDFromContext(r.Context())
+
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	// Root gets all permissions
+	if fleetauth.IsRoot(role) {
+		writeJSON(w, http.StatusOK, fleet.Response{Data: fleetauth.AllPermissions()})
+		return
+	}
+
+	// Start with role-based permissions
+	permSet := make(map[string]bool)
+	for _, p := range fleetauth.RolePermissions(role) {
+		permSet[string(p)] = true
+	}
+
+	// Add group-based permissions
+	if h.groups != nil {
+		groupPerms, err := h.groups.GetEffectivePermissions(r.Context(), userID)
+		if err == nil {
+			for _, p := range groupPerms {
+				permSet[p] = true
+			}
+		}
+	}
+
+	perms := make([]string, 0, len(permSet))
+	for p := range permSet {
+		perms = append(perms, p)
+	}
+	sort.Strings(perms)
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: perms})
 }
 
 // UpdateAccountSettings handles PUT /api/v1/account/settings
