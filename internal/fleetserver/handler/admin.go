@@ -18,11 +18,83 @@ type AdminHandler struct {
 	accounts store.AccountStore
 	orgs     store.OrgStore
 	users    store.UserStore
+	groups   store.UserGroupStore
 }
 
 // NewAdminHandler creates a new admin handler.
 func NewAdminHandler(accounts store.AccountStore, orgs store.OrgStore, users store.UserStore) *AdminHandler {
 	return &AdminHandler{accounts: accounts, orgs: orgs, users: users}
+}
+
+// SetGroupStore sets the user group store for default group seeding.
+func (h *AdminHandler) SetGroupStore(s store.UserGroupStore) {
+	h.groups = s
+}
+
+// seedDefaultGroups creates the default user groups for a new account.
+func (h *AdminHandler) seedDefaultGroups(ctx context.Context, accountID string) {
+	if h.groups == nil {
+		return
+	}
+
+	defaults := []struct {
+		name        string
+		description string
+		permissions []string
+	}{
+		{
+			name:        "Administrators",
+			description: "Full access to all features within this account",
+			permissions: []string{
+				"agents:view", "agents:manage", "agents:delete",
+				"detections:view", "events:view",
+				"rules:view", "rules:manage",
+				"commands:view", "commands:execute",
+				"response:isolate", "response:unisolate", "response:kill_process",
+				"response:run_command", "response:browse_files", "response:download_file",
+				"response:collect_info", "response:uninstall",
+				"settings:view", "settings:manage", "settings:enrollment",
+				"settings:github_sync", "settings:macros",
+				"users:manage", "users:groups", "audit:view",
+				"organizations:manage",
+			},
+		},
+		{
+			name:        "Analysts",
+			description: "Investigation and rule management — view telemetry, manage detection rules",
+			permissions: []string{
+				"agents:view", "detections:view", "events:view",
+				"rules:view", "rules:manage",
+				"commands:view", "audit:view",
+			},
+		},
+		{
+			name:        "Read Only",
+			description: "View-only access to agents, detections, events, and rules",
+			permissions: []string{
+				"agents:view", "detections:view", "events:view",
+				"rules:view", "commands:view",
+			},
+		},
+	}
+
+	for _, d := range defaults {
+		id := GenerateID()
+		now := time.Now().UTC()
+		g := &fleet.UserGroup{
+			ID:          id,
+			AccountID:   accountID,
+			Name:        d.name,
+			Description: d.description,
+			Permissions: d.permissions,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := h.groups.Create(ctx, g); err != nil {
+			log.Warnf("fleet: failed to seed default group %q for account %s: %v", d.name, accountID, err)
+		}
+	}
+	log.Infof("fleet: seeded default groups for account %s", accountID)
 }
 
 // ListAccounts handles GET /api/v1/admin/accounts
@@ -75,6 +147,9 @@ func (h *AdminHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create account")
 		return
 	}
+
+	// Seed default user groups for the new account
+	h.seedDefaultGroups(r.Context(), account.ID)
 
 	log.Infof("fleet: account created by root: %s (%s)", account.Name, account.ID)
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: account})

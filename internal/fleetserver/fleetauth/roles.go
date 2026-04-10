@@ -77,33 +77,11 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermManageOrganizations: true,
 		PermAdminPanel: true, PermManageAccounts: true,
 	},
-	RoleAdmin: {
-		PermViewAgents: true, PermManageAgents: true, PermDeleteAgents: true,
-		PermViewDetections: true, PermViewEvents: true,
-		PermViewRules: true, PermManageRules: true,
-		PermViewCommands: true, PermExecuteCommands: true,
-		PermIsolateAgent: true, PermUnisolateAgent: true, PermKillProcess: true,
-		PermRunCommand: true, PermBrowseFilesystem: true, PermDownloadFile: true,
-		PermCollectInfo: true, PermUninstallAgent: true,
-		PermViewSettings: true, PermManageSettings: true,
-		PermManageEnrollment: true, PermManageGitHubSync: true, PermManageMacros: true,
-		PermManageUsers: true, PermManageGroups: true, PermViewAuditLog: true,
-		PermManageOrganizations: true,
-	},
-	RoleAnalyst: {
-		PermViewAgents: true,
-		PermViewDetections: true, PermViewEvents: true,
-		PermViewRules: true, PermManageRules: true,
-		PermViewCommands: true,
-		PermViewAuditLog: true,
-	},
-	RoleViewer: {
-		PermViewAgents: true,
-		PermViewDetections: true,
-		PermViewEvents: true,
-		PermViewRules: true,
-		PermViewCommands: true,
-	},
+	// Non-root roles grant no permissions — all access comes from user group memberships.
+	// Roles are kept as labels for backward compatibility but do not grant permissions.
+	RoleAdmin:   {},
+	RoleAnalyst: {},
+	RoleViewer:  {},
 }
 
 // AllPermissions returns all defined permission strings, sorted.
