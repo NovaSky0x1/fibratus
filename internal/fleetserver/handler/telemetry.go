@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -117,16 +118,6 @@ func (h *TelemetryHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 // Search handles GET /api/v1/orgs/{org_id}/telemetry
 func (h *TelemetryHandler) Search(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
-	if orgID == "" {
-		// Cross-org: search first org (ClickHouse per-org tables can't easily aggregate)
-		orgIDs := accountOrgIDs(r, h.orgs)
-		if len(orgIDs) > 0 {
-			orgID = orgIDs[0] // Use first org for now
-		} else {
-			writeError(w, http.StatusBadRequest, "org context required")
-			return
-		}
-	}
 
 	q := r.URL.Query()
 	from := parseTime(q.Get("from"), time.Now().UTC().Add(-1*time.Hour))
@@ -143,6 +134,41 @@ func (h *TelemetryHandler) Search(w http.ResponseWriter, r *http.Request) {
 		To:          to,
 		Limit:       intParam(r, "limit", 100),
 		Offset:      intParam(r, "offset", 0),
+	}
+
+	// Cross-org: aggregate telemetry from all org tables
+	if orgID == "" {
+		orgIDs := accountOrgIDs(r, h.orgs)
+		if len(orgIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "org context required")
+			return
+		}
+		allEvents := make([]store.TelemetryEvent, 0)
+		total := 0
+		perOrgLimit := opts.Limit
+		if perOrgLimit <= 0 {
+			perOrgLimit = 100
+		}
+		for _, oid := range orgIDs {
+			events, t, err := h.telemetry.Search(r.Context(), oid, opts)
+			if err != nil {
+				continue
+			}
+			allEvents = append(allEvents, events...)
+			total += t
+		}
+		// Sort by timestamp descending and trim to limit
+		sort.Slice(allEvents, func(i, j int) bool {
+			return allEvents[i].Timestamp.After(allEvents[j].Timestamp)
+		})
+		if len(allEvents) > perOrgLimit {
+			allEvents = allEvents[:perOrgLimit]
+		}
+		writeJSON(w, http.StatusOK, fleet.Response{
+			Data: allEvents,
+			Meta: &fleet.Pagination{Total: total, Page: 1, PerPage: perOrgLimit},
+		})
+		return
 	}
 
 	events, total, err := h.telemetry.Search(r.Context(), orgID, opts)
@@ -165,7 +191,7 @@ func (h *TelemetryHandler) GetFieldValues(w http.ResponseWriter, r *http.Request
 	if orgID == "" {
 		orgIDs := accountOrgIDs(r, h.orgs)
 		if len(orgIDs) > 0 {
-			orgID = orgIDs[0]
+			orgID = orgIDs[0] // Field values are similar across orgs, use first
 		} else {
 			writeError(w, http.StatusBadRequest, "org context required")
 			return
