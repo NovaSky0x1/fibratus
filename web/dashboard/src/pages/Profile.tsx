@@ -125,8 +125,10 @@ export default function Profile() {
       setDisablePassword('')
       setDisableError('')
       queryClient.invalidateQueries({ queryKey: ['totp-status'] })
+      // 2FA is mandatory — immediately start new setup after reset
+      setupMutation.mutate()
     },
-    onError: () => setDisableError('Failed to disable 2FA'),
+    onError: () => setDisableError('Failed to reset 2FA'),
   })
 
   const resetSetup = () => {
@@ -296,7 +298,7 @@ export default function Profile() {
                   onClick={() => setShowDisable(true)}
                   className="rounded-lg border border-red-300 dark:border-red-700 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >
-                  Disable 2FA
+                  Reset 2FA
                 </button>
               )}
             </div>
@@ -389,7 +391,7 @@ export default function Profile() {
                   disabled={!disablePassword || disableMutation.isPending}
                   className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  {disableMutation.isPending ? 'Disabling...' : 'Disable 2FA'}
+                  {disableMutation.isPending ? 'Disabling...' : 'Reset 2FA'}
                 </button>
                 <button
                   onClick={() => { setShowDisable(false); setDisablePassword(''); setDisableError('') }}

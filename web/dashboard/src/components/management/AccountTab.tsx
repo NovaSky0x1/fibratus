@@ -169,29 +169,20 @@ export default function AccountTab() {
         </div>
       </div>
 
-      {/* ── Two-Factor Authentication Enforcement ────────────── */}
+      {/* ── Two-Factor Authentication ────────────────────────── */}
       <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm dark:shadow-slate-900/50">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Two-Factor Authentication Enforcement</h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-              Require all users in this account to set up 2FA
-            </p>
-          </div>
-          <ToggleSwitch
-            enabled={settings?.require_2fa ?? false}
-            onToggle={handleToggle2FA}
-            disabled={updateSettingsMut.isPending}
-          />
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Two-Factor Authentication</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            Two-factor authentication is mandatory for all users. Users who have not set up 2FA will be prompted during login.
+          </p>
         </div>
 
-        {settings?.require_2fa && (
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-xs text-amber-800">
-              <strong>Enforcement active:</strong> All users without 2FA will be prompted to set it up on next login.
-            </p>
-          </div>
-        )}
+        <div className="mt-4 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3">
+          <p className="text-xs text-emerald-800 dark:text-emerald-300">
+            <strong>Always enforced:</strong> 2FA is required on all accounts. Users must set up an authenticator app on first login.
+          </p>
+        </div>
 
         {/* 2FA stats */}
         <div className="mt-5 grid grid-cols-2 gap-4">
@@ -604,14 +595,7 @@ function SecuritySection() {
                 {setupMutation.isPending ? 'Setting up...' : 'Enable 2FA'}
               </button>
             )}
-            {totpEnabled && !showDisable && (
-              <button
-                onClick={() => setShowDisable(true)}
-                className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-              >
-                Disable 2FA
-              </button>
-            )}
+            {/* 2FA is mandatory — no disable option */}
           </div>
         </div>
 
