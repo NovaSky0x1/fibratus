@@ -58,10 +58,11 @@ type SignupRequest struct {
 
 // SignupResponse is returned after successful account creation.
 type SignupResponse struct {
-	AccountID string `json:"account_id"`
-	OrgID     string `json:"org_id"`
-	UserID    string `json:"user_id"`
-	Token     string `json:"token"` // JWT
+	AccountID        string `json:"account_id"`
+	OrgID            string `json:"org_id"`
+	UserID           string `json:"user_id"`
+	Token            string `json:"token"` // JWT
+	MFASetupRequired bool   `json:"mfa_setup_required,omitempty"`
 }
 
 // LoginRequest authenticates a dashboard user.

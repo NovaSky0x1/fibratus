@@ -328,10 +328,11 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	log.Infof("fleet: account created: %s (%s)", account.Name, accountID)
 
 	resp := fleet.SignupResponse{
-		AccountID: accountID,
-		OrgID:     orgID,
-		UserID:    userID,
-		Token:     token,
+		AccountID:        accountID,
+		OrgID:            orgID,
+		UserID:           userID,
+		Token:            token,
+		MFASetupRequired: true, // 2FA is mandatory — user must set up during first login
 	}
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: resp})
 }

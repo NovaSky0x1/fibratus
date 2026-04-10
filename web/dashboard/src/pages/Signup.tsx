@@ -26,9 +26,17 @@ export default function Signup() {
         return
       }
       const data = res.data as AuthResponse
-      if (data.token && data.org_id) {
-        setSession(data.token, data.org_id)
-        navigate('/')
+      if (data.token) {
+        // Set session, then redirect to login for mandatory 2FA setup
+        if (data.mfa_setup_required) {
+          setSession(data.token, data.org_id || '')
+          // Store org_id from signup response
+          if (data.org_id) setSession(data.token, data.org_id)
+          navigate('/login?setup_2fa=1')
+        } else if (data.org_id) {
+          setSession(data.token, data.org_id)
+          window.location.href = '/'
+        }
       }
     } catch {
       setError('Failed to connect to server')

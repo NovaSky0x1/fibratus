@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { api, setSession, type AuthResponse } from '../lib/api'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { api, setSession, isAuthenticated, type AuthResponse } from '../lib/api'
 
 export default function Login() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -23,6 +24,15 @@ export default function Login() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [setupError, setSetupError] = useState('')
   const [setupLoading, setSetupLoading] = useState(false)
+
+  // Auto-trigger MFA setup when coming from signup (already authenticated)
+  useEffect(() => {
+    if (searchParams.get('setup_2fa') === '1' && isAuthenticated()) {
+      setMfaSetupRequired(true)
+      setPendingToken(localStorage.getItem('fleet_token') || '')
+      startMfaSetup('')
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const completeLogin = async (token: string) => {
     setSession(token, '')
