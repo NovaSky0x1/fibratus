@@ -242,11 +242,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           )}
         </nav>
 
-        {/* Footer: user info, theme toggle, sign out */}
+        {/* Footer: user info, profile, theme toggle, sign out */}
         <div className="px-3 py-4 border-t border-white/10">
           {user && (
             <div className="px-3 mb-3">
               <p className="text-sm font-medium text-white truncate">{user.name || user.email}</p>
+              <Link to="/profile" className="text-[11px] text-white/50 hover:text-white/80 transition-colors">
+                My Profile
+              </Link>
             </div>
           )}
           <div className="flex items-center gap-2">
