@@ -204,10 +204,9 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 	}
 
 	// Build XPath query for event ID filtering at the source level
+	// Use empty query (nil) for collect-all — "*" can cause issues on some Windows versions
 	var query string
-	if ch.CollectAll || len(ch.EventIDs) == 0 {
-		query = "*"
-	} else {
+	if !ch.CollectAll && len(ch.EventIDs) > 0 {
 		query = BuildXPathQuery(ch.EventIDs)
 	}
 
