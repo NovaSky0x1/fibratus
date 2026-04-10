@@ -176,7 +176,7 @@ export default function Overview() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
           }
-          onClick={() => navigate('/settings')}
+          onClick={() => navigate('/management#enrollment')}
           accent="from-blue-500 to-cyan-400"
         />
         <QuickAction

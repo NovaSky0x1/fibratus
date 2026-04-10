@@ -467,9 +467,9 @@ export const api = {
 
   // Event Log Policy
   getEventLogPolicy: () =>
-    fetchApi<{ id: string; org_id: string; enabled: boolean; channels: Array<{ name: string; collect_all: boolean; event_ids?: number[] }>; version: number }>('/eventlog-policy'),
+    fetchApi<{ id: string; org_id: string; enabled: boolean; channels: Array<{ name: string; collect_all: boolean; event_ids?: number[] }>; version: number }>(orgPath('/eventlog-policy')),
   updateEventLogPolicy: (data: { enabled: boolean; channels: Array<{ name: string; collect_all: boolean; event_ids?: number[] }> }) =>
-    fetchApi<{ id: string; org_id: string; enabled: boolean; channels: Array<{ name: string; collect_all: boolean; event_ids?: number[] }>; version: number }>('/eventlog-policy', { method: 'PUT', body: JSON.stringify(data) }),
+    fetchApi<{ id: string; org_id: string; enabled: boolean; channels: Array<{ name: string; collect_all: boolean; event_ids?: number[] }>; version: number }>(orgPath('/eventlog-policy'), { method: 'PUT', body: JSON.stringify(data) }),
 
   // Admin (root only)
   adminGetAccounts: () => fetchApi<unknown[]>('/admin/accounts'),

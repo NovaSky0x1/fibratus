@@ -208,20 +208,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           {isAdminOrRoot && (
             <Link
-              to="/settings"
-              className={clsx(
-                'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mb-1',
-                location.pathname === '/settings'
-                  ? 'bg-white/10 text-white'
-                  : 'text-white/70 hover:bg-white/5 hover:text-white'
-              )}
-            >
-              Settings
-            </Link>
-          )}
-
-          {isAdminOrRoot && (
-            <Link
               to="/management"
               className={clsx(
                 'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mb-1',
@@ -235,19 +221,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               Management
-            </Link>
-          )}
-          {isRoot && (
-            <Link
-              to="/admin"
-              className={clsx(
-                'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mb-1',
-                location.pathname === '/admin'
-                  ? 'bg-purple-500/20 text-purple-200'
-                  : 'text-purple-300/80 hover:bg-purple-500/10 hover:text-purple-200'
-              )}
-            >
-              Admin
             </Link>
           )}
         </nav>
@@ -287,7 +260,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Main content — z-10 so it sits above the cursor glow canvas */}
       <main className="relative z-10 pl-64">
         <div className="px-8 py-8">
-          {mfaEnforced && location.pathname !== '/settings' ? (
+          {mfaEnforced && location.pathname !== '/management' ? (
             <div className="max-w-2xl mx-auto mt-16">
               <div className="rounded-xl border-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20 p-8 text-center">
                 <svg className="mx-auto h-16 w-16 text-amber-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -299,7 +272,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   Please set up 2FA to continue using the dashboard.
                 </p>
                 <button
-                  onClick={() => navigate('/settings')}
+                  onClick={() => navigate('/management#account')}
                   className="inline-flex items-center rounded-lg bg-amber-500 px-6 py-3 text-sm font-semibold text-white hover:bg-amber-600 transition-colors"
                 >
                   Set Up 2FA Now
