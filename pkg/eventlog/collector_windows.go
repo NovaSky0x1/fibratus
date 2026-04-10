@@ -195,8 +195,8 @@ func (c *Collector) Reconfigure(config Config) {
 }
 
 func (c *Collector) subscribe(ch ChannelConfig) error {
-	// Create signal event for notification-based subscription
-	signal, err := windows.CreateEvent(nil, 0, 0, nil)
+	// Create manual-reset signal event for EvtSubscribe notification
+	signal, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
 		return fmt.Errorf("create signal event: %w", err)
 	}
@@ -267,6 +267,9 @@ func (c *Collector) readLoop(sub *subscription) {
 		if result != windows.WAIT_OBJECT_0 {
 			continue
 		}
+
+		// Reset the manual-reset event before draining
+		windows.ResetEvent(sub.signal)
 
 		for {
 			if c.closed.Load() {
