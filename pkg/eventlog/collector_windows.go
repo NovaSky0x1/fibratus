@@ -272,13 +272,17 @@ func (c *Collector) readLoop(sub *subscription) {
 			if err != nil {
 				errno, ok := err.(syscall.Errno)
 				if !ok || errno != 259 { // ERROR_NO_MORE_ITEMS
-					if waitCount <= 3 || waitCount%30 == 0 {
-						log.Warnf("eventlog: EvtNext on %s: %v (wait #%d)", sub.channel, err, waitCount)
+					if waitCount <= 3 || waitCount%1000 == 0 {
+						log.Warnf("eventlog: EvtNext on %s: %v (consecutive errors: %d)", sub.channel, err, waitCount)
 					}
+					// Backoff on persistent errors to prevent log/CPU spam.
+					// Invalid handle or similar non-transient error — sleep and retry.
+					time.Sleep(5 * time.Second)
 				}
 			}
 			continue
 		}
+		waitCount = 0 // reset on successful read
 
 		totalEvents += uint64(returned)
 		if totalEvents <= 5 || totalEvents%10000 == 0 {

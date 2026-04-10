@@ -223,14 +223,16 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
                 WEL {agent.eventlog_collection ? 'ON' : 'OFF'}
               </span>
 
-              {/* Network */}
+              {/* Network / Status */}
               <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' +
                 (agent.isolated
                   ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                  : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400')
+                  : agent.status === 'online'
+                    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                    : 'bg-gray-100 dark:bg-slate-700/50 text-gray-600 dark:text-slate-400')
               }>
                 {agent.isolated ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
-                {agent.isolated ? 'Isolated' : 'Connected'}
+                {agent.isolated ? 'Isolated' : agent.status === 'online' ? 'Connected' : 'Offline'}
               </span>
             </div>
           </div>
@@ -373,9 +375,11 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
             <span className={'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
               (agent.isolated
                 ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
+                : agent.status === 'online'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400')
             }>
-              {agent.isolated ? 'Isolated' : 'Connected'}
+              {agent.isolated ? 'Isolated' : agent.status === 'online' ? 'Connected' : 'Offline'}
             </span>
           </div>
           <div className="flex gap-2">
