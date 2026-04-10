@@ -108,10 +108,6 @@ export default function AccountTab() {
     isolation_whitelist: whitelist,
   })
 
-  const handleToggle2FA = () => {
-    if (!settings) return
-    updateSettingsMut.mutate({ ...currentSettings(), require_2fa: !settings.require_2fa })
-  }
 
   const handleTamperToggle = async () => {
     setTamperToggling(true)
