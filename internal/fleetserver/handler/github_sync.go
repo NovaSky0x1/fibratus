@@ -285,11 +285,16 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 	source := "github:" + cfg.RepoURL
 	syncedIDs := make(map[string][]string) // orgID -> rule IDs synced
 
-	// Fetch file list from GitHub API
-	apiURL := fmt.Sprintf("%s/contents/%s?ref=%s", cfg.RepoURL, cfg.Path, cfg.Branch)
-	files, err := h.fetchGitHubDir(apiURL, cfg.Token)
+	// Fetch file list using Git Tree API (1 request for entire repo tree)
+	files, err := h.fetchGitHubTree(cfg.RepoURL, cfg.Branch, cfg.Path, cfg.Token)
 	if err != nil {
-		return nil, fmt.Errorf("fetch repo: %w", err)
+		// Fallback to Contents API if Tree API fails
+		log.Warnf("fleet: tree API failed, falling back to contents API: %v", err)
+		apiURL := fmt.Sprintf("%s/contents/%s?ref=%s", cfg.RepoURL, cfg.Path, cfg.Branch)
+		files, err = h.fetchGitHubDir(apiURL, cfg.Token)
+		if err != nil {
+			return nil, fmt.Errorf("fetch repo: %w", err)
+		}
 	}
 
 	// Determine target orgs: account-scope = all orgs in account, org-scope = just this org
@@ -498,6 +503,82 @@ func (h *GitHubSyncHandler) fetchGitHubDir(url, token string) ([]githubFile, err
 		}
 	}
 	return result, nil
+}
+
+// fetchGitHubTree uses the Git Tree API to get the entire repo file tree in
+// a single API request, then filters to files under the specified path prefix.
+// This uses only 2 API calls (get branch ref + get tree) instead of N calls
+// for N directories, avoiding GitHub rate limits (60/hr unauthenticated).
+func (h *GitHubSyncHandler) fetchGitHubTree(repoURL, branch, pathPrefix, token string) ([]githubFile, error) {
+	// Get the tree SHA for the branch
+	// API: GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1
+	treeURL := fmt.Sprintf("%s/git/trees/%s?recursive=1", repoURL, branch)
+	req, _ := http.NewRequest(http.MethodGet, treeURL, nil)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("tree API request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("tree API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tree struct {
+		SHA       string `json:"sha"`
+		Truncated bool   `json:"truncated"`
+		Tree      []struct {
+			Path string `json:"path"`
+			Mode string `json:"mode"`
+			Type string `json:"type"`
+			Size int    `json:"size"`
+			SHA  string `json:"sha"`
+		} `json:"tree"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+		return nil, fmt.Errorf("decode tree: %w", err)
+	}
+
+	// Extract the owner/repo from the API URL for building raw content URLs
+	// repoURL format: https://api.github.com/repos/OWNER/REPO
+	ownerRepo := strings.TrimPrefix(repoURL, "https://api.github.com/repos/")
+
+	// Filter tree entries to files under pathPrefix
+	prefix := pathPrefix
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	var files []githubFile
+	for _, entry := range tree.Tree {
+		if entry.Type != "blob" {
+			continue
+		}
+		if prefix != "" && !strings.HasPrefix(entry.Path, prefix) {
+			continue
+		}
+		// Build raw content download URL (doesn't count against API rate limit)
+		downloadURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", ownerRepo, branch, entry.Path)
+		files = append(files, githubFile{
+			Name:        entry.Path[strings.LastIndex(entry.Path, "/")+1:],
+			Path:        entry.Path,
+			Type:        "file",
+			DownloadURL: downloadURL,
+		})
+	}
+
+	log.Infof("fleet: tree API returned %d total entries, %d files matching path %q", len(tree.Tree), len(files), pathPrefix)
+	if tree.Truncated {
+		log.Warnf("fleet: tree was truncated (repo too large) — some files may be missing")
+	}
+
+	return files, nil
 }
 
 func (h *GitHubSyncHandler) fetchGitHubFile(url, token string) ([]byte, error) {
