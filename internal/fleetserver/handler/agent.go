@@ -19,6 +19,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,14 +33,24 @@ import (
 
 // AgentHandler handles agent-related API requests.
 type AgentHandler struct {
-	agents   store.AgentStore
-	accounts store.AccountStore
-	orgs     store.OrgStore
+	agents         store.AgentStore
+	accounts       store.AccountStore
+	orgs           store.OrgStore
+	commands       store.CommandStore
+	eventlogPolicy store.EventLogPolicyStore
+	onCmdCreated   CommandPushCallback
 }
 
 // NewAgentHandler creates a new agent handler.
 func NewAgentHandler(agents store.AgentStore, accounts store.AccountStore, orgs store.OrgStore) *AgentHandler {
 	return &AgentHandler{agents: agents, accounts: accounts, orgs: orgs}
+}
+
+// SetCommandDeps sets the command store and push callback for handlers that need to push commands.
+func (h *AgentHandler) SetCommandDeps(commands store.CommandStore, eventlogPolicy store.EventLogPolicyStore, cb CommandPushCallback) {
+	h.commands = commands
+	h.eventlogPolicy = eventlogPolicy
+	h.onCmdCreated = cb
 }
 
 // Register handles POST /api/v1/agents/register
@@ -332,6 +343,49 @@ func (h *AgentHandler) SetEventLogCollection(w http.ResponseWriter, r *http.Requ
 	if err := h.agents.Update(r.Context(), agent); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update event log collection")
 		return
+	}
+
+	// Push the actual event log policy command to the agent
+	if h.commands != nil && h.eventlogPolicy != nil {
+		// Get the org's channel config (or use defaults)
+		policy, _ := h.eventlogPolicy.Get(r.Context(), orgID)
+		if policy == nil {
+			policy = &fleet.EventLogPolicy{
+				ID:      GenerateID(),
+				OrgID:   orgID,
+				Enabled: req.Enabled,
+				Channels: []fleet.EventLogPolicyChannel{
+					{Name: "Security", CollectAll: true},
+					{Name: "System", CollectAll: true},
+					{Name: "Microsoft-Windows-PowerShell/Operational", CollectAll: true},
+					{Name: "Microsoft-Windows-Sysmon/Operational", CollectAll: true},
+					{Name: "Microsoft-Windows-Windows Defender/Operational", CollectAll: true},
+				},
+			}
+			h.eventlogPolicy.Upsert(r.Context(), policy)
+		} else {
+			policy.Enabled = req.Enabled
+		}
+
+		payload, _ := json.Marshal(policy)
+		cmd := &fleet.Command{
+			ID:        GenerateID(),
+			OrgID:     orgID,
+			AgentID:   agentID,
+			Type:      fleet.CmdSetEventLogPolicy,
+			Payload:   payload,
+			Status:    fleet.CmdStatusPending,
+			CreatedBy: "system",
+			CreatedAt: time.Now().UTC(),
+		}
+		if err := h.commands.Create(r.Context(), cmd); err != nil {
+			log.Errorf("fleet: failed to queue eventlog policy for agent %s: %v", agentID, err)
+		} else if h.onCmdCreated != nil {
+			if h.onCmdCreated(agentID, cmd.ID, cmd.Type, cmd.Payload) {
+				h.commands.MarkRunning(r.Context(), cmd.ID)
+			}
+		}
+		log.Infof("fleet: pushed eventlog policy (enabled=%v) to agent %s", req.Enabled, agent.Hostname)
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]bool{"eventlog_collection": req.Enabled}})

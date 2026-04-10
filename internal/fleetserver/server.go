@@ -242,6 +242,7 @@ func (s *Server) Run(ctx context.Context) error {
 	captureHandler.SetCommandPushCallback(cmdPushCallback)
 	authHandler.SetCommandPushCallback(cmdPushCallback)
 	eventLogPolicyHandler.SetCommandPushCallback(cmdPushCallback)
+	agentHandler.SetCommandDeps(commandStore, eventLogPolicyStore, cmdPushCallback)
 
 	// Start gRPC server in background
 	go func() {
