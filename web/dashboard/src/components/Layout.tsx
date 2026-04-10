@@ -53,7 +53,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [currentOrg, setCurrentOrg] = useState(getCurrentOrgId())
   const [user, setUser] = useState<User | null>(null)
-  const [mfaRequired, setMfaRequired] = useState(false)
+  const [, setMfaRequired] = useState(false)
   const isAdminOrRoot = user?.role === 'admin' || user?.role === 'root'
   const [accounts, setAccounts] = useState<Account[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState<string>('')
