@@ -113,13 +113,20 @@ func (h *GitHubSyncHandler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.HasPrefix(cfg.RepoURL, "https://github.com/") {
-		path := strings.TrimPrefix(cfg.RepoURL, "https://github.com/")
-		path = strings.TrimSuffix(path, "/")
-		if idx := strings.Index(path, "/tree/"); idx >= 0 {
-			path = path[:idx]
-		}
+	// Normalize GitHub URLs to API format
+	repoURL := cfg.RepoURL
+	repoURL = strings.TrimPrefix(repoURL, "http://")
+	repoURL = strings.TrimPrefix(repoURL, "https://")
+	repoURL = strings.TrimSuffix(repoURL, "/")
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+	if idx := strings.Index(repoURL, "/tree/"); idx >= 0 {
+		repoURL = repoURL[:idx]
+	}
+	if strings.HasPrefix(repoURL, "github.com/") {
+		path := strings.TrimPrefix(repoURL, "github.com/")
 		cfg.RepoURL = "https://api.github.com/repos/" + path
+	} else if !strings.HasPrefix(cfg.RepoURL, "https://") {
+		cfg.RepoURL = "https://" + repoURL
 	}
 	cfg.RepoURL = strings.TrimSuffix(cfg.RepoURL, "/")
 	if cfg.Branch == "" {
