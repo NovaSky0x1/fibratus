@@ -1076,12 +1076,46 @@ function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpand
         <td></td>
         <td colSpan={6} className="px-3 pb-2 pt-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono text-gray-500 dark:text-slate-500">
-            {evt.process_exe && (
-              <span className="truncate max-w-[350px]" title={evt.process_exe}>
-                <span className="text-blue-600 dark:text-cyan-600">exe:</span> <span className="text-gray-600 dark:text-slate-400">{evt.process_exe}</span>
-              </span>
+            {evt.event_category === 'eventlog' ? (
+              <>
+                {evt.params?.['eventlog.event.id'] !== undefined && (
+                  <span className="rounded bg-sky-100 dark:bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-bold text-sky-800 dark:text-sky-300 not-italic">
+                    ID {String(evt.params['eventlog.event.id'])}
+                  </span>
+                )}
+                {evt.params?.['eventlog.channel'] && (
+                  <span className="truncate max-w-[300px]" title={String(evt.params['eventlog.channel'])}>
+                    <span className="text-sky-600 dark:text-sky-500">channel:</span> <span className="text-gray-600 dark:text-slate-400">{String(evt.params['eventlog.channel'])}</span>
+                  </span>
+                )}
+                {evt.params?.['eventlog.provider'] && (
+                  <span className="truncate max-w-[250px]">
+                    <span className="text-sky-600 dark:text-sky-500">provider:</span> <span className="text-gray-600 dark:text-slate-400">{String(evt.params['eventlog.provider'])}</span>
+                  </span>
+                )}
+                {evt.params?.['eventlog.level'] && (
+                  <span className={`rounded px-1 py-0.5 text-[10px] font-medium ${
+                    evt.params['eventlog.level'] === 'Error' || evt.params['eventlog.level'] === 'Critical' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
+                    evt.params['eventlog.level'] === 'Warning' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' :
+                    'text-gray-600 dark:text-slate-400'
+                  }`}>{String(evt.params['eventlog.level'])}</span>
+                )}
+                {evt.process_exe && (
+                  <span className="truncate max-w-[250px]" title={evt.process_exe}>
+                    <span className="text-blue-600 dark:text-cyan-600">source:</span> <span className="text-gray-600 dark:text-slate-400">{evt.process_name}</span>
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                {evt.process_exe && (
+                  <span className="truncate max-w-[350px]" title={evt.process_exe}>
+                    <span className="text-blue-600 dark:text-cyan-600">exe:</span> <span className="text-gray-600 dark:text-slate-400">{evt.process_exe}</span>
+                  </span>
+                )}
+                <EventPreviewInline evt={evt} />
+              </>
             )}
-            <EventPreviewInline evt={evt} />
           </div>
         </td>
       </tr>
@@ -1234,25 +1268,20 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
             </div>
           ) : (
             /* ═══ Standard ETW Event Layout ═══ */
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div className="space-y-3">
+            {/* Process + Parent row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {/* Process Card */}
             <div className="rounded-lg border-l-4 border-blue-500 bg-white dark:bg-slate-900/60 border-y border-r border-blue-100 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider">Process</span>
                 <span className="font-semibold text-sm text-blue-700 dark:text-cyan-400 cursor-pointer hover:text-blue-900 dark:hover:text-cyan-300 transition-colors" onClick={() => onAddFilter('ps.name', evt.process_name)} title="Click to filter">{evt.process_name}</span>
+                <span className="text-[11px] text-gray-500 dark:text-slate-500 font-mono">PID {evt.pid}</span>
+                <span className="text-[11px] text-gray-500 dark:text-slate-500 font-mono">TID {evt.tid}</span>
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-gray-500 dark:text-slate-500">PID <span className="text-gray-800 dark:text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.pid', String(evt.pid))} title="Click to filter">{evt.pid}</span></span>
-                <span className="text-gray-500 dark:text-slate-500">TID <span className="text-gray-800 dark:text-slate-300 font-mono">{evt.tid}</span></span>
-              </div>
-              {evt.process_exe && (
-                <div>
-                  <span className="text-[10px] text-gray-500 dark:text-slate-500 uppercase tracking-wider">Executable</span>
-                  <p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all mt-0.5">{evt.process_exe}</p>
-                </div>
-              )}
+              {evt.process_exe && <p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all">{evt.process_exe}</p>}
               {evt.process_cmdline && (
-                <div className="rounded bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-gray-800 dark:text-slate-200 font-mono break-all whitespace-pre-wrap">
+                <div className="rounded bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-gray-800 dark:text-slate-200 font-mono break-all whitespace-pre-wrap max-h-[80px] overflow-auto">
                   {evt.process_cmdline}
                 </div>
               )}
@@ -1260,35 +1289,16 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
                 {ps.is_signed !== undefined && (
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                     ps.is_signed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
-                  }`}>
-                    {ps.is_signed ? 'Signed' : 'Unsigned'}
-                  </span>
+                  }`}>{ps.is_signed ? 'Signed' : 'Unsigned'}</span>
                 )}
                 {ps.is_trusted !== undefined && ps.is_signed && (
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                     ps.is_trusted ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
-                  }`}>
-                    {ps.is_trusted ? 'Trusted' : 'Untrusted'}
-                  </span>
+                  }`}>{ps.is_trusted ? 'Trusted' : 'Untrusted'}</span>
                 )}
                 {ps.cert_subject && <span className="text-[10px] text-gray-600 dark:text-slate-500">{ps.cert_subject}</span>}
+                {ps.sha256 && <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono break-all">SHA256: {ps.sha256}</span>}
               </div>
-              {(ps.sha256 || ps.md5) && (
-                <div className="space-y-1 mt-1">
-                  {ps.sha256 && (
-                    <div>
-                      <span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span>
-                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{ps.sha256}</p>
-                    </div>
-                  )}
-                  {ps.md5 && (
-                    <div>
-                      <span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span>
-                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{ps.md5}</p>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Parent Card */}
@@ -1296,58 +1306,35 @@ function EventDetail({ evt, tab, onTabChange, rawExpanded, onRawToggle, onAddFil
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wider">Parent</span>
                 <span className="font-semibold text-sm text-gray-900 dark:text-slate-100 cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => parentName && onAddFilter('ps.parent.name', parentName)} title="Click to filter">{parentName || '(unknown)'}</span>
+                <span className="text-[11px] text-gray-500 dark:text-slate-500 font-mono">PID {evt.parent_pid}</span>
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                <span className="text-gray-500 dark:text-slate-500">PID <span className="text-gray-800 dark:text-slate-300 font-mono cursor-pointer hover:text-blue-700 dark:hover:text-cyan-400 transition-colors" onClick={() => onAddFilter('ps.ppid', String(evt.parent_pid))} title="Click to filter">{evt.parent_pid}</span></span>
-              </div>
-              {parentExe && (
-                <div>
-                  <span className="text-[10px] text-gray-500 dark:text-slate-500 uppercase tracking-wider">Executable</span>
-                  <p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all mt-0.5">{parentExe}</p>
-                </div>
-              )}
+              {parentExe && <p className="text-xs text-gray-800 dark:text-slate-200 font-mono break-all">{parentExe}</p>}
               {parentCmdline && (
-                <div className="rounded bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-gray-800 dark:text-slate-200 font-mono break-all whitespace-pre-wrap">
+                <div className="rounded bg-gray-100 dark:bg-black/40 border border-gray-200 dark:border-slate-700/50 px-2 py-1.5 text-[11px] text-gray-800 dark:text-slate-200 font-mono break-all whitespace-pre-wrap max-h-[80px] overflow-auto">
                   {parentCmdline}
                 </div>
               )}
-              {(parentRaw.sha256 || parentRaw.md5) ? (
-                <div className="space-y-1 mt-1">
-                  {parentRaw.sha256 ? (
-                    <div>
-                      <span className="text-[10px] text-gray-400 dark:text-slate-500">SHA256</span>
-                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{String(parentRaw.sha256)}</p>
-                    </div>
-                  ) : null}
-                  {parentRaw.md5 ? (
-                    <div>
-                      <span className="text-[10px] text-gray-400 dark:text-slate-500">MD5</span>
-                      <p className="text-[10px] text-gray-500 dark:text-slate-400 font-mono break-all">{String(parentRaw.md5)}</p>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+              {parentRaw.sha256 && <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono break-all">SHA256: {String(parentRaw.sha256)}</span>}
+            </div>
             </div>
 
-            {/* Event Params Card */}
-            <div className="rounded-lg border-l-4 border-gray-400 dark:border-slate-500 bg-white dark:bg-slate-900/60 border-y border-r border-gray-100 dark:border-slate-700/50 p-3 space-y-2">
+            {/* Event Params — full width, prominent */}
+            {otherParams.length > 0 && (
+            <div className="rounded-lg border-l-4 border-emerald-500 bg-white dark:bg-slate-900/60 border-y border-r border-emerald-100 dark:border-slate-700/50 p-3 space-y-2">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-gray-600 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wider">Params</span>
+                <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider">Event Parameters</span>
                 <span className="text-xs text-gray-500 dark:text-slate-500">{otherParams.length} fields</span>
               </div>
-              {otherParams.length > 0 ? (
-                <div className="space-y-0.5 max-h-[200px] overflow-auto">
-                  {otherParams.map(([key, value]) => (
-                    <div key={key} className="flex gap-2 rounded bg-gray-50 dark:bg-black/30 px-2 py-1">
-                      <span className="text-[11px] text-gray-500 dark:text-slate-500 whitespace-nowrap min-w-[90px]">{key}</span>
-                      <span className="text-[11px] text-gray-800 dark:text-slate-300 font-mono break-all">{String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-gray-500 dark:text-slate-600">No parameters</p>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-0.5 max-h-[400px] overflow-auto">
+                {otherParams.map(([key, value]) => (
+                  <div key={key} className="flex gap-2 rounded bg-gray-50 dark:bg-black/30 px-2 py-1">
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-400 whitespace-nowrap min-w-[100px] font-medium">{key}</span>
+                    <span className="text-[11px] text-gray-800 dark:text-slate-300 font-mono break-all">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
+            )}
           </div>
           )}
 
