@@ -124,9 +124,16 @@ func (c *Client) ruleStreamLoop(onUpdate RuleSyncCallback) {
 		default:
 		}
 
+		start := time.Now()
 		err := c.subscribeRules(onUpdate)
+		elapsed := time.Since(start)
 		if err != nil {
 			log.Warnf("fleet: rule stream error: %v (reconnecting in %s)", err, backoff)
+		}
+
+		// Reset backoff if the stream ran for more than 30s (successful connection)
+		if elapsed > 30*time.Second {
+			backoff = time.Second
 		}
 
 		select {

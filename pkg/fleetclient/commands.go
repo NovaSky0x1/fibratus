@@ -54,9 +54,16 @@ func (c *Client) commandStreamLoop(executor CommandExecutor) {
 		default:
 		}
 
+		start := time.Now()
 		err := c.runCommandChannel(executor)
+		elapsed := time.Since(start)
 		if err != nil {
 			log.Warnf("fleet: command stream error: %v (reconnecting in %s)", err, backoff)
+		}
+
+		// Reset backoff if the stream ran for more than 30s (successful connection)
+		if elapsed > 30*time.Second {
+			backoff = time.Second
 		}
 
 		select {

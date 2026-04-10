@@ -325,17 +325,15 @@ func (s *agentService) SubscribeRules(req *pb.RuleSubscription, stream pb.AgentS
 }
 
 // pushCurrentRules sends the current ruleset to the agent on stream open.
+// Always sends the full rule set — the agent compiles and caches locally.
+// This ensures agents always have rules after reconnecting from server restarts.
 func (s *agentService) pushCurrentRules(stream pb.AgentService_SubscribeRulesServer, orgID, agentID, currentVersion string) error {
 	rules, etag, err := s.rules.GetForAgent(stream.Context(), orgID, agentID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "get rules: %v", err)
 	}
 
-	// If agent's version matches, no need to push
-	if currentVersion != "" && currentVersion == etag {
-		return nil
-	}
-
+	log.Infof("streams: pushing %d rules to agent %s (org %s, etag %s)", len(rules), agentID, orgID, etag)
 	update := buildRuleUpdate(rules, etag, orgID, s.macros, stream.Context())
 	return stream.Send(update)
 }
