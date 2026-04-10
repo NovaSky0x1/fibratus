@@ -31,16 +31,19 @@ import (
 )
 
 // EventSourceControl abstracts away the management of event sources.
-// It combines the ETW kernel event source with the optional Windows
-// Event Log collector. Both sources push events to a unified channel
-// that feeds the rules engine and output pipeline.
+// It wraps the ETW source's output channel so that additional event
+// producers (like the Windows Event Log collector) can inject events
+// into the same stream the aggregator reads from.
 type EventSourceControl struct {
 	evs       source.EventSource
 	collector *eventlog.Collector
 	psnap     ps.Snapshotter
-	mergedEvts chan *event.Event
-	mergedErrs chan error
-	stopMerge  chan struct{}
+
+	// outEvts is the unified channel returned by Events(). It receives
+	// events from the ETW source and, when active, from the event log
+	// collector. Set up in Open() before the aggregator wires up.
+	outEvts chan *event.Event
+	stopFwd chan struct{}
 }
 
 func NewEventSourceControl(
@@ -59,103 +62,33 @@ func (s *EventSourceControl) Open(config *config.Config) error {
 	if err := s.evs.Open(config); err != nil {
 		return err
 	}
-	// If event log collection is configured, start the collector
-	// and merge its events into the unified output channel.
-	if config.EventLog.Enabled && len(config.EventLog.Channels) > 0 {
-		s.collector = eventlog.NewCollector(convertEventLogConfig(config.EventLog), s.psnap)
-		if err := s.collector.Start(); err != nil {
-			log.Warnf("eventlog: collector start failed: %v", err)
-		} else {
-			s.startMerge()
-		}
-	}
-	return nil
-}
-
-// startMerge merges ETW events and event log events into unified channels.
-func (s *EventSourceControl) startMerge() {
-	s.mergedEvts = make(chan *event.Event, 1000)
-	s.mergedErrs = make(chan error, 200)
-	s.stopMerge = make(chan struct{})
-
-	// Merge ETW events
+	// Create unified output channel and start forwarding ETW events into it.
+	// This must happen before Events() is called by the aggregator.
+	s.outEvts = make(chan *event.Event, 1000)
+	s.stopFwd = make(chan struct{})
 	go func() {
 		for {
 			select {
-			case <-s.stopMerge:
+			case <-s.stopFwd:
 				return
 			case evt, ok := <-s.evs.Events():
 				if !ok {
 					return
 				}
 				select {
-				case s.mergedEvts <- evt:
-				case <-s.stopMerge:
+				case s.outEvts <- evt:
+				case <-s.stopFwd:
 					return
 				}
 			}
 		}
 	}()
-
-	// Merge event log events
-	go func() {
-		for {
-			select {
-			case <-s.stopMerge:
-				return
-			case evt, ok := <-s.collector.Events():
-				if !ok {
-					return
-				}
-				select {
-				case s.mergedEvts <- evt:
-				case <-s.stopMerge:
-					return
-				}
-			}
-		}
-	}()
-
-	// Merge errors from both sources
-	go func() {
-		for {
-			select {
-			case <-s.stopMerge:
-				return
-			case err, ok := <-s.evs.Errors():
-				if !ok {
-					continue
-				}
-				select {
-				case s.mergedErrs <- err:
-				case <-s.stopMerge:
-					return
-				}
-			}
-		}
-	}()
-	go func() {
-		for {
-			select {
-			case <-s.stopMerge:
-				return
-			case err, ok := <-s.collector.Errors():
-				if !ok {
-					continue
-				}
-				select {
-				case s.mergedErrs <- err:
-				case <-s.stopMerge:
-					return
-				}
-			}
-		}
-	}()
+	return nil
 }
 
 func (s *EventSourceControl) Close() error {
-	if s.stopMerge != nil {
-		close(s.stopMerge)
+	if s.stopFwd != nil {
+		close(s.stopFwd)
 	}
 	if s.collector != nil {
 		s.collector.Stop()
@@ -164,15 +97,12 @@ func (s *EventSourceControl) Close() error {
 }
 
 func (s *EventSourceControl) Errors() <-chan error {
-	if s.mergedErrs != nil {
-		return s.mergedErrs
-	}
 	return s.evs.Errors()
 }
 
 func (s *EventSourceControl) Events() <-chan *event.Event {
-	if s.mergedEvts != nil {
-		return s.mergedEvts
+	if s.outEvts != nil {
+		return s.outEvts
 	}
 	return s.evs.Events()
 }
@@ -185,13 +115,9 @@ func (s *EventSourceControl) RegisterEventListener(lis event.Listener) {
 	s.evs.RegisterEventListener(lis)
 }
 
-// EventLogCollector returns the event log collector for dynamic reconfiguration.
-func (s *EventSourceControl) EventLogCollector() *eventlog.Collector {
-	return s.collector
-}
-
-// StartEventLogCollector starts the event log collector with the given config.
-// Used for dynamic reconfiguration when the server pushes a new event log policy.
+// StartEventLogCollector starts or reconfigures the event log collector.
+// Collector events are forwarded into outEvts — the same channel the
+// aggregator reads from — so eventlog events appear alongside ETW events.
 func (s *EventSourceControl) StartEventLogCollector(cfg eventlog.Config) {
 	if s.collector != nil {
 		s.collector.Reconfigure(cfg)
@@ -202,10 +128,25 @@ func (s *EventSourceControl) StartEventLogCollector(cfg eventlog.Config) {
 		log.Warnf("eventlog: collector start failed: %v", err)
 		return
 	}
-	// If we weren't already merging, start the merge goroutines
-	if s.mergedEvts == nil {
-		s.startMerge()
-	}
+	// Forward collector events into the unified output channel.
+	go func() {
+		for {
+			select {
+			case <-s.stopFwd:
+				return
+			case evt, ok := <-s.collector.Events():
+				if !ok {
+					return
+				}
+				select {
+				case s.outEvts <- evt:
+				case <-s.stopFwd:
+					return
+				}
+			}
+		}
+	}()
+	log.Infof("eventlog: collector started, forwarding to main event channel")
 }
 
 // convertEventLogConfig converts config.EventLogConfig to eventlog.Config.
