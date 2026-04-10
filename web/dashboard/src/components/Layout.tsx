@@ -105,6 +105,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [])
 
   const handleOrgChange = (orgId: string) => {
+    if (orgId === '' && orgs.length > 0) {
+      // "All Organizations" selected — use first org for API calls
+      // (server requires an org context for most endpoints)
+      orgId = orgs[0].id
+    }
     setCurrentOrgId(orgId)
     setCurrentOrg(orgId)
     queryClient.invalidateQueries()
