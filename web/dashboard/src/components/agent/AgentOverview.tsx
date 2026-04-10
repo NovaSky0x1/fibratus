@@ -111,7 +111,6 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
     const newState = !agent.eventlog_collection
     try {
       await api.setEventLogCollection(agent.id, newState)
-      await cmdMutation.mutateAsync({ type: 'set_eventlog_policy', payload: { enabled: newState } })
       setEventLogResult({ success: true, message: newState ? 'Event log collection enabled.' : 'Event log collection disabled.' })
       queryClient.invalidateQueries({ queryKey: ['agent', agent.id] })
     } catch (e) {
