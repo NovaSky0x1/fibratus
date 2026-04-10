@@ -216,13 +216,12 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 		log.Warnf("eventlog: couldn't load bookmark for %s, starting from future events: %v", ch.Name, err)
 	}
 
-	// Subscribe starting at oldest record to catch existing events immediately.
-	// This validates the subscription is working, then bookmarks track position.
-	var flags wevtapi.EvtSubscribeFlags = wevtapi.EvtSubscribeStartAtOldestRecord
-	// Ignore any loaded bookmark for now
+	// Use bookmark if available (resume from last position), otherwise future events only
+	var flags wevtapi.EvtSubscribeFlags
 	if bookmark != 0 {
-		wevtapi.Close(bookmark)
-		bookmark = 0
+		flags = wevtapi.EvtSubscribeStartAfterBookmark
+	} else {
+		flags = wevtapi.EvtSubscribeToFutureEvents
 	}
 
 	handle, err := wevtapi.Subscribe(ch.Name, query, bookmark, signal, flags)
@@ -255,7 +254,7 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 
 func (c *Collector) readLoop(sub *subscription) {
 	events := make([]wevtapi.EvtHandle, batchSize)
-	log.Infof("eventlog: readLoop started for channel %s (handle=%v, signal=%v, closed=%v)", sub.channel, sub.handle, sub.signal, c.closed.Load())
+	log.Infof("eventlog: readLoop started for channel %s", sub.channel)
 	var totalEvents uint64
 	var waitCount uint64
 
@@ -282,7 +281,7 @@ func (c *Collector) readLoop(sub *subscription) {
 		}
 
 		totalEvents += uint64(returned)
-		if totalEvents <= 10 || totalEvents%1000 == 0 {
+		if totalEvents <= 5 || totalEvents%10000 == 0 {
 			log.Infof("eventlog: channel %s — %d events received (batch=%d)", sub.channel, totalEvents, returned)
 		}
 
