@@ -254,17 +254,22 @@ func (c *Collector) subscribe(ch ChannelConfig) error {
 
 func (c *Collector) readLoop(sub *subscription) {
 	events := make([]wevtapi.EvtHandle, batchSize)
-	log.Infof("eventlog: readLoop started for channel %s (handle=%v, signal=%v)", sub.channel, sub.handle, sub.signal)
+	log.Infof("eventlog: readLoop started for channel %s (handle=%v, signal=%v, closed=%v)", sub.channel, sub.handle, sub.signal, c.closed.Load())
 	var totalEvents uint64
+	var waitCount uint64
 
 	for {
 		if c.closed.Load() {
+			log.Warnf("eventlog: %s readLoop exiting — closed=true", sub.channel)
 			return
 		}
 
 		// Wait for signal event — EvtSubscribe sets this when events are available.
-		// Use 2-second timeout so we can check closed state periodically.
-		result, _ := windows.WaitForSingleObject(sub.signal, 2000)
+		result, waitErr := windows.WaitForSingleObject(sub.signal, 2000)
+		waitCount++
+		if waitCount <= 3 || waitCount%30 == 0 {
+			log.Infof("eventlog: %s wait #%d result=%d err=%v", sub.channel, waitCount, result, waitErr)
+		}
 		if result != windows.WAIT_OBJECT_0 {
 			continue
 		}
