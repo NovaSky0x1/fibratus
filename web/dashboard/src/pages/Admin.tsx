@@ -153,6 +153,12 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-accounts'] }),
   })
 
+  const retentionMut = useMutation({
+    mutationFn: (data: { accountId: string; days: number }) =>
+      api.adminUpdateAccount(data.accountId, { telemetry_retention_days: data.days }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-accounts'] }),
+  })
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -181,12 +187,13 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">2FA Required</th>
                 <SortableHeader label="Orgs" sortKey="org_count" sort={accountSort} onSort={toggleAccountSort} />
                 <SortableHeader label="Users" sortKey="user_count" sort={accountSort} onSort={toggleAccountSort} />
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Retention</th>
                 <SortableHeader label="Created" sortKey="created_at" sort={accountSort} onSort={toggleAccountSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-              {isLoading && <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>}
+              {isLoading && <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>}
               {!isLoading && sortedAccounts.map(acct => (
                 <tr key={acct.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                   <td className="px-6 py-3"><button onClick={() => onAccountClick(acct.id)} className="font-medium text-fibratus-600 hover:underline">{acct.name}</button></td>
@@ -200,6 +207,23 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
                   </td>
                   <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{acct.org_count}</td>
                   <td className="px-6 py-3 text-gray-600 dark:text-slate-400">{acct.user_count}</td>
+                  <td className="px-6 py-3">
+                    <select
+                      value={acct.telemetry_retention_days || 7}
+                      onChange={e => retentionMut.mutate({ accountId: acct.id, days: Number(e.target.value) })}
+                      disabled={retentionMut.isPending}
+                      className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded px-2 py-0.5 text-xs text-gray-700 dark:text-slate-300 disabled:opacity-50"
+                    >
+                      <option value={1}>1d</option>
+                      <option value={3}>3d</option>
+                      <option value={7}>7d</option>
+                      <option value={14}>14d</option>
+                      <option value={30}>30d</option>
+                      <option value={90}>90d</option>
+                      <option value={180}>180d</option>
+                      <option value={365}>1yr</option>
+                    </select>
+                  </td>
                   <td className="px-6 py-3 text-gray-500 dark:text-slate-400 whitespace-nowrap">{new Date(acct.created_at).toLocaleDateString()}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
@@ -216,7 +240,7 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
                   </td>
                 </tr>
               ))}
-              {!isLoading && filtered.length === 0 && <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No accounts found.</td></tr>}
+              {!isLoading && filtered.length === 0 && <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No accounts found.</td></tr>}
             </tbody>
           </table>
         </div>

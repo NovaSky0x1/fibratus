@@ -67,7 +67,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 
 func (s *AccountStore) ListAll(ctx context.Context) ([]*fleet.Account, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT a.id, a.name, a.plan, COALESCE(a.require_2fa, false), a.created_at, a.updated_at,
+		`SELECT a.id, a.name, a.plan, COALESCE(a.require_2fa, false), COALESCE(a.telemetry_retention_days, 7), a.created_at, a.updated_at,
 			COALESCE((SELECT COUNT(*) FROM organizations o WHERE o.account_id = a.id), 0) as org_count,
 			COALESCE((SELECT COUNT(*) FROM users u WHERE u.account_id = a.id), 0) as user_count
 		 FROM accounts a ORDER BY a.created_at`)
@@ -80,7 +80,7 @@ func (s *AccountStore) ListAll(ctx context.Context) ([]*fleet.Account, error) {
 	for rows.Next() {
 		a := &fleet.Account{}
 		var orgCount, userCount int
-		if err := rows.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.CreatedAt, &a.UpdatedAt, &orgCount, &userCount); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.TelemetryRetentionDays, &a.CreatedAt, &a.UpdatedAt, &orgCount, &userCount); err != nil {
 			return nil, err
 		}
 		a.OrgCount = orgCount

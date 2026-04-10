@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 
@@ -29,8 +29,6 @@ export default function DatabaseTab() {
   const [browseOffset, setBrowseOffset] = useState(0)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [deleting, setDeleting] = useState(false)
-  const [retentionDays, setRetentionDays] = useState<number>(30)
-  const [retentionSaving, setRetentionSaving] = useState(false)
 
   const pgTables = useQuery({
     queryKey: ['pg-tables'],
@@ -43,20 +41,6 @@ export default function DatabaseTab() {
     queryFn: () => api.dbTablesClickhouse(),
     staleTime: 30000,
   })
-
-  const accountSettings = useQuery({
-    queryKey: ['account-settings'],
-    queryFn: () => api.getAccountSettings(),
-  })
-
-  useEffect(() => {
-    if (accountSettings.data?.data) {
-      const settings = accountSettings.data.data as Record<string, unknown>
-      if (typeof settings.telemetry_retention_days === 'number') {
-        setRetentionDays(settings.telemetry_retention_days)
-      }
-    }
-  }, [accountSettings.data])
 
   const tables = dbType === 'postgres' ? pgTables : chTables
 
@@ -180,21 +164,6 @@ export default function DatabaseTab() {
     }
   }
 
-  async function saveRetention() {
-    setRetentionSaving(true)
-    try {
-      await api.updateTelemetryRetention(retentionDays)
-      accountSettings.refetch()
-    } catch {
-      // silently handle
-    } finally {
-      setRetentionSaving(false)
-    }
-  }
-
-  const currentRetention = (accountSettings.data?.data as Record<string, unknown>)?.telemetry_retention_days as number | undefined
-  const retentionChanged = currentRetention !== undefined && retentionDays !== currentRetention
-
   function formatCellValue(val: unknown): string {
     if (val === null || val === undefined) return 'NULL'
     if (typeof val === 'object') return JSON.stringify(val)
@@ -207,7 +176,7 @@ export default function DatabaseTab() {
     <div className="space-y-4">
       {/* Server Info Bar */}
       <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div>
             <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">Server URL</div>
             <div className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">{window.location.origin}</div>
@@ -215,29 +184,6 @@ export default function DatabaseTab() {
           <div>
             <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">Version</div>
             <div className="text-sm font-medium text-gray-900 dark:text-slate-100">Fleet v1.0</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">ClickHouse Telemetry Retention</div>
-            <div className="flex items-center gap-2">
-              <select
-                value={retentionDays}
-                onChange={e => setRetentionDays(Number(e.target.value))}
-                className="text-sm rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 px-2 py-1"
-              >
-                {[7, 14, 30, 60, 90, 180, 365].map(d => (
-                  <option key={d} value={d}>{d} days</option>
-                ))}
-              </select>
-              {retentionChanged && (
-                <button
-                  onClick={saveRetention}
-                  disabled={retentionSaving}
-                  className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {retentionSaving ? 'Saving...' : 'Save'}
-                </button>
-              )}
-            </div>
           </div>
           <div>
             <div className="text-xs text-gray-500 dark:text-slate-400 mb-1">Environment</div>

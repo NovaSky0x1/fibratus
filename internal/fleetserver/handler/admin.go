@@ -119,9 +119,10 @@ func (h *AdminHandler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name       string `json:"name"`
-		Plan       string `json:"plan"`
-		Require2FA *bool  `json:"require_2fa"`
+		Name                   string `json:"name"`
+		Plan                   string `json:"plan"`
+		Require2FA             *bool  `json:"require_2fa"`
+		TelemetryRetentionDays *int   `json:"telemetry_retention_days"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -132,6 +133,14 @@ func (h *AdminHandler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 	if req.Require2FA != nil {
 		if err := h.accounts.UpdateSettings(r.Context(), accountID, *req.Require2FA, nil, nil, nil); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to update account")
+			return
+		}
+	}
+
+	// Update retention if provided
+	if req.TelemetryRetentionDays != nil && *req.TelemetryRetentionDays > 0 {
+		if err := h.accounts.UpdateRetention(r.Context(), accountID, *req.TelemetryRetentionDays); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update retention")
 			return
 		}
 	}

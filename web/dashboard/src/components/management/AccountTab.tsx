@@ -85,12 +85,6 @@ export default function AccountTab() {
     onError: () => setOrgToggling(null),
   })
 
-  const orgRetentionMut = useMutation({
-    mutationFn: ({ orgId, days }: { orgId: string; days: number }) =>
-      api.updateOrgRetention(orgId, days),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['account-settings'] }),
-  })
-
   // ── Local state ──────────────────────────────────────────────
 
   const [newWhitelistEntry, setNewWhitelistEntry] = useState('')
@@ -258,22 +252,6 @@ export default function AccountTab() {
                       )}
                     </div>
                     <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-500 dark:text-slate-500">Retention</span>
-                        <select
-                          value={org.telemetry_retention_days || 7}
-                          onChange={e => orgRetentionMut.mutate({ orgId: org.id, days: Number(e.target.value) })}
-                          className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded px-1.5 py-0.5 text-[11px] text-gray-700 dark:text-slate-300"
-                        >
-                          <option value={1}>1d</option>
-                          <option value={3}>3d</option>
-                          <option value={7}>7d</option>
-                          <option value={14}>14d</option>
-                          <option value={30}>30d</option>
-                          <option value={90}>90d</option>
-                          <option value={365}>1yr</option>
-                        </select>
-                      </div>
                       <ToggleSwitch
                         enabled={effectiveEnabled}
                         onToggle={() => handleOrgTamperToggle(org.id, org.tamper_protection_enabled)}

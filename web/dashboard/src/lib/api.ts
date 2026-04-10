@@ -168,6 +168,7 @@ export interface Account {
   name: string
   plan: string
   require_2fa: boolean
+  telemetry_retention_days: number
   org_count: number
   user_count: number
   created_at: string
@@ -480,7 +481,7 @@ export const api = {
   adminGetAccountOrgs: (accountId: string) =>
     fetchApi<unknown[]>(`/admin/accounts/${accountId}/orgs`),
   adminGetAllUsers: () => fetchApi<unknown[]>('/admin/users'),
-  adminUpdateAccount: (accountId: string, data: { name?: string; plan?: string; require_2fa?: boolean }) =>
+  adminUpdateAccount: (accountId: string, data: { name?: string; plan?: string; require_2fa?: boolean; telemetry_retention_days?: number }) =>
     fetchApi<Account>(`/admin/accounts/${accountId}`, { method: 'PUT', body: JSON.stringify(data) }),
   adminSwitchAccount: (accountId: string) =>
     fetchApi<{ account_id: string; account_name: string }>('/admin/switch-account', { method: 'POST', body: JSON.stringify({ account_id: accountId }) }),
