@@ -43,6 +43,7 @@ const EVENT_COLORS: Record<string, string> = {
   mem: 'text-pink-700 dark:text-pink-400 dark:bg-pink-500/20 dark:border dark:border-pink-500/30',
   handle: 'text-gray-700 dark:text-gray-400 dark:bg-gray-500/20 dark:border dark:border-gray-500/30',
   dns: 'text-teal-700 dark:text-teal-400 dark:bg-teal-500/20 dark:border dark:border-teal-500/30',
+  eventlog: 'text-sky-700 dark:text-sky-400 dark:bg-sky-500/20 dark:border dark:border-sky-500/30',
 }
 
 const FIELD_SUGGESTIONS = [
@@ -86,6 +87,13 @@ const FIELD_SUGGESTIONS = [
   { field: 'ps.username', desc: 'Process username', category: 'Process' },
   { field: 'ps.domain', desc: 'Process domain', category: 'Process' },
   { field: 'ps.sid', desc: 'Process SID', category: 'Process' },
+  // Event Log
+  { field: 'eventlog.channel', desc: 'Event log channel', category: 'Event Log' },
+  { field: 'eventlog.event.id', desc: 'Event log event ID', category: 'Event Log' },
+  { field: 'eventlog.provider', desc: 'Event log provider', category: 'Event Log' },
+  { field: 'eventlog.level', desc: 'Event log level', category: 'Event Log' },
+  { field: 'eventlog.computer', desc: 'Source computer', category: 'Event Log' },
+  { field: 'eventlog.user.id', desc: 'Security user SID', category: 'Event Log' },
   // Agent
   { field: 'agent.hostname', desc: 'Agent hostname', category: 'Agent' },
   { field: 'agent.id', desc: 'Agent ID', category: 'Agent' },
@@ -965,7 +973,8 @@ function EventPreviewInline({ evt }: { evt: TelemetryEvent }) {
 
   // Event-specific params — show more
   const interesting = ['file_path', 'file_name', 'dip', 'dport', 'sip', 'sport', 'key_name', 'name', 'domain',
-    'cert_subject', 'signature_level', 'signature_type', 'image_size', 'checksum', 'base_address']
+    'cert_subject', 'signature_level', 'signature_type', 'image_size', 'checksum', 'base_address',
+    'eventlog.channel', 'eventlog.event.id', 'eventlog.provider', 'eventlog.level', 'eventlog.computer', 'eventlog.user.id']
   for (const key of interesting) {
     if (params[key] !== undefined && params[key] !== '' && chips.length < 8) {
       const val = String(params[key])
