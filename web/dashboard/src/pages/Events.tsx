@@ -350,12 +350,8 @@ export default function Events({ agentId }: { agentId?: string } = {}) {
   }, [])
 
   // Data fetching
-  // In live mode, don't send a 'to' ceiling so the server always returns the latest events.
-  // The queryKey includes a coarse timestamp (10s buckets) so React Query treats each
-  // interval as a fresh query instead of returning stale cached results.
-  const liveTick = liveMode ? Math.floor(Date.now() / 10000) : 0
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['telemetry', agentId || 'all', activeQuery, timePreset.label, page, customTimeActive, customFrom, customTo, filters.map(f => f.id).join(','), liveTick],
+    queryKey: ['telemetry', agentId || 'all', activeQuery, timePreset.label, page, customTimeActive, customFrom, customTo, filters.map(f => f.id).join(',')],
     queryFn: () => {
       const params: Record<string, string> = {
         limit: '100',
@@ -370,8 +366,7 @@ export default function Events({ agentId }: { agentId?: string } = {}) {
       } else {
         const range = getTimeRange(timePreset.ms)
         params.from = range.from
-        // In live mode, always use current time as the upper bound
-        params.to = new Date().toISOString()
+        params.to = range.to
       }
       if (agentId) params.agent_id = agentId
       return api.getOrgTelemetry(params)
