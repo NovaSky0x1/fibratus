@@ -20,6 +20,7 @@ package fleet
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -37,6 +38,7 @@ type Account struct {
 	EventLogEnabled         bool     `json:"eventlog_enabled"`
 	TelemetryRetentionDays  int      `json:"telemetry_retention_days"`
 	IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
+	AllowedFileExtensions   []string `json:"allowed_file_extensions,omitempty"`
 	OrgCount                int      `json:"org_count,omitempty"`
 	UserCount       int       `json:"user_count,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -228,6 +230,45 @@ type AgentGroup struct {
 	AgentCount  int       `json:"agent_count,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// DefaultAllowedFileExtensions defines the file extensions that can be
+// downloaded from endpoints by default. This is the CMMC/HIPAA-compliant
+// allowlist — only security-relevant files, no documents/data that could
+// contain CUI, PHI, or PII. Configurable per-account.
+var DefaultAllowedFileExtensions = []string{
+	// Executables & binaries
+	".exe", ".dll", ".sys", ".drv", ".ocx", ".cpl", ".scr", ".com",
+	// Scripts (security-relevant)
+	".ps1", ".psm1", ".psd1", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta",
+	// Shortcuts & registry (attack vectors)
+	".lnk", ".url", ".reg",
+	// Configuration files
+	".inf", ".ini", ".cfg", ".conf", ".config", ".xml", ".json", ".yaml", ".yml", ".toml",
+	// Logs & forensic artifacts
+	".log", ".evtx", ".etl",
+	// Memory dumps (for analysis)
+	".dmp", ".mdmp",
+	// Prefetch & catalog files
+	".pf", ".manifest", ".cat", ".mum",
+	// Certificates & crypto
+	".cer", ".crt", ".pem", ".p7b", ".pfx",
+	// Task scheduler & policy
+	".job",
+}
+
+// IsFileExtensionAllowed checks if a file path has an allowed extension.
+func IsFileExtensionAllowed(path string, allowed []string) bool {
+	if len(allowed) == 0 {
+		allowed = DefaultAllowedFileExtensions
+	}
+	lowerPath := strings.ToLower(path)
+	for _, ext := range allowed {
+		if strings.HasSuffix(lowerPath, strings.ToLower(ext)) {
+			return true
+		}
+	}
+	return false
 }
 
 // ═══════════════════════════════════════════════════════════════

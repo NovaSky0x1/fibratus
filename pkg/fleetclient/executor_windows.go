@@ -333,6 +333,11 @@ func (e *WindowsExecutor) getFile(cmd *fleet.Command) (json.RawMessage, error) {
 		return nil, fmt.Errorf("path required")
 	}
 
+	// CMMC/HIPAA compliance: agent-side enforcement of file access policy
+	if !fleet.IsFileExtensionAllowed(payload.Path, nil) {
+		return nil, fmt.Errorf("file download blocked by compliance policy — file type not in allowed list")
+	}
+
 	info, err := os.Stat(payload.Path)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %v", payload.Path, err)

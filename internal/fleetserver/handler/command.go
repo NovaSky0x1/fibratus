@@ -68,6 +68,7 @@ type CommandPushCallback func(agentID, cmdID, cmdType string, payload []byte) bo
 type CommandHandler struct {
 	commands     store.CommandStore
 	agents       store.AgentStore
+	accounts     store.AccountStore
 	audit        store.AuditStore
 	users        store.UserStore
 	onCmdCreated CommandPushCallback
@@ -76,6 +77,11 @@ type CommandHandler struct {
 // NewCommandHandler creates a new command handler.
 func NewCommandHandler(commands store.CommandStore, agents store.AgentStore, audit store.AuditStore, users store.UserStore) *CommandHandler {
 	return &CommandHandler{commands: commands, agents: agents, audit: audit, users: users}
+}
+
+// SetAccountStore sets the account store for compliance checks (file access policy).
+func (h *CommandHandler) SetAccountStore(s store.AccountStore) {
+	h.accounts = s
 }
 
 // SetCommandPushCallback registers a callback for instant command delivery.
@@ -126,6 +132,27 @@ func (h *CommandHandler) CreateCommand(w http.ResponseWriter, r *http.Request) {
 	if agent == nil {
 		writeError(w, http.StatusNotFound, "agent not found")
 		return
+	}
+
+	// CMMC/HIPAA compliance: validate file extension for get_file commands
+	if req.Type == fleet.CmdGetFile {
+		var filePayload struct {
+			Path string `json:"path"`
+		}
+		json.Unmarshal(req.Payload, &filePayload)
+		if filePayload.Path != "" && h.accounts != nil {
+			accountID := ctxutil.AccountIDFromContext(r.Context())
+			account, _ := h.accounts.Get(r.Context(), accountID)
+			var allowed []string
+			if account != nil {
+				allowed = account.AllowedFileExtensions
+			}
+			if !fleet.IsFileExtensionAllowed(filePayload.Path, allowed) {
+				writeError(w, http.StatusForbidden,
+					"file download blocked by compliance policy — only security-relevant file types are allowed")
+				return
+			}
+		}
 	}
 
 	userID := ctxutil.UserIDFromContext(r.Context())

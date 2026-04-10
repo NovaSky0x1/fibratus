@@ -154,6 +154,7 @@ func (s *Server) Run(ctx context.Context) error {
 	totpHandler := handler.NewTOTPHandler(userStore)
 	agentHandler := handler.NewAgentHandler(agentStore, accountStore, orgStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
+	commandHandler.SetAccountStore(accountStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore, telemetryStore)
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore, macroStore, auditStore, userStore)
 	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)

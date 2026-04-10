@@ -395,6 +395,9 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS telemetry_retention_days INTEGER D
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS telemetry_retention_days INTEGER DEFAULT 0;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS eventlog_collection BOOLEAN DEFAULT FALSE;
 
+-- CMMC/HIPAA file access compliance policy (allowed download extensions)
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS allowed_file_extensions JSONB DEFAULT 'null';
+
 -- ═══════════════════════════════════════════════════════════════
 -- Decommissioned agents — deleted agents that should auto-uninstall on reconnect
 -- ═══════════════════════════════════════════════════════════════
