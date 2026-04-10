@@ -223,6 +223,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               Management
             </Link>
           )}
+          {isRoot && (
+            <Link
+              to="/admin"
+              className={clsx(
+                'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mb-1',
+                location.pathname === '/admin'
+                  ? 'bg-purple-500/20 text-purple-200'
+                  : 'text-purple-300/80 hover:bg-purple-500/10 hover:text-purple-200'
+              )}
+            >
+              Super Admin
+            </Link>
+          )}
         </nav>
 
         {/* Footer: user info, theme toggle, sign out */}

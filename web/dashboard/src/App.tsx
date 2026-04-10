@@ -11,6 +11,7 @@ import Macros from './pages/Macros'
 import Events from './pages/Events'
 import AuditLog from './pages/AuditLog'
 import Management from './pages/Management'
+import Admin from './pages/Admin'
 import ProcessTreePage from './pages/ProcessTreePage'
 import AgentDetailPage from './pages/AgentDetailPage'
 
@@ -40,8 +41,8 @@ export default function App() {
                 <Route path="/macros" element={<Macros />} />
                 <Route path="/events" element={<Events />} />
                 <Route path="/management" element={<Management />} />
+                <Route path="/admin" element={<Admin />} />
                 <Route path="/settings" element={<Navigate to="/management#account" replace />} />
-                <Route path="/admin" element={<Navigate to="/management#database" replace />} />
                 <Route path="/audit-log" element={<AuditLog />} />
                 <Route path="/process-tree" element={<ProcessTreePage />} />
               </Routes>

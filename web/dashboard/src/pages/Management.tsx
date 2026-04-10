@@ -7,25 +7,23 @@ import UsersTab from '../components/management/UsersTab'
 import GroupsTab from '../components/management/GroupsTab'
 import EnrollmentTab from '../components/management/EnrollmentTab'
 import TelemetryTab from '../components/management/TelemetryTab'
-import DatabaseTab from '../components/management/DatabaseTab'
 import AuditTab from '../components/management/AuditTab'
 
-type Tab = 'account' | 'organizations' | 'users' | 'groups' | 'enrollment' | 'telemetry' | 'database' | 'audit'
+type Tab = 'account' | 'organizations' | 'users' | 'groups' | 'enrollment' | 'telemetry' | 'audit'
 
-const allTabs: { key: Tab; label: string; rootOnly?: boolean }[] = [
+const tabs: { key: Tab; label: string }[] = [
   { key: 'account', label: 'Account' },
   { key: 'organizations', label: 'Organizations' },
   { key: 'users', label: 'Users' },
   { key: 'groups', label: 'User Groups' },
   { key: 'enrollment', label: 'Enrollment' },
   { key: 'telemetry', label: 'Telemetry' },
-  { key: 'database', label: 'Database', rootOnly: true },
   { key: 'audit', label: 'Audit' },
 ]
 
 function getTabFromHash(): Tab {
   const hash = window.location.hash.replace('#', '') as Tab
-  if (allTabs.some(t => t.key === hash)) return hash
+  if (tabs.some(t => t.key === hash)) return hash
   return 'account'
 }
 
@@ -38,9 +36,7 @@ export default function Management() {
   })
   const currentUser = currentUserData?.data as User | undefined
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'root'
-  const isRoot = currentUser?.role === 'root'
 
-  // Sync tab with URL hash
   useEffect(() => {
     const handler = () => setTab(getTabFromHash())
     window.addEventListener('hashchange', handler)
@@ -68,20 +64,17 @@ export default function Management() {
     )
   }
 
-  const visibleTabs = allTabs.filter(t => !t.rootOnly || isRoot)
-
   return (
     <div>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Management</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Account settings, enrollment, users, organizations, and system management</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Account settings, enrollment, users, and organization management</p>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="mt-6 flex gap-1 border-b border-gray-200 dark:border-slate-700 overflow-x-auto">
-        {visibleTabs.map(t => (
+        {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => handleTabChange(t.key)}
@@ -103,7 +96,6 @@ export default function Management() {
       {tab === 'groups' && <GroupsTab />}
       {tab === 'enrollment' && <EnrollmentTab />}
       {tab === 'telemetry' && <TelemetryTab />}
-      {tab === 'database' && isRoot && <DatabaseTab />}
       {tab === 'audit' && <AuditTab />}
     </div>
   )
