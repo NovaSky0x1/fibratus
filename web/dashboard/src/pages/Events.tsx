@@ -1026,12 +1026,10 @@ interface EventRowProps {
   rawExpanded: boolean
   onRawToggle: () => void
   onAddFilter: (field: string, value: string) => void
+  orgName: string
 }
 
-function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpanded, onRawToggle, onAddFilter, orgName }: {
-  evt: TelemetryEvent; isExpanded: boolean; onToggle: () => void; detailTab: string; onTabChange: (t: string) => void;
-  rawExpanded: boolean; onRawToggle: () => void; onAddFilter: (field: string, value: string) => void; orgName: string
-}) {
+function EventRow({ evt, isExpanded, onToggle, detailTab, onTabChange, rawExpanded, onRawToggle, onAddFilter, orgName }: EventRowProps) {
   return (
     <>
       <tr
