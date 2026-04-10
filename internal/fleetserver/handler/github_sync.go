@@ -146,15 +146,53 @@ func (h *GitHubSyncHandler) SaveConfig(w http.ResponseWriter, r *http.Request) {
 // DeleteConfig handles DELETE /api/v1/orgs/{org_id}/github-sync/{id}
 func (h *GitHubSyncHandler) DeleteConfig(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
+	accountID := ctxutil.AccountIDFromContext(r.Context())
 	parts := strings.Split(r.URL.Path, "/github-sync/")
 	if len(parts) < 2 || parts[1] == "" {
 		writeError(w, http.StatusBadRequest, "config ID required")
 		return
 	}
 	configID := strings.TrimSuffix(strings.TrimSuffix(parts[1], "/"), "/trigger")
+
+	// Load the config to get the repo URL before deleting
+	cfg := loadSyncConfigByID(orgID, configID)
+	if cfg == nil {
+		writeError(w, http.StatusNotFound, "sync config not found")
+		return
+	}
+
+	// Determine which orgs were affected
+	source := "github:" + cfg.RepoURL
+	targetOrgIDs := []string{orgID}
+	if cfg.Scope == "account" && accountID != "" && githubSyncDB != nil {
+		rows, _ := githubSyncDB.Query(`SELECT id FROM organizations WHERE account_id = $1`, accountID)
+		if rows != nil {
+			targetOrgIDs = nil
+			for rows.Next() {
+				var oid string
+				if rows.Scan(&oid) == nil {
+					targetOrgIDs = append(targetOrgIDs, oid)
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	// Delete all rules from this source across affected orgs
+	for _, oid := range targetOrgIDs {
+		deleted, err := h.rules.DeleteBySource(r.Context(), oid, source)
+		if err != nil {
+			log.Warnf("fleet: failed to delete rules from source %s in org %s: %v", source, oid, err)
+		} else if deleted > 0 {
+			log.Infof("fleet: deleted %d rules from source %s in org %s", deleted, source, oid)
+		}
+	}
+
+	// Delete the config itself
 	if githubSyncDB != nil {
 		githubSyncDB.Exec(`DELETE FROM github_sync_configs WHERE id = $1 AND org_id = $2`, configID, orgID)
 	}
+	log.Infof("fleet: deleted GitHub sync config %s and its rules (source=%s)", configID, source)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -330,6 +368,8 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 			syncedIDs[targetOrg] = append(syncedIDs[targetOrg], rule.ID)
 			existing, _ := h.rules.Get(ctx, targetOrg, rule.ID)
 			if existing != nil {
+				// Preserve user's local enabled/disabled state — don't overwrite manual edits
+				rule.Enabled = existing.Enabled
 				if err := h.rules.Update(ctx, &rule); err != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("%s (org %s): update error: %v", file.Name, targetOrg, err))
 					result.Skipped++

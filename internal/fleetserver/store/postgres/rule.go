@@ -148,6 +148,17 @@ func (s *RuleStore) Delete(ctx context.Context, orgID, id string) error {
 	return err
 }
 
+// DeleteBySource deletes all rules for an org with the given source.
+func (s *RuleStore) DeleteBySource(ctx context.Context, orgID, source string) (int, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM rules WHERE org_id = $1 AND source = $2`, orgID, source)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // DeleteBySourceExcept deletes all rules for an org with the given source
 // EXCEPT those whose IDs are in the keep set. Used for clean sync.
 func (s *RuleStore) DeleteBySourceExcept(ctx context.Context, orgID, source string, keepIDs []string) (int, error) {
