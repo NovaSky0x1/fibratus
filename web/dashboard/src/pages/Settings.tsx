@@ -653,12 +653,12 @@ interface EventLogChannel {
 const RECOMMENDED_CHANNELS: EventLogChannel[] = [
   { name: 'Security', collect_all: true },
   { name: 'System', collect_all: true },
-  { name: 'Microsoft-Windows-PowerShell/Operational', collect_all: true },
   { name: 'Microsoft-Windows-Sysmon/Operational', collect_all: true },
-  { name: 'Microsoft-Windows-Windows Defender/Operational', collect_all: true },
 ]
 
 const ADDITIONAL_CHANNELS: EventLogChannel[] = [
+  { name: 'Microsoft-Windows-PowerShell/Operational', collect_all: true },
+  { name: 'Microsoft-Windows-Windows Defender/Operational', collect_all: true },
   { name: 'Application', collect_all: true },
   { name: 'Microsoft-Windows-CodeIntegrity/Operational', collect_all: true },
   { name: 'Microsoft-Windows-Windows Firewall With Advanced Security/Firewall', collect_all: true },

@@ -124,13 +124,11 @@ func (h *AuthHandler) propagateEventLogPolicy(ctx context.Context, orgID string,
 		policy, _ = h.eventlogPolicy.Get(ctx, orgID)
 	}
 	if policy == nil {
-		// Create default policy with recommended channels
+		// Create default policy with core channels
 		channels := []fleet.EventLogPolicyChannel{
 			{Name: "Security", CollectAll: true},
 			{Name: "System", CollectAll: true},
-			{Name: "Microsoft-Windows-PowerShell/Operational", CollectAll: true},
 			{Name: "Microsoft-Windows-Sysmon/Operational", CollectAll: true},
-			{Name: "Microsoft-Windows-Windows Defender/Operational", CollectAll: true},
 		}
 		policy = &fleet.EventLogPolicy{
 			ID:       GenerateID(),
