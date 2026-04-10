@@ -151,22 +151,42 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 	psnap := ps.NewSnapshotter(hsnap, cfg)
 
 	// Detect enrollment data EARLY — before rules, output, and event pipeline setup.
-	// After `fibratus enroll`, all connection info is on disk. No config file needed.
-	// This populates the fleet config from enrollment data, overriding any YAML values.
+	// After `fibratus enroll`, all connection info is stored in DPAPI-encrypted registry.
+	// Falls back to plaintext files for backward compatibility with pre-migration agents.
 	{
 		exe, _ := os.Executable()
 		if exe == "" {
 			exe = "."
 		}
 		dataDir := filepath.Join(filepath.Dir(exe), "..", "data")
-		if serverURL := loadFileContent(filepath.Join(dataDir, "server-url")); serverURL != "" {
+
+		// Try DPAPI-encrypted registry first (preferred)
+		if enrollData := tamper.LoadEnrollment(); enrollData != nil {
 			cfg.Fleet.Enabled = true
-			cfg.Fleet.ServerURL = serverURL
-			log.Infof("fleet: enrollment detected — server: %s", serverURL)
+			cfg.Fleet.ServerURL = enrollData.ServerURL
+			cfg.Fleet.OrgID = enrollData.OrgID
+			log.Infof("fleet: enrollment loaded from DPAPI-encrypted registry — server: %s", enrollData.ServerURL)
+		} else {
+			// Fall back to legacy plaintext files + attempt migration
+			if tamper.MigrateFilesToRegistry(dataDir) {
+				log.Info("fleet: migrated enrollment from files to DPAPI registry")
+				// Re-read from registry after migration
+				if enrollData := tamper.LoadEnrollment(); enrollData != nil {
+					cfg.Fleet.Enabled = true
+					cfg.Fleet.ServerURL = enrollData.ServerURL
+					cfg.Fleet.OrgID = enrollData.OrgID
+				}
+			} else if serverURL := loadFileContent(filepath.Join(dataDir, "server-url")); serverURL != "" {
+				// Files exist but migration failed — use files directly
+				cfg.Fleet.Enabled = true
+				cfg.Fleet.ServerURL = serverURL
+				log.Infof("fleet: enrollment detected from files — server: %s", serverURL)
+				if orgID := loadFileContent(filepath.Join(dataDir, "org-id")); orgID != "" {
+					cfg.Fleet.OrgID = orgID
+				}
+			}
 		}
-		if orgID := loadFileContent(filepath.Join(dataDir, "org-id")); orgID != "" {
-			cfg.Fleet.OrgID = orgID
-		}
+
 		// Set defaults if not already configured
 		if cfg.Fleet.Enabled {
 			if cfg.Fleet.HeartbeatInterval <= 0 {
@@ -178,22 +198,8 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 			if cfg.Fleet.Timeout <= 0 {
 				cfg.Fleet.Timeout = 10 * time.Second
 			}
-		}
-
-		// Verify enrollment data integrity if seal exists
-		if cfg.Fleet.Enabled {
-			if fileExists(filepath.Join(dataDir, ".seal")) {
-				if err := tamper.VerifySeal(dataDir); err != nil {
-					log.Errorf("CRITICAL: enrollment data integrity check failed: %v", err)
-					log.Error("CRITICAL: fleet mode disabled — enrollment data may have been tampered with")
-					cfg.Fleet.Enabled = false
-					cfg.Fleet.ServerURL = ""
-				} else {
-					log.Info("fleet: enrollment data integrity verified")
-				}
-			} else {
-				log.Warn("fleet: no integrity seal found — run 'fibratus setup' to generate one")
-			}
+			// Protect registry keys on every startup
+			tamper.ProtectRegistryKeys()
 		}
 	}
 

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
+	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	"github.com/rabbitstack/fibratus/pkg/util/version"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -62,15 +63,23 @@ type Client struct {
 }
 
 // New creates a new fleet client with gRPC transport.
-// The dataDir is used to persist the agent ID and certificates across restarts.
+// The dataDir is used to persist operational state across restarts.
 func New(config Config, dataDir string) (*Client, error) {
-	// Load persisted enrollment data — overrides config file settings.
-	if serverURL := loadFile(filepath.Join(dataDir, "server-url")); serverURL != "" {
-		config.ServerURL = serverURL
-		log.Infof("fleet: loaded server URL from enrollment: %s", serverURL)
-	}
-	if orgID := loadFile(filepath.Join(dataDir, "org-id")); orgID != "" {
-		config.OrgID = orgID
+	// Load enrollment data from DPAPI-encrypted registry (preferred),
+	// falling back to legacy plaintext files for backward compatibility.
+	if enrollData := tamper.LoadEnrollment(); enrollData != nil {
+		config.ServerURL = enrollData.ServerURL
+		config.OrgID = enrollData.OrgID
+		log.Infof("fleet: loaded enrollment from DPAPI registry — server: %s", enrollData.ServerURL)
+	} else {
+		// Legacy file fallback
+		if serverURL := loadFile(filepath.Join(dataDir, "server-url")); serverURL != "" {
+			config.ServerURL = serverURL
+			log.Infof("fleet: loaded server URL from enrollment files: %s", serverURL)
+		}
+		if orgID := loadFile(filepath.Join(dataDir, "org-id")); orgID != "" {
+			config.OrgID = orgID
+		}
 	}
 
 	// Parse server address for gRPC (strip scheme, use port 8444 for gRPC)
@@ -81,16 +90,27 @@ func New(config Config, dataDir string) (*Client, error) {
 		InsecureSkipVerify: config.TLSInsecureSkipVerify,
 	}
 
-	// Load enrollment certificates for mTLS
-	certFile := filepath.Join(dataDir, "certs", "agent.crt")
-	keyFile := filepath.Join(dataDir, "certs", "agent.key")
-	if fileExists(certFile) && fileExists(keyFile) {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	// Load mTLS certificates from DPAPI registry (preferred), then file fallback
+	if enrollData := tamper.LoadEnrollment(); enrollData != nil && len(enrollData.AgentCert) > 0 && len(enrollData.AgentKey) > 0 {
+		cert, err := tls.X509KeyPair(enrollData.AgentCert, enrollData.AgentKey)
 		if err != nil {
-			log.Warnf("fleet: failed to load enrollment certs: %v", err)
+			log.Warnf("fleet: failed to load certs from registry: %v", err)
 		} else {
 			tlsCfg.Certificates = []tls.Certificate{cert}
-			log.Info("fleet: using enrollment certificates for mTLS")
+			log.Info("fleet: using enrollment certificates from DPAPI registry for mTLS")
+		}
+	} else {
+		// Legacy file fallback
+		certFile := filepath.Join(dataDir, "certs", "agent.crt")
+		keyFile := filepath.Join(dataDir, "certs", "agent.key")
+		if fileExists(certFile) && fileExists(keyFile) {
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				log.Warnf("fleet: failed to load enrollment certs from files: %v", err)
+			} else {
+				tlsCfg.Certificates = []tls.Certificate{cert}
+				log.Info("fleet: using enrollment certificates from files for mTLS")
+			}
 		}
 	}
 
@@ -293,6 +313,11 @@ func fileExists(path string) bool {
 
 // loadAgentID loads a previously persisted agent ID from disk.
 func (c *Client) loadAgentID() string {
+	// Try DPAPI registry first
+	if enrollData := tamper.LoadEnrollment(); enrollData != nil && enrollData.AgentID != "" {
+		return enrollData.AgentID
+	}
+	// Fall back to file
 	return loadFile(filepath.Join(c.dataDir, agentIDFile))
 }
 
@@ -305,8 +330,13 @@ func loadFile(path string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// persistAgentID saves the agent ID to disk for persistence across restarts.
+// persistAgentID saves the agent ID to DPAPI registry and file fallback.
 func (c *Client) persistAgentID(id string) {
+	// Store in DPAPI registry (primary)
+	if err := tamper.StoreAgentID(id); err != nil {
+		log.Warnf("fleet: failed to persist agent ID to registry: %v", err)
+	}
+	// Also write to file for backward compatibility
 	if c.dataDir == "" {
 		return
 	}
@@ -316,6 +346,6 @@ func (c *Client) persistAgentID(id string) {
 		return
 	}
 	if err := os.WriteFile(path, []byte(id), 0o600); err != nil {
-		log.Warnf("fleet: failed to persist agent ID: %v", err)
+		log.Warnf("fleet: failed to persist agent ID to file: %v", err)
 	}
 }

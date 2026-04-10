@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
+	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	"github.com/rabbitstack/fibratus/pkg/util/version"
 	"github.com/spf13/cobra"
 )
@@ -182,32 +183,29 @@ func Enroll(opts EnrollOpts) (*fleet.EnrollResponse, error) {
 		return nil, fmt.Errorf("server returned incomplete enrollment response")
 	}
 
-	// 5. Store certificates and key
-	fmt.Println("  Storing certificates...")
-	certDir := filepath.Join(dir, "certs")
-	if err := os.MkdirAll(certDir, 0o700); err != nil {
-		return nil, fmt.Errorf("failed to create cert directory: %w", err)
+	// 5. Store enrollment data in DPAPI-encrypted registry
+	fmt.Println("  Storing enrollment data (DPAPI-encrypted registry)...")
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	enrollData := &tamper.EnrollmentData{
+		ServerURL: opts.ServerURL,
+		OrgID:     enrollResp.OrgID,
+		AgentID:   enrollResp.AgentID,
+		AgentCert: []byte(enrollResp.SignedCert),
+		AgentKey:  keyPEM,
+		CACert:    []byte(enrollResp.CACert),
+	}
+	if err := tamper.StoreEnrollment(enrollData); err != nil {
+		return nil, fmt.Errorf("failed to store enrollment in registry: %w", err)
 	}
 
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	if err := os.WriteFile(filepath.Join(certDir, "agent.key"), keyPEM, 0o600); err != nil {
-		return nil, fmt.Errorf("failed to write key: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(certDir, "agent.crt"), []byte(enrollResp.SignedCert), 0o644); err != nil {
-		return nil, fmt.Errorf("failed to write cert: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(certDir, "ca.crt"), []byte(enrollResp.CACert), 0o644); err != nil {
-		return nil, fmt.Errorf("failed to write CA cert: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "agent-id"), []byte(enrollResp.AgentID), 0o644); err != nil {
-		return nil, fmt.Errorf("failed to write agent ID: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "org-id"), []byte(enrollResp.OrgID), 0o644); err != nil {
-		return nil, fmt.Errorf("failed to write org ID: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "server-url"), []byte(opts.ServerURL), 0o644); err != nil {
-		return nil, fmt.Errorf("failed to write server URL: %w", err)
-	}
+	// Protect the registry keys with SYSTEM-only write ACLs
+	tamper.ProtectRegistryKeys()
+
+	// Also write minimal files for backward compatibility during migration period.
+	// The data directory must exist for other state files (rules-etag, etc.)
+	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "server-url"), []byte(opts.ServerURL), 0o644)
+	os.WriteFile(filepath.Join(dir, "org-id"), []byte(enrollResp.OrgID), 0o644)
 
 	return &enrollResp, nil
 }
