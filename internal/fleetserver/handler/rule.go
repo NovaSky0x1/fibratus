@@ -504,3 +504,109 @@ func parseYAMLRule(data []byte, rule *fleet.Rule) error {
 	}
 	return nil
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Public Rule Validation API (no authentication required)
+// ═══════════════════════════════════════════════════════════════
+
+// PublicValidateRule handles POST /api/v1/public/validate-rule
+// Accepts raw YAML rule(s) and validates structure + condition syntax.
+// No authentication required — designed for VS Code, CI pipelines, and pre-commit hooks.
+// Rate-limited at the server level.
+func PublicValidateRule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST required")
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 512*1024)) // 512KB max
+	if err != nil || len(body) == 0 {
+		writeError(w, http.StatusBadRequest, "request body required (raw YAML)")
+		return
+	}
+
+	type RuleResult struct {
+		Name             string      `json:"name"`
+		Valid            bool        `json:"valid"`
+		SchemaErrors     []string    `json:"schema_errors,omitempty"`
+		ConditionValid   bool        `json:"condition_valid"`
+		ConditionErrors  interface{} `json:"condition_errors,omitempty"`
+		Severity         string      `json:"severity,omitempty"`
+		Version          string      `json:"version,omitempty"`
+	}
+
+	results := make([]RuleResult, 0)
+
+	// Support multi-document YAML (--- separated)
+	docs := splitYAMLDocs(body)
+	for _, doc := range docs {
+		if len(strings.TrimSpace(string(doc))) == 0 {
+			continue
+		}
+
+		result := RuleResult{}
+
+		// 1. Schema validation
+		if err := validator.ValidateRuleYAML(doc); err != nil {
+			result.SchemaErrors = append(result.SchemaErrors, err.Error())
+		}
+
+		// 2. Parse YAML to get rule fields
+		var rule fleet.Rule
+		if err := parseYAMLRule(doc, &rule); err != nil {
+			result.SchemaErrors = append(result.SchemaErrors, "YAML parse error: "+err.Error())
+			results = append(results, result)
+			continue
+		}
+		result.Name = rule.Name
+		result.Severity = rule.Severity
+		result.Version = rule.Version
+
+		// 3. Field validation
+		if err := validator.ValidateRuleFields(rule.Name, rule.Condition, rule.Severity); err != nil {
+			result.SchemaErrors = append(result.SchemaErrors, err.Error())
+		}
+
+		// 4. Condition syntax validation (no macros in public context)
+		if rule.Condition != "" {
+			condResult := validator.ValidateCondition(rule.Condition)
+			result.ConditionValid = condResult.Valid
+			if !condResult.Valid {
+				result.ConditionErrors = condResult.Errors
+			}
+		}
+
+		result.Valid = len(result.SchemaErrors) == 0 && result.ConditionValid
+		results = append(results, result)
+	}
+
+	allValid := true
+	for _, r := range results {
+		if !r.Valid {
+			allValid = false
+			break
+		}
+	}
+
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"valid":   allValid,
+		"count":   len(results),
+		"rules":   results,
+	}})
+}
+
+// splitYAMLDocs splits a multi-document YAML byte slice by "---" separator.
+func splitYAMLDocs(data []byte) [][]byte {
+	parts := strings.Split(string(data), "\n---")
+	docs := make([][]byte, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" && trimmed != "---" {
+			docs = append(docs, []byte(trimmed))
+		}
+	}
+	if len(docs) == 0 && len(data) > 0 {
+		docs = append(docs, data)
+	}
+	return docs
+}
