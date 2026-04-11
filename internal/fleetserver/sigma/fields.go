@@ -352,17 +352,17 @@ var imageLoadFields = map[string]string{
 	"signed":          "module.signature.exists",
 	"SignatureStatus": "module.signature.trusted",
 	"signaturestatus": "module.signature.trusted",
-	"Signature":       "image.cert.subject",
-	"signature":       "image.cert.subject",
+	"Signature":       "module.signature.subject",
+	"signature":       "module.signature.subject",
 	"CommandLine":     "ps.cmdline",
 	"commandline":     "ps.cmdline",
 	"ProcessId":       "ps.pid",
-	"OriginalFileName": "pe.file.name",
-	"Imphash":         "pe.imphash",
-	"imphash":         "pe.imphash",
-	"Company":         "pe.company",
-	"Description":     "pe.description",
-	"Product":         "pe.product",
+	"OriginalFileName": "ps.pe.file.name",
+	"Imphash":         "ps.pe.imphash",
+	"imphash":         "ps.pe.imphash",
+	"Company":         "ps.pe.company",
+	"Description":     "ps.pe.description",
+	"Product":         "ps.pe.product",
 }
 
 var driverLoadFields = map[string]string{
@@ -372,10 +372,10 @@ var driverLoadFields = map[string]string{
 	"signed":          "module.signature.exists",
 	"SignatureStatus": "module.signature.trusted",
 	"signaturestatus": "module.signature.trusted",
-	"Signature":       "image.cert.subject",
-	"signature":       "image.cert.subject",
-	"Imphash":         "pe.imphash",
-	"imphash":         "pe.imphash",
+	"Signature":       "module.signature.subject",
+	"signature":       "module.signature.subject",
+	"Imphash":         "ps.pe.imphash",
+	"imphash":         "ps.pe.imphash",
 }
 
 var processAccessFields = map[string]string{
