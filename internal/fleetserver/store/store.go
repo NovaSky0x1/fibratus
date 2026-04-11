@@ -94,13 +94,16 @@ type AgentStore interface {
 	MarkOfflineAgents(ctx context.Context, timeout time.Duration) (int, error)
 }
 
-// RuleStore manages rule persistence. All operations are org-scoped.
+// RuleStore manages rule persistence. All operations are org-scoped
+// except the *AcrossAccount methods which propagate to all orgs.
 type RuleStore interface {
 	Create(ctx context.Context, rule *fleet.Rule) error
 	Get(ctx context.Context, orgID, id string) (*fleet.Rule, error)
 	List(ctx context.Context, orgID string, opts fleet.ListOptions) ([]*fleet.Rule, int, error)
 	Update(ctx context.Context, rule *fleet.Rule) error
+	UpdateAcrossAccount(ctx context.Context, accountID string, rule *fleet.Rule) (int, error)
 	Delete(ctx context.Context, orgID, id string) error
+	DeleteAcrossAccount(ctx context.Context, accountID, ruleID string) error
 	DeleteBySource(ctx context.Context, orgID, source string) (int, error)
 	DeleteBySourceExcept(ctx context.Context, orgID, source string, keepIDs []string) (int, error)
 	CountBySource(ctx context.Context, orgID, source string) (int, error)

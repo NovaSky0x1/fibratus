@@ -336,15 +336,32 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		rule.Enabled = false // invalid rules cannot be enabled
 	}
 
-	if err := h.rules.Update(r.Context(), &rule); err != nil {
-		log.Errorf("fleet: update rule error: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to update rule")
-		return
+	// Propagate update to ALL orgs in the account (rules are managed per-account)
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID != "" {
+		if _, err := h.rules.UpdateAcrossAccount(r.Context(), accountID, &rule); err != nil {
+			log.Errorf("fleet: update rule across account error: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to update rule")
+			return
+		}
+		// Notify all orgs in account of rule change
+		if h.orgs != nil {
+			orgList, _ := h.orgs.ListByAccount(r.Context(), accountID)
+			for _, o := range orgList {
+				h.notifyRuleChange(o.ID)
+			}
+		}
+	} else {
+		if err := h.rules.Update(r.Context(), &rule); err != nil {
+			log.Errorf("fleet: update rule error: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to update rule")
+			return
+		}
+		h.notifyRuleChange(orgID)
 	}
 
 	userID := ctxutil.UserIDFromContext(r.Context())
 	logAudit(r, h.audit, h.users, userID, orgID, "update", "rule", ruleID, rule.Name, nil)
-	h.notifyRuleChange(orgID)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: rule})
 }
 
@@ -366,16 +383,40 @@ func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		name = existing.Name
 		// Record deletion of synced rules so they aren't re-created on next sync
 		if existing.Source != "manual" {
-			h.rules.RecordSyncDeletion(r.Context(), orgID, ruleID, existing.Source)
+			// Record deletion for ALL orgs in the account
+			accountID := ctxutil.AccountIDFromContext(r.Context())
+			if accountID != "" && h.orgs != nil {
+				orgList, _ := h.orgs.ListByAccount(r.Context(), accountID)
+				for _, o := range orgList {
+					h.rules.RecordSyncDeletion(r.Context(), o.ID, ruleID, existing.Source)
+				}
+			} else {
+				h.rules.RecordSyncDeletion(r.Context(), orgID, ruleID, existing.Source)
+			}
 		}
 	}
 
-	if err := h.rules.Delete(r.Context(), orgID, ruleID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete rule")
-		return
+	// Delete from ALL orgs in the account (rules are managed per-account)
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID != "" {
+		if err := h.rules.DeleteAcrossAccount(r.Context(), accountID, ruleID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to delete rule")
+			return
+		}
+		if h.orgs != nil {
+			orgList, _ := h.orgs.ListByAccount(r.Context(), accountID)
+			for _, o := range orgList {
+				h.notifyRuleChange(o.ID)
+			}
+		}
+	} else {
+		if err := h.rules.Delete(r.Context(), orgID, ruleID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to delete rule")
+			return
+		}
+		h.notifyRuleChange(orgID)
 	}
 	logAudit(r, h.audit, h.users, userID, orgID, "delete", "rule", ruleID, name, nil)
-	h.notifyRuleChange(orgID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

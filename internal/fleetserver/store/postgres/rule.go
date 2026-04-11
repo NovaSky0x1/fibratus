@@ -154,6 +154,43 @@ func (s *RuleStore) Delete(ctx context.Context, orgID, id string) error {
 	return err
 }
 
+// UpdateAcrossAccount propagates a rule update to all orgs in the same account.
+// Used for account-wide rule management — when a user toggles or edits a rule,
+// the change applies to every org, not just the current one.
+func (s *RuleStore) UpdateAcrossAccount(ctx context.Context, accountID string, rule *fleet.Rule) (int, error) {
+	labels, _ := json.Marshal(rule.Labels)
+	validationErrors := rule.ValidationErrors
+	if validationErrors == nil {
+		validationErrors = json.RawMessage(`[]`)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE rules SET
+			name=$3, version=$4, description=$5, condition=$6, output_template=$7,
+			severity=$8, labels=$9, tags=$10, "references"=$11,
+			raw_yaml=$12, enabled=$13, validation_status=$14, validation_errors=$15,
+			user_modified=$16, user_disabled=$17, updated_at=NOW()
+		 WHERE id=$1 AND org_id IN (SELECT id FROM organizations WHERE account_id=$2)`,
+		rule.ID, accountID, rule.Name, rule.Version, rule.Description,
+		rule.Condition, rule.Output, rule.Severity, labels,
+		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
+		rule.ValidationStatus, validationErrors,
+		rule.UserModified, rule.UserDisabled,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// DeleteAcrossAccount deletes a rule from all orgs in the same account.
+func (s *RuleStore) DeleteAcrossAccount(ctx context.Context, accountID, ruleID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM rules WHERE id=$1 AND org_id IN (SELECT id FROM organizations WHERE account_id=$2)`,
+		ruleID, accountID)
+	return err
+}
+
 // DeleteBySource deletes all rules for an org with the given source.
 func (s *RuleStore) DeleteBySource(ctx context.Context, orgID, source string) (int, error) {
 	res, err := s.db.ExecContext(ctx,
