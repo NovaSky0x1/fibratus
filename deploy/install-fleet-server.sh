@@ -10,7 +10,7 @@
 #   - ClickHouse (telemetry storage)
 #   - Go toolchain (build server binary)
 #   - Node.js (build dashboard)
-#   - Nginx (reverse proxy + TLS + static files)
+#   - Nginx (reverse proxy + TLS + static files + gRPC passthrough)
 #   - Fleet server binary + systemd service
 #   - Logrotate, firewall, auto-renewal
 #
@@ -26,7 +26,8 @@ CONFIG_DIR="/etc/fibratus"
 DATA_DIR="/var/lib/fibratus-fleet"
 LOG_DIR="/var/log/fibratus-fleet"
 SERVICE_USER="fibratus"
-BACKEND_PORT="8443"  # Internal only — Nginx proxies to this
+BACKEND_PORT="8443"  # Internal HTTP — Nginx proxies to this
+GRPC_PORT="8444"     # Internal gRPC — Nginx proxies to this
 
 DB_NAME="fibratus_fleet"
 DB_USER="fibratus"
@@ -240,6 +241,26 @@ sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASS}';" 2>/
 sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 || \
     sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null
+
+# Configure pg_hba.conf for password authentication over TCP (the fleet server
+# connects via host=localhost which uses TCP, not Unix sockets).
+PG_HBA=$(sudo -u postgres psql -t -c "SHOW hba_file" 2>/dev/null | xargs)
+if [[ -n "${PG_HBA}" ]] && [[ -f "${PG_HBA}" ]]; then
+    if ! grep -q "fibratus_fleet" "${PG_HBA}" 2>/dev/null; then
+        info "Adding pg_hba.conf entry for fleet server..."
+        # Insert before the first "host" line to ensure it takes priority
+        sed -i "/^# IPv4 local connections:/a host    ${DB_NAME}    ${DB_USER}    127.0.0.1/32    scram-sha-256" "${PG_HBA}"
+        sed -i "/^# IPv6 local connections:/a host    ${DB_NAME}    ${DB_USER}    ::1/128         scram-sha-256" "${PG_HBA}"
+        # Reload PostgreSQL to apply pg_hba changes
+        systemctl reload postgresql 2>/dev/null || true
+        ok "pg_hba.conf updated for password auth"
+    else
+        ok "pg_hba.conf already configured"
+    fi
+else
+    warn "Could not locate pg_hba.conf — verify PostgreSQL allows password auth for ${DB_USER}"
+fi
+
 ok "PostgreSQL database '${DB_NAME}' ready"
 
 # ─── Step 5: Install ClickHouse ──────────────────────────────────────────────
@@ -250,10 +271,10 @@ if command -v clickhouse-client &>/dev/null; then
     ok "ClickHouse already installed"
 else
     info "Installing ClickHouse..."
-    # Add ClickHouse official repository
-    curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key 2>/dev/null | \
+    # Add ClickHouse official deb repository with the correct GPG key
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://packages.clickhouse.com/deb/repository.gpg | \
         gpg --dearmor -o /etc/apt/keyrings/clickhouse.gpg 2>/dev/null || true
-    # Use the deb repo
     ARCH=$(dpkg --print-architecture)
     echo "deb [signed-by=/etc/apt/keyrings/clickhouse.gpg arch=${ARCH}] https://packages.clickhouse.com/deb stable main" > /etc/apt/sources.list.d/clickhouse.list
     apt-get update -qq
@@ -264,7 +285,7 @@ fi
 systemctl enable clickhouse-server 2>/dev/null || true
 systemctl start clickhouse-server 2>/dev/null || true
 
-# Wait for ClickHouse to be ready
+# Wait for ClickHouse to be ready (native protocol on port 9000)
 for i in $(seq 1 15); do
     if clickhouse-client --query "SELECT 1" &>/dev/null; then
         break
@@ -277,7 +298,7 @@ clickhouse-client --query "CREATE DATABASE IF NOT EXISTS ${CH_DB}" 2>/dev/null |
 # Create ClickHouse user (skip if default user works)
 clickhouse-client --query "CREATE USER IF NOT EXISTS ${CH_USER} IDENTIFIED WITH plaintext_password BY '${CH_PASS}'" 2>/dev/null || true
 clickhouse-client --query "GRANT ALL ON ${CH_DB}.* TO ${CH_USER}" 2>/dev/null || true
-ok "ClickHouse database '${CH_DB}' ready"
+ok "ClickHouse database '${CH_DB}' ready (native protocol on port 9000)"
 
 # ─── Step 6: Clone / update repo ────────────────────────────────────────────
 
@@ -312,7 +333,8 @@ step "Step 8/14: Fleet server binary"
 cd "${INSTALL_DIR}/src"
 mkdir -p "${INSTALL_DIR}/bin"
 
-go mod tidy 2>/dev/null || go mod download
+go mod download 2>/dev/null || true
+go mod tidy 2>/dev/null || true
 
 CGO_ENABLED=0 go build \
     -ldflags="-s -w -X github.com/rabbitstack/fibratus/cmd/fleet-server/app.version=$(git describe --tags 2>/dev/null || echo dev) -X github.com/rabbitstack/fibratus/cmd/fleet-server/app.commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
@@ -340,7 +362,7 @@ info "SigmaHQ: ${SIGMAHQ_RULE_COUNT} Windows rules available for conversion"
 
 # ─── Step 9: Create service user ────────────────────────────────────────────
 
-step "Step 9/14: Service user"
+step "Step 9/14: Service user & permissions"
 
 if id "${SERVICE_USER}" &>/dev/null; then
     ok "Service user '${SERVICE_USER}' exists"
@@ -348,6 +370,14 @@ else
     useradd --system --no-create-home --shell /usr/sbin/nologin "${SERVICE_USER}"
     ok "Service user '${SERVICE_USER}' created"
 fi
+
+# Set ownership on directories the service user needs
+mkdir -p "${DATA_DIR}" "${LOG_DIR}" "${CONFIG_DIR}"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" "${LOG_DIR}"
+
+# SigmaHQ directory needs read access for the service user
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${SIGMAHQ_DIR}"
+ok "SigmaHQ directory permissions set for ${SERVICE_USER}"
 
 # ─── Step 10: TLS certificate ───────────────────────────────────────────────
 
@@ -410,6 +440,10 @@ HOOK
         TLS_CERT="${CONFIG_DIR}/tls/server.crt"
         TLS_KEY="${CONFIG_DIR}/tls/server.key"
 
+        # Service user needs read access to TLS certs
+        chown "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}/tls/server.key" "${CONFIG_DIR}/tls/server.crt"
+        chmod 640 "${CONFIG_DIR}/tls/server.key"
+
         ok "Self-signed certificate generated"
         TLS_NOTE="Self-signed (agents need --insecure flag)"
         ;;
@@ -422,12 +456,13 @@ HOOK
         ;;
 esac
 
+# Note: TLS is terminated by Nginx. The Go server (HTTP + gRPC) runs
+# plain on localhost, so the service user does not need access to TLS
+# certificates. Nginx reads them as root.
+
 # ─── Step 11: Write configuration ───────────────────────────────────────────
 
 step "Step 11/14: Configuration"
-
-mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}"
-chown "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" "${LOG_DIR}"
 
 SERVER_URL="https://${FLEET_DOMAIN}"
 
@@ -435,6 +470,9 @@ cat > "${CONFIG_DIR}/fleet-server.yml" <<YAML
 server:
   listen: "127.0.0.1:${BACKEND_PORT}"
   external-url: "${SERVER_URL}"
+
+grpc:
+  listen: "127.0.0.1:${GRPC_PORT}"
 
 database:
   host: localhost
@@ -484,13 +522,18 @@ ok "Configuration written to ${CONFIG_DIR}/fleet-server.yml"
 
 # ─── Step 12: Configure Nginx reverse proxy ─────────────────────────────────
 
-step "Step 12/14: Nginx reverse proxy"
+step "Step 12/14: Nginx reverse proxy (HTTP + gRPC)"
 
 cat > /etc/nginx/sites-available/fibratus-fleet <<NGINX
 # Fibratus Fleet Server — Nginx reverse proxy
 # Auto-generated by install-fleet-server.sh
+#
+# Handles:
+#   - Dashboard static files (React SPA)
+#   - API routes (proxy to Go HTTP backend on ${BACKEND_PORT})
+#   - gRPC agent traffic (proxy to Go gRPC backend on ${GRPC_PORT})
 
-# Redirect HTTP → HTTPS
+# Redirect HTTP -> HTTPS
 server {
     listen 80;
     server_name ${FLEET_DOMAIN};
@@ -498,7 +541,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ${FLEET_DOMAIN};
 
     ssl_certificate     ${TLS_CERT};
@@ -519,7 +563,34 @@ server {
     root ${INSTALL_DIR}/src/web/dashboard/dist;
     index index.html;
 
-    # API routes — proxy to Go backend
+    # ── gRPC passthrough for agent communication ──────────────
+    # Agents connect via gRPC on port 443. Nginx detects the
+    # content-type and proxies to the gRPC backend.
+    location /fleet.v1.AgentService/ {
+        grpc_pass grpc://127.0.0.1:${GRPC_PORT};
+        grpc_set_header Host \$host;
+        grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        grpc_set_header X-Forwarded-Proto \$scheme;
+        grpc_read_timeout 3600s;
+        grpc_send_timeout 3600s;
+        client_max_body_size 64m;
+
+        # Allow large streaming responses (telemetry, rule sync)
+        grpc_buffer_size 64k;
+    }
+
+    location /fleet.v1.EnrollmentService/ {
+        grpc_pass grpc://127.0.0.1:${GRPC_PORT};
+        grpc_set_header Host \$host;
+        grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        grpc_set_header X-Forwarded-Proto \$scheme;
+        grpc_read_timeout 300s;
+        grpc_send_timeout 300s;
+    }
+
+    # ── HTTP API routes — proxy to Go backend ─────────────────
     location /api/ {
         proxy_pass http://127.0.0.1:${BACKEND_PORT};
         proxy_http_version 1.1;
@@ -562,7 +633,7 @@ NGINX
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/fibratus-fleet /etc/nginx/sites-enabled/fibratus-fleet
 nginx -t 2>/dev/null || err "Nginx configuration test failed"
-ok "Nginx configured"
+ok "Nginx configured (HTTP API + gRPC passthrough on port 443)"
 
 # ─── Step 13: Migrations + bootstrap ─────────────────────────────────────────
 
@@ -587,6 +658,15 @@ ok "Bootstrap complete (2FA enforcement enabled)"
 # ─── Step 14: Systemd service + logrotate ────────────────────────────────────
 
 step "Step 14/14: Systemd service, logrotate, firewall"
+
+# Build the ReadWritePaths and ReadOnlyPaths lists for systemd hardening.
+# ProtectSystem=strict makes / read-only; we must explicitly allow paths
+# the server needs to read or write.
+#
+# Write: data dir, log dir, sigmahq dir (git pull updates)
+# Read:  config dir, source dir (seeding rules/macros from files)
+READWRITE_PATHS="${DATA_DIR} ${LOG_DIR} ${SIGMAHQ_DIR}"
+READONLY_PATHS="${CONFIG_DIR} ${INSTALL_DIR}/src"
 
 # Systemd service with full hardening
 cat > /etc/systemd/system/fibratus-fleet.service <<SERVICE
@@ -614,7 +694,8 @@ NoNewPrivileges=true
 ProtectHome=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=${DATA_DIR} ${LOG_DIR}
+ReadWritePaths=${READWRITE_PATHS}
+ReadOnlyPaths=${READONLY_PATHS}
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
@@ -624,6 +705,9 @@ WantedBy=multi-user.target
 SERVICE
 
 # Logrotate configuration
+# Use copytruncate instead of postrotate reload — the Go binary does not
+# handle SIGHUP for log re-opening, and systemctl reload is not supported
+# for Type=simple services without an ExecReload directive.
 cat > /etc/logrotate.d/fibratus-fleet <<LOGROTATE
 ${LOG_DIR}/fleet-server.log {
     daily
@@ -632,10 +716,7 @@ ${LOG_DIR}/fleet-server.log {
     delaycompress
     missingok
     notifempty
-    create 0640 ${SERVICE_USER} ${SERVICE_USER}
-    postrotate
-        systemctl reload fibratus-fleet 2>/dev/null || true
-    endscript
+    copytruncate
 }
 LOGROTATE
 
@@ -652,9 +733,9 @@ ok "Nginx started"
 # Firewall
 if command -v ufw &>/dev/null; then
     ufw allow 80/tcp comment "HTTP (Let's Encrypt renewal + redirect)" 2>/dev/null || true
-    ufw allow 443/tcp comment "HTTPS (Fibratus Fleet)" 2>/dev/null || true
+    ufw allow 443/tcp comment "HTTPS + gRPC (Fibratus Fleet)" 2>/dev/null || true
     ufw allow 22/tcp comment "SSH" 2>/dev/null || true
-    ok "Firewall ports 22, 80, 443 opened"
+    ok "Firewall ports 22, 80, 443 opened (gRPC goes through 443 via Nginx)"
 fi
 
 # ═══════════════════════════════════════════════════════════════
@@ -709,9 +790,10 @@ echo -e "  ───────────────────────
 echo ""
 echo -e "  ${BOLD}Infrastructure:${NC}"
 echo -e "    PostgreSQL:   localhost:5432 / ${DB_NAME}"
-echo -e "    ClickHouse:   localhost:9000 / ${CH_DB}"
-echo -e "    Backend:      127.0.0.1:${BACKEND_PORT}"
-echo -e "    Nginx:        ${FLEET_DOMAIN}:443 → backend"
+echo -e "    ClickHouse:   localhost:9000 / ${CH_DB} (native protocol)"
+echo -e "    HTTP backend: 127.0.0.1:${BACKEND_PORT}"
+echo -e "    gRPC backend: 127.0.0.1:${GRPC_PORT}"
+echo -e "    Nginx:        ${FLEET_DOMAIN}:443 -> HTTP + gRPC backends"
 echo ""
 echo -e "  ${BOLD}Credentials:${NC}"
 echo -e "    Enrollment:   ${ENROLL_TOKEN}"
@@ -724,6 +806,7 @@ echo -e "    Config:       ${CONFIG_DIR}/fleet-server.yml"
 echo -e "    Logs:         journalctl -u fibratus-fleet -f"
 echo -e "    Nginx:        /var/log/nginx/access.log"
 echo -e "    Source:       ${INSTALL_DIR}/src"
+echo -e "    SigmaHQ:      ${SIGMAHQ_DIR}"
 echo ""
 echo -e "  Token valid for 1 year / 1000 agents. Create more in dashboard Settings."
 echo ""
