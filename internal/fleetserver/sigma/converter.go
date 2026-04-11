@@ -166,16 +166,9 @@ func convertDetection(rule *SigmaRule, cfg *logsourceConfig) (string, []string, 
 	}
 
 	// Prepend the logsource event type prefix.
-	// Don't wrap in parens if the condition already starts with "not" since
-	// the QL parser doesn't support (not ...) as first token.
-	var fullCondition string
-	trimCond := strings.TrimSpace(condition)
-	if strings.HasPrefix(trimCond, "not ") || strings.HasPrefix(trimCond, "not(") {
-		// Condition starts with NOT — don't wrap, just join with "and"
-		fullCondition = cfg.conditionPrefix + " and\n  " + condition
-	} else {
-		fullCondition = cfg.conditionPrefix + " and\n  " + condition
-	}
+	// Not scoping is handled in buildCondition via (true and not <expr>)
+	// wrappers, so no special handling needed here.
+	fullCondition := cfg.conditionPrefix + " and\n  " + condition
 
 	// Format for readability: break into multi-line with proper indentation
 	fullCondition = formatCondition(fullCondition)
@@ -573,9 +566,14 @@ func buildCondition(condStr string, selectionExprs map[string]string) (string, e
 		expr := selectionExprs[name]
 		quotedName := regexp.QuoteMeta(name)
 
-		// First pass: replace "not <selection>" with "(not <expr>)"
+		// First pass: replace "not <selection>" with "(true and not <expr>)".
+		// We need "true and" because the QL parser doesn't support (not ...) — not
+		// cannot be the first token inside parens. And we need the outer parens
+		// because the parser's not handler calls ParseExpr() which consumes
+		// everything until EOF or closing paren, so without the outer ), not would
+		// negate the entire remaining expression instead of just this selection.
 		notRe := regexp.MustCompile(`\bnot\s+` + quotedName + `\b`)
-		result = notRe.ReplaceAllString(result, "(not "+expr+")")
+		result = notRe.ReplaceAllString(result, "(true and not "+expr+")")
 
 		// Second pass: replace remaining (non-negated) occurrences
 		re := regexp.MustCompile(`\b` + quotedName + `\b`)
