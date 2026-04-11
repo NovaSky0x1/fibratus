@@ -312,6 +312,11 @@ func convertFieldValue(field string, value interface{}, modifiers []string) (str
 		return field + " = ''", nil
 	}
 
+	// Handle windash modifier: expand "-flag" to match both "-flag" and "/flag"
+	if hasModifier(modifiers, "windash") {
+		return convertWindash(field, value, modifiers)
+	}
+
 	// Determine string matching operator
 	op := resolveOperator(modifiers)
 
@@ -472,28 +477,35 @@ func convertCIDR(field string, value interface{}) (string, error) {
 
 // convertRegex converts a regex value to an imatches operator.
 func convertRegex(field string, value interface{}, useAll bool) (string, error) {
+	// SIGMA's |re modifier means regex match. Fibratus uses the regex()
+	// function: regex(field, 'pattern1', 'pattern2', ...)
 	switch v := value.(type) {
 	case string:
-		return fmt.Sprintf("%s imatches '%s'", field, escapeQL(v)), nil
+		return fmt.Sprintf("regex(%s, '%s')", field, escapeQL(v)), nil
 	case []interface{}:
-		var parts []string
+		var patterns []string
 		for _, item := range v {
 			s, ok := item.(string)
 			if !ok {
 				continue
 			}
-			parts = append(parts, fmt.Sprintf("%s imatches '%s'", field, escapeQL(s)))
+			patterns = append(patterns, "'"+escapeQL(s)+"'")
 		}
-		joiner := " or "
+		if len(patterns) == 0 {
+			return "", nil
+		}
 		if useAll {
-			joiner = " and "
+			// |all|re means ALL patterns must match — need separate regex() calls AND'd
+			var parts []string
+			for _, pat := range patterns {
+				parts = append(parts, fmt.Sprintf("regex(%s, %s)", field, pat))
+			}
+			return "(" + strings.Join(parts, " and ") + ")", nil
 		}
-		if len(parts) == 1 {
-			return parts[0], nil
-		}
-		return "(" + strings.Join(parts, joiner) + ")", nil
+		// Default: any pattern matches — single regex() call with multiple patterns
+		return fmt.Sprintf("regex(%s, %s)", field, strings.Join(patterns, ", ")), nil
 	default:
-		return fmt.Sprintf("%s imatches '%v'", field, v), nil
+		return fmt.Sprintf("regex(%s, '%v')", field, v), nil
 	}
 }
 
@@ -801,7 +813,6 @@ var unsupportedModifiers = map[string]bool{
 	"utf16le":      true,
 	"utf16be":      true,
 	"wide":         true,
-	"windash":      true,
 	"fieldref":     true,
 	"expand":       true,
 }
@@ -846,6 +857,48 @@ func isBooleanField(field string) bool {
 		"file.is_exec":             true,
 	}
 	return boolFields[field]
+}
+
+// convertWindash handles the SIGMA windash modifier, which expands command-line
+// flags to match both dash (-) and forward-slash (/) variants.
+// E.g., "-y" becomes (field icontains '-y' or field icontains '/y').
+func convertWindash(field string, value interface{}, modifiers []string) (string, error) {
+	// Remove windash from modifiers for operator resolution
+	var cleanMods []string
+	for _, m := range modifiers {
+		if strings.ToLower(m) != "windash" && strings.ToLower(m) != "all" {
+			cleanMods = append(cleanMods, m)
+		}
+	}
+	op := resolveOperator(cleanMods)
+	useAll := hasModifier(modifiers, "all")
+
+	values := toStringSlice(value)
+	if len(values) == 0 {
+		return "", nil
+	}
+
+	var allParts []string
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if strings.HasPrefix(v, "-") {
+			slashVariant := "/" + v[1:]
+			dashExpr := fmt.Sprintf("%s %s '%s'", field, op, escapeQL(v))
+			slashExpr := fmt.Sprintf("%s %s '%s'", field, op, escapeQL(slashVariant))
+			allParts = append(allParts, "("+dashExpr+" or "+slashExpr+")")
+		} else {
+			allParts = append(allParts, fmt.Sprintf("%s %s '%s'", field, op, escapeQL(v)))
+		}
+	}
+
+	if len(allParts) == 1 {
+		return allParts[0], nil
+	}
+	joiner := " or "
+	if useAll {
+		joiner = " and "
+	}
+	return "(" + strings.Join(allParts, joiner) + ")", nil
 }
 
 // convertHashesField handles the Sysmon composite "Hashes" field.

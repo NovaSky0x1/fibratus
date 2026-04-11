@@ -394,14 +394,19 @@ var processAccessFields = map[string]string{
 }
 
 var createRemoteThreadFields = map[string]string{
-	"SourceImage":     "ps.exe",
-	"sourceimage":     "ps.exe",
-	"TargetImage":     "evt.arg[exe]",
-	"targetimage":     "evt.arg[exe]",
-	"StartFunction":   "thread.start_address.symbol",
-	"StartModule":     "thread.start_address.module",
-	"StartAddress":    "thread.start_address",
-	"SourceUser":      "ps.username",
+	"SourceImage":           "ps.exe",
+	"sourceimage":           "ps.exe",
+	"TargetImage":           "evt.arg[exe]",
+	"targetimage":           "evt.arg[exe]",
+	"StartFunction":         "thread.start_address.symbol",
+	"StartModule":           "thread.start_address.module",
+	"StartAddress":          "thread.start_address",
+	"SourceUser":            "ps.username",
+	"SourceCommandLine":     "ps.cmdline",
+	"sourcecommandline":     "ps.cmdline",
+	"SourceParentImage":     "ps.parent.exe",
+	"sourceparentimage":     "ps.parent.exe",
+	"TargetParentProcessId": "", // not mappable — Fibratus doesn't expose target's parent PID
 }
 
 // ═══════════════════════════════════════════════════════════════
