@@ -311,6 +311,16 @@ func convertFieldValue(field string, value interface{}, modifiers []string) (str
 	case nil:
 		return field + " = ''", nil
 	case string:
+		// Check for boolean-like strings on boolean fields
+		if isBooleanField(field) {
+			lower := strings.ToLower(v)
+			if lower == "false" || lower == "0" || lower == "no" {
+				return field + " = false", nil
+			}
+			if lower == "true" || lower == "1" || lower == "yes" {
+				return field + " = true", nil
+			}
+		}
 		return convertSingleValue(field, v, op, modifiers)
 	case int, int64, float64:
 		return fmt.Sprintf("%s = %v", field, v), nil
@@ -789,6 +799,30 @@ func unsupportedModifier(modifiers []string) string {
 		}
 	}
 	return ""
+}
+
+// isBooleanField returns true if the Fibratus field expects a boolean value.
+func isBooleanField(field string) bool {
+	boolFields := map[string]bool{
+		"module.signature.exists":  true,
+		"module.signature.trusted": true,
+		"ps.signature.exists":      true,
+		"ps.signature.trusted":     true,
+		"ps.is_wow64":              true,
+		"ps.is_packaged":           true,
+		"ps.is_protected":          true,
+		"ps.token.is_elevated":     true,
+		"pe.is_signed":             true,
+		"pe.is_trusted":            true,
+		"pe.is_dotnet":             true,
+		"pe.is_dll":                true,
+		"pe.is_driver":             true,
+		"pe.is_exec":               true,
+		"file.is_driver":           true,
+		"file.is_dll":              true,
+		"file.is_exec":             true,
+	}
+	return boolFields[field]
 }
 
 // escapeQL escapes a string for use in Fibratus QL single-quoted strings.
