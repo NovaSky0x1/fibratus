@@ -45,6 +45,25 @@ const (
 	sigmahqSource   = "sigmahq"
 )
 
+// noisySigmaRules are SIGMA rules that produce excessive false positives on
+// virtually every Windows system. They are imported but disabled by default —
+// users can enable them if their environment warrants it.
+var noisySigmaRules = map[string]bool{
+	"87e3c4e8-a6a8-4ad9-bb4f-46e7ff99a180": true, // Change PowerShell Policies to an Insecure Level
+	"4d07b1f4-cb00-4470-b9f8-b0191d48ff52": true, // DNS Query To Remote Access Software Domain From Non-Browser App
+	"65236ec7-ace0-4f0c-82fd-737b04fd4dcb": true, // EVTX Created In Uncommon Location
+	"71158e3f-df67-472b-930e-7d287acaa3e1": true, // Execution Of Non-Existing File
+	"d88d0ab2-e696-4d40-a2ed-9790064e66b3": true, // Modification of IE Registry Settings
+	"f4bbd493-b796-416e-bbf2-121235348529": true, // Non Interactive PowerShell Process Spawned
+	"1027d292-dd87-4a1a-8701-2abe04d7783c": true, // PSScriptPolicyTest Creation By Uncommon Process
+	"7047d730-036f-4f40-b9d8-1c63e36d5e62": true, // Potential Binary Or Script Dropper Via PowerShell
+	"3c1b5fb0-c72f-45ba-abd1-4d4c353144ab": true, // Process Creation Using Sysnative Folder
+	"3037d961-21e9-4732-b27a-637bcc7bf539": true, // Suspicious High IntegrityLevel Conhost Legacy Option
+	"e4a6b256-3e47-40fc-89d2-7a477edd6915": true, // System File Execution Location Anomaly
+	"2267fe65-0681-42ad-9a6d-46553d3f3480": true, // WSL Child Process Anomaly
+	"b8fd0e93-ff58-4cbd-8f48-1c114e342e62": true, // Windows Binaries Write Suspicious Extensions
+}
+
 // SigmaHQHandler manages the SigmaHQ local integration.
 // The server keeps a local git clone of the SigmaHQ repo, periodically
 // pulls updates, and converts rules on demand when users enable the integration.
@@ -305,6 +324,12 @@ func (h *SigmaHQHandler) syncRulesToAccount(ctx context.Context, accountID strin
 
 		rule.RawYAML = convResult.FibratusYAML
 		rule.Source = sigmahqSource
+
+		// Disable known-noisy rules by default — they fire on virtually
+		// every Windows system and generate excessive false positives.
+		if noisySigmaRules[rule.ID] {
+			rule.Enabled = false
+		}
 
 		convertedRules = append(convertedRules, rule)
 		syncedIDs = append(syncedIDs, rule.ID)
