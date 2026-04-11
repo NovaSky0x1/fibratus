@@ -235,9 +235,10 @@ func (s *agentService) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) 
 		return nil, status.Errorf(codes.Internal, "heartbeat: %v", err)
 	}
 
-	// Check auto-update in background (non-blocking)
+	// Check auto-update in background (non-blocking).
+	// Use Background context since the gRPC ctx will cancel when this RPC returns.
 	if s.onHeartbeat != nil {
-		go s.onHeartbeat(ctx, orgID, agentID)
+		go s.onHeartbeat(context.Background(), orgID, agentID)
 	}
 
 	return &pb.HeartbeatResponse{Status: "ok"}, nil
