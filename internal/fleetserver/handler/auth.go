@@ -653,6 +653,7 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		AllowedFileExtensions   []string `json:"allowed_file_extensions,omitempty"`
 		LatestAgentVersion      string   `json:"latest_agent_version,omitempty"`
 		LatestAgentMSIURL       string   `json:"latest_agent_msi_url,omitempty"`
+		AutoUpdateAgents        *bool    `json:"auto_update_agents,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -672,8 +673,12 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Update agent version settings if provided
-	if req.LatestAgentVersion != "" || req.LatestAgentMSIURL != "" {
-		if err := h.accounts.UpdateAgentVersion(r.Context(), accountID, req.LatestAgentVersion, req.LatestAgentMSIURL); err != nil {
+	if req.LatestAgentVersion != "" || req.LatestAgentMSIURL != "" || req.AutoUpdateAgents != nil {
+		autoUpdate := false
+		if req.AutoUpdateAgents != nil {
+			autoUpdate = *req.AutoUpdateAgents
+		}
+		if err := h.accounts.UpdateAgentVersion(r.Context(), accountID, req.LatestAgentVersion, req.LatestAgentMSIURL, autoUpdate); err != nil {
 			log.Warnf("fleet: failed to update agent version for account %s: %v", accountID, err)
 		}
 	}
@@ -709,6 +714,7 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		"allowed_file_extensions":    account.AllowedFileExtensions,
 		"latest_agent_version":       account.LatestAgentVersion,
 		"latest_agent_msi_url":       account.LatestAgentMSIURL,
+		"auto_update_agents":         account.AutoUpdateAgents,
 	}})
 }
 
@@ -764,6 +770,7 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 		"org_protection":             orgProtection,
 		"latest_agent_version":       account.LatestAgentVersion,
 		"latest_agent_msi_url":       account.LatestAgentMSIURL,
+		"auto_update_agents":         account.AutoUpdateAgents,
 	}})
 }
 

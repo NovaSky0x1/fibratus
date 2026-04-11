@@ -39,6 +39,9 @@ interface AccountSettings {
   allowed_file_extensions: string[]
   telemetry_retention_days: number
   eventlog_enabled: boolean
+  latest_agent_version: string
+  latest_agent_msi_url: string
+  auto_update_agents: boolean
   org_protection: Array<{
     id: string
     name: string
@@ -314,6 +317,13 @@ export default function AccountTab() {
         extensions={settings?.allowed_file_extensions || []}
         onSave={(exts) => updateSettingsMut.mutate({ ...currentSettings(), allowed_file_extensions: exts })}
         saving={updateSettingsMut.isPending}
+      />
+
+      {/* ── Agent Updates ──────────────────────────────────────── */}
+      <AgentUpdatesSection
+        latestVersion={settings?.latest_agent_version || ''}
+        msiUrl={settings?.latest_agent_msi_url || ''}
+        autoUpdate={settings?.auto_update_agents ?? false}
       />
 
       {/* ── Your Security ─────────────────────────────────────── */}
@@ -737,6 +747,116 @@ function SecuritySection() {
                 Cancel
               </button>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ================================================================
+// Agent Updates Section
+// ================================================================
+
+function AgentUpdatesSection({ latestVersion, msiUrl, autoUpdate }: {
+  latestVersion: string
+  msiUrl: string
+  autoUpdate: boolean
+}) {
+  const queryClient = useQueryClient()
+  const [version, setVersion] = useState(latestVersion)
+  const [url, setUrl] = useState(msiUrl)
+  const [auto, setAuto] = useState(autoUpdate)
+  const [saved, setSaved] = useState(false)
+  const [updateAllPending, setUpdateAllPending] = useState(false)
+  const [updateAllResult, setUpdateAllResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  // Sync from props when settings reload
+  useState(() => { setVersion(latestVersion); setUrl(msiUrl); setAuto(autoUpdate) })
+
+  const saveMut = useMutation({
+    mutationFn: () => api.updateAccountSettings({
+      latest_agent_version: version,
+      latest_agent_msi_url: url,
+      auto_update_agents: auto,
+    } as Record<string, unknown>),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-settings'] })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    },
+  })
+
+  const handleUpdateAll = async () => {
+    setUpdateAllPending(true)
+    setUpdateAllResult(null)
+    try {
+      const res = await api.updateAllAgents()
+      const data = res.data as { count: number } | undefined
+      setUpdateAllResult({ success: true, message: `Update command sent to ${data?.count ?? 0} agent(s). They will download and install the new version.` })
+      queryClient.invalidateQueries({ queryKey: ['agents'] })
+    } catch (e) {
+      setUpdateAllResult({ success: false, message: e instanceof Error ? e.message : 'Failed to send update commands' })
+    } finally {
+      setUpdateAllPending(false)
+    }
+  }
+
+  const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 font-mono focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500'
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50 divide-y divide-gray-100 dark:divide-slate-700">
+      <div className="px-6 py-4">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Agent Updates</h3>
+        <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+          Configure the latest agent version and MSI download URL. Push updates to all agents in this account.
+        </p>
+      </div>
+
+      <div className="px-6 py-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Latest Agent Version</label>
+            <input type="text" value={version} onChange={e => setVersion(e.target.value)} placeholder="e.g. 3.0.0-rc4" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">MSI Download URL</label>
+            <input type="text" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://github.com/.../fibratus.msi" className={inputCls} />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Auto-Update Agents</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Automatically push updates to agents when they heartbeat with an outdated version</p>
+          </div>
+          <ToggleSwitch enabled={auto} onToggle={() => setAuto(!auto)} />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => saveMut.mutate()}
+            disabled={saveMut.isPending}
+            className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700 disabled:opacity-50"
+          >
+            {saveMut.isPending ? 'Saving...' : saved ? 'Saved' : 'Save Settings'}
+          </button>
+          <button
+            onClick={handleUpdateAll}
+            disabled={updateAllPending || !version || !url}
+            className="rounded-lg border border-fibratus-600 px-4 py-2 text-sm font-medium text-fibratus-600 dark:text-fibratus-400 hover:bg-fibratus-50 dark:hover:bg-fibratus-900/20 disabled:opacity-50"
+          >
+            {updateAllPending ? 'Sending...' : 'Update All Agents Now'}
+          </button>
+        </div>
+
+        {updateAllResult && (
+          <div className={`rounded-lg border px-4 py-3 text-sm ${
+            updateAllResult.success
+              ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+              : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+          }`}>
+            {updateAllResult.message}
           </div>
         )}
       </div>

@@ -19,6 +19,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -153,6 +154,9 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Auto-update: if enabled for the account, check if agent needs an update
+	go h.checkAutoUpdate(r.Context(), orgID, agentID)
 
 	resp := fleet.HeartbeatResponse{Status: "ok"}
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
@@ -448,6 +452,60 @@ func (h *AgentHandler) HeartbeatHistory(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: history})
+}
+
+// checkAutoUpdate checks if auto-update is enabled and the agent needs updating.
+// Runs in a goroutine from the heartbeat handler so it doesn't block.
+func (h *AgentHandler) checkAutoUpdate(ctx context.Context, orgID, agentID string) {
+	if h.accounts == nil || h.commands == nil {
+		return
+	}
+	agent, err := h.agents.Get(ctx, orgID, agentID)
+	if err != nil || agent == nil || agent.EngineVersion == "" {
+		return
+	}
+	// Find the account for this org
+	org, err := h.orgs.Get(ctx, orgID)
+	if err != nil || org == nil {
+		return
+	}
+	account, err := h.accounts.Get(ctx, org.AccountID)
+	if err != nil || account == nil {
+		return
+	}
+	if !account.AutoUpdateAgents || account.LatestAgentVersion == "" || account.LatestAgentMSIURL == "" {
+		return
+	}
+	if agent.EngineVersion == account.LatestAgentVersion {
+		return
+	}
+	// Check if there's already a pending update command for this agent
+	cmds, _ := h.commands.ListByAgent(ctx, orgID, agentID, 10)
+	for _, c := range cmds {
+		if c.Type == fleet.CmdUpdateAgent && c.Status == "pending" {
+			return // already queued
+		}
+	}
+	// Create the update command
+	payload, _ := json.Marshal(map[string]string{
+		"version": account.LatestAgentVersion,
+		"msi_url": account.LatestAgentMSIURL,
+	})
+	cmd := &fleet.Command{
+		ID:      GenerateID(),
+		OrgID:   orgID,
+		AgentID: agentID,
+		Type:    fleet.CmdUpdateAgent,
+		Payload: payload,
+		Status:  "pending",
+	}
+	if err := h.commands.Create(ctx, cmd); err != nil {
+		return
+	}
+	if h.onCmdCreated != nil {
+		h.onCmdCreated(orgID, agentID, cmd)
+	}
+	log.Infof("fleet: auto-update queued for agent %s (current: %s, target: %s)", agentID, agent.EngineVersion, account.LatestAgentVersion)
 }
 
 // UpdateAgent handles POST /api/v1/orgs/{org_id}/agents/{id}/update

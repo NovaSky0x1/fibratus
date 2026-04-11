@@ -427,53 +427,6 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
           <ResultBanner result={isolationResult} />
         </div>
 
-        {/* Agent Update */}
-        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm dark:shadow-slate-900/50">
-          <div className="flex items-start gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400">
-              <RefreshCw className="w-4 h-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Agent Update</h4>
-              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                Current: <span className="font-mono">{agent.engine_version || 'unknown'}</span>
-                {updateAvailable && <> &mdash; Latest: <span className="font-mono">{latestVersion}</span></>}
-              </p>
-            </div>
-          </div>
-          {updateAvailable ? (
-            <button
-              onClick={async () => {
-                setUpdatePending(true)
-                setUpdateResult(null)
-                try {
-                  const res = await api.updateAgent(agent.id)
-                  if (res.error) throw new Error(res.error.message)
-                  setUpdateResult({ success: true, message: 'Update command sent. Agent will download the MSI and restart.' })
-                  queryClient.invalidateQueries({ queryKey: ['agent-commands', agent.id] })
-                } catch (e) {
-                  setUpdateResult({ success: false, message: e instanceof Error ? e.message : 'Failed to send update' })
-                } finally {
-                  setUpdatePending(false)
-                }
-              }}
-              disabled={updatePending || isPending}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg bg-fibratus-600 text-white hover:bg-fibratus-700 disabled:opacity-50 transition-colors"
-            >
-              {updatePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              {updatePending ? 'Sending...' : `Update to ${latestVersion}`}
-            </button>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                {latestVersion ? 'Up to date' : 'No target version configured'}
-              </span>
-            </div>
-          )}
-          <ResultBanner result={updateResult} />
-        </div>
-
         {/* Uninstall Agent */}
         <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20 p-5 shadow-sm dark:shadow-slate-900/50">
           <div className="flex items-start gap-3 mb-4">
