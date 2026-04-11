@@ -105,6 +105,9 @@ type RuleStore interface {
 	DeleteBySourceExcept(ctx context.Context, orgID, source string, keepIDs []string) (int, error)
 	CountBySource(ctx context.Context, orgID, source string) (int, error)
 	GetForAgent(ctx context.Context, orgID, agentID string) ([]*fleet.Rule, string, error)
+	ListUserModifiedIDs(ctx context.Context, orgID, source string) (modified, disabled map[string]bool, err error)
+	RecordSyncDeletion(ctx context.Context, orgID, ruleID, source string) error
+	ListDeletedSyncIDs(ctx context.Context, orgID, source string) (map[string]bool, error)
 }
 
 // GroupStore manages agent group persistence. All operations are org-scoped.
@@ -126,6 +129,7 @@ type DetectionStore interface {
 	CountBySeverity(ctx context.Context, orgID string) (map[string]int, error)
 	Timeline(ctx context.Context, orgID string, from, to time.Time, interval string) ([]fleet.TimelineBucket, error)
 	MitreHeatmap(ctx context.Context, orgID string, from, to time.Time) ([]fleet.MitreCell, error)
+	TopNoisyRules(ctx context.Context, orgID string, limit int) ([]fleet.RuleDetectionCount, error)
 }
 
 // GlobalRuleStore manages system-wide rules that apply to all organizations.

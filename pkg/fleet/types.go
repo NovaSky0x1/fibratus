@@ -237,6 +237,8 @@ type Rule struct {
 	RawYAML          string            `json:"raw_yaml"`
 	Enabled          bool              `json:"enabled"`
 	Source           string            `json:"source,omitempty"`  // "manual", "github:<repo>" — tracks where the rule came from
+	UserModified     bool              `json:"user_modified,omitempty"`
+	UserDisabled     bool              `json:"user_disabled,omitempty"`
 	ValidationStatus string            `json:"validation_status"` // "valid", "invalid", "pending"
 	ValidationErrors json.RawMessage   `json:"validation_errors,omitempty"`
 	CreatedAt        time.Time         `json:"created_at"`
@@ -469,4 +471,14 @@ type MitreCell struct {
 	TechniqueID   string `json:"technique_id"`
 	TechniqueName string `json:"technique_name"`
 	Count         int    `json:"count"`
+}
+
+// RuleDetectionCount holds detection counts for a rule, used by the noisy-rules endpoint.
+type RuleDetectionCount struct {
+	RuleID   string `json:"rule_id"`
+	RuleName string `json:"rule_name"`
+	Severity string `json:"severity"`
+	Enabled  bool   `json:"enabled"`
+	Source   string `json:"source"`
+	Count    int    `json:"count"`
 }

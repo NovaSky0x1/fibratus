@@ -486,6 +486,20 @@ CREATE TABLE IF NOT EXISTS user_api_keys (
     expires_at  TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON user_api_keys(key_hash);
+
+-- User modification tracking for synced rules
+ALTER TABLE rules ADD COLUMN IF NOT EXISTS user_modified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE rules ADD COLUMN IF NOT EXISTS user_disabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS deleted_sync_rules (
+    org_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
+    deleted_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (org_id, rule_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_detections_noisy ON detections(org_id, rule_name);
 `
 
 // Migrate runs the database schema migrations.

@@ -244,6 +244,34 @@ func (s *DetectionStore) Timeline(ctx context.Context, orgID string, from, to ti
 	return result, rows.Err()
 }
 
+// TopNoisyRules returns the rules with the most detections for an org, ordered by count descending.
+func (s *DetectionStore) TopNoisyRules(ctx context.Context, orgID string, limit int) ([]fleet.RuleDetectionCount, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT d.rule_id, d.rule_name, COUNT(*) as cnt,
+				COALESCE(r.severity, 'medium') as severity,
+				COALESCE(r.enabled, true) as enabled,
+				COALESCE(r.source, '') as source
+		 FROM detections d
+		 LEFT JOIN rules r ON r.id = d.rule_id AND r.org_id = d.org_id
+		 WHERE d.org_id = $1
+		 GROUP BY d.rule_id, d.rule_name, r.severity, r.enabled, r.source
+		 ORDER BY cnt DESC
+		 LIMIT $2`, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []fleet.RuleDetectionCount
+	for rows.Next() {
+		var r fleet.RuleDetectionCount
+		if err := rows.Scan(&r.RuleID, &r.RuleName, &r.Count, &r.Severity, &r.Enabled, &r.Source); err != nil {
+			continue
+		}
+		results = append(results, r)
+	}
+	return results, nil
+}
+
 func (s *DetectionStore) MitreHeatmap(ctx context.Context, orgID string, from, to time.Time) ([]fleet.MitreCell, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT

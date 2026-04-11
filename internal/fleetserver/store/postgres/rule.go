@@ -54,12 +54,14 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO rules (id, org_id, name, version, description, condition, output_template,
-			severity, labels, tags, "references", raw_yaml, enabled, source, validation_status, validation_errors, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())`,
+			severity, labels, tags, "references", raw_yaml, enabled, source, validation_status, validation_errors,
+			user_modified, user_disabled, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
 		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
 		rule.Source, rule.ValidationStatus, validationErrors,
+		rule.UserModified, rule.UserDisabled,
 	)
 	return err
 }
@@ -69,7 +71,8 @@ func (s *RuleStore) Get(ctx context.Context, orgID, id string) (*fleet.Rule, err
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
-			COALESCE(source, 'manual'), created_at, updated_at
+			COALESCE(source, 'manual'), created_at, updated_at,
+			user_modified, user_disabled
 		 FROM rules WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanRule(row)
 }
@@ -96,7 +99,8 @@ func (s *RuleStore) List(ctx context.Context, orgID string, opts fleet.ListOptio
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
-			COALESCE(source, 'manual'), created_at, updated_at
+			COALESCE(source, 'manual'), created_at, updated_at,
+			user_modified, user_disabled
 		 FROM rules WHERE org_id = $1
 		 ORDER BY name ASC
 		 LIMIT $2 OFFSET $3`,
@@ -133,12 +137,14 @@ func (s *RuleStore) Update(ctx context.Context, rule *fleet.Rule) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE rules SET name=$3, version=$4, description=$5, condition=$6,
 			output_template=$7, severity=$8, labels=$9, tags=$10, "references"=$11,
-			raw_yaml=$12, enabled=$13, source=$14, validation_status=$15, validation_errors=$16, updated_at=NOW()
+			raw_yaml=$12, enabled=$13, source=$14, validation_status=$15, validation_errors=$16,
+			user_modified=$17, user_disabled=$18, updated_at=NOW()
 		 WHERE id=$1 AND org_id=$2`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
 		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
 		rule.Source, rule.ValidationStatus, validationErrors,
+		rule.UserModified, rule.UserDisabled,
 	)
 	return err
 }
@@ -196,7 +202,8 @@ func (s *RuleStore) GetForAgent(ctx context.Context, orgID, agentID string) ([]*
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
-			COALESCE(source, 'manual'), created_at, updated_at
+			COALESCE(source, 'manual'), created_at, updated_at,
+			user_modified, user_disabled
 		 FROM rules
 		 WHERE org_id = $1 AND enabled = true AND COALESCE(validation_status, 'pending') = 'valid'
 		 ORDER BY name ASC`,
@@ -248,6 +255,7 @@ func scanRule(row *sql.Row) (*fleet.Rule, error) {
 		pq.Array(&r.Tags), pq.Array(&r.References), &r.RawYAML, &r.Enabled,
 		&r.ValidationStatus, &validationErrorsJSON,
 		&r.Source, &r.CreatedAt, &r.UpdatedAt,
+		&r.UserModified, &r.UserDisabled,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -271,6 +279,7 @@ func scanRuleRows(rows *sql.Rows) (*fleet.Rule, error) {
 		pq.Array(&tagsRaw), pq.Array(&refsRaw), &r.RawYAML, &r.Enabled,
 		&r.ValidationStatus, &validationErrorsJSON,
 		&r.Source, &r.CreatedAt, &r.UpdatedAt,
+		&r.UserModified, &r.UserDisabled,
 	)
 	if err != nil {
 		return nil, err
@@ -288,4 +297,55 @@ func scanRuleRows(rows *sql.Rows) (*fleet.Rule, error) {
 		}
 	}
 	return r, nil
+}
+
+// ListUserModifiedIDs returns the IDs of rules that have been modified or disabled by the user.
+func (s *RuleStore) ListUserModifiedIDs(ctx context.Context, orgID, source string) (modified, disabled map[string]bool, err error) {
+	modified = make(map[string]bool)
+	disabled = make(map[string]bool)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, user_modified, user_disabled FROM rules WHERE org_id = $1 AND source = $2 AND (user_modified = true OR user_disabled = true)`,
+		orgID, source)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var mod, dis bool
+		rows.Scan(&id, &mod, &dis)
+		if mod {
+			modified[id] = true
+		}
+		if dis {
+			disabled[id] = true
+		}
+	}
+	return
+}
+
+// RecordSyncDeletion records that a user deleted a synced rule so it won't be re-created on next sync.
+func (s *RuleStore) RecordSyncDeletion(ctx context.Context, orgID, ruleID, source string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO deleted_sync_rules (org_id, rule_id, source) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+		orgID, ruleID, source)
+	return err
+}
+
+// ListDeletedSyncIDs returns the IDs of synced rules that the user has deleted.
+func (s *RuleStore) ListDeletedSyncIDs(ctx context.Context, orgID, source string) (map[string]bool, error) {
+	ids := make(map[string]bool)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT rule_id FROM deleted_sync_rules WHERE org_id = $1 AND source = $2`,
+		orgID, source)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		rows.Scan(&id)
+		ids[id] = true
+	}
+	return ids, nil
 }

@@ -289,11 +289,13 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	rule.ID = ruleID
 	rule.OrgID = orgID
 
+	// Fetch existing rule for merge and modification tracking.
+	existing, _ := h.rules.Get(r.Context(), orgID, ruleID)
+
 	// For JSON partial updates (e.g., just {enabled: false}), merge with existing rule
 	// to prevent overwriting all fields with empty values.
 	if !strings.Contains(contentType, "yaml") {
-		existing, err := h.rules.Get(r.Context(), orgID, ruleID)
-		if err != nil || existing == nil {
+		if existing == nil {
 			writeError(w, http.StatusNotFound, "rule not found")
 			return
 		}
@@ -308,6 +310,19 @@ func (h *RuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if rule.Labels == nil { rule.Labels = existing.Labels }
 		if rule.Tags == nil { rule.Tags = existing.Tags }
 		if rule.References == nil { rule.References = existing.References }
+	}
+
+	// Track user modifications to synced rules
+	if existing != nil && existing.Source != "manual" {
+		if rule.Condition != existing.Condition || rule.Name != existing.Name || rule.Description != existing.Description {
+			rule.UserModified = true
+		}
+		if !rule.Enabled && existing.Enabled {
+			rule.UserDisabled = true
+		}
+		if rule.Enabled && !existing.Enabled {
+			rule.UserDisabled = false
+		}
 	}
 
 	// Re-validate condition

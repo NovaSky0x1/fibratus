@@ -341,14 +341,31 @@ func (h *SigmaHQHandler) syncRulesToAccount(ctx context.Context, accountID strin
 		result.Errors = append(result.Errors, "walk error: "+err.Error())
 	}
 
-	// Apply to all orgs (upsert + clean sync)
+	// Apply to all orgs (upsert + clean sync, preserving user modifications)
 	for _, orgID := range orgIDs {
+		modifiedIDs, disabledIDs, _ := h.rules.ListUserModifiedIDs(ctx, orgID, sigmahqSource)
+		deletedIDs, _ := h.rules.ListDeletedSyncIDs(ctx, orgID, sigmahqSource)
+
 		for i := range convertedRules {
 			rule := convertedRules[i]
 			rule.OrgID = orgID
+
+			if deletedIDs[rule.ID] {
+				continue
+			}
+
 			existing, _ := h.rules.Get(ctx, orgID, rule.ID)
 			if existing != nil {
-				rule.Enabled = existing.Enabled // preserve user's toggle
+				if modifiedIDs[rule.ID] {
+					continue // user edited -- don't overwrite
+				}
+				if disabledIDs[rule.ID] || noisySigmaRules[rule.ID] {
+					rule.Enabled = false
+					rule.UserDisabled = existing.UserDisabled
+				} else {
+					rule.Enabled = existing.Enabled
+				}
+				rule.UserModified = existing.UserModified
 				h.rules.Update(ctx, &rule)
 			} else {
 				h.rules.Create(ctx, &rule)
