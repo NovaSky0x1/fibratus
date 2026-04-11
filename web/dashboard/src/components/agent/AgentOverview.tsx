@@ -56,8 +56,10 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
     queryFn: () => api.getAccountSettings(),
     staleTime: 60000,
   })
-  const accountSettings = settingsData?.data as { tamper_protection_enabled: boolean; eventlog_enabled: boolean; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> } | undefined
+  const accountSettings = settingsData?.data as { tamper_protection_enabled: boolean; eventlog_enabled: boolean; latest_agent_version?: string; latest_agent_msi_url?: string; org_protection?: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> } | undefined
   const tamperLockedByPolicy = !!(accountSettings?.tamper_protection_enabled || accountSettings?.org_protection?.some(o => o.id === agent.org_id && o.tamper_protection_enabled))
+  const latestVersion = accountSettings?.latest_agent_version || ''
+  const updateAvailable = latestVersion && agent.engine_version !== latestVersion
 
   // Tamper protection state
   const [tamperResult, setTamperResult] = useState<ActionResult | null>(null)
@@ -72,6 +74,10 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
   // Network isolation state
   const [isolationResult, setIsolationResult] = useState<ActionResult | null>(null)
   const [whitelistIps, setWhitelistIps] = useState('')
+
+  // Update state
+  const [updatePending, setUpdatePending] = useState(false)
+  const [updateResult, setUpdateResult] = useState<ActionResult | null>(null)
 
   // Uninstall state
   const [uninstallConfirm, setUninstallConfirm] = useState(false)
@@ -252,7 +258,14 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
           </div>
           <div className="rounded-lg bg-gray-50 dark:bg-slate-900 px-4 py-3">
             <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Engine</span>
-            <p className="text-sm font-medium text-gray-900 dark:text-slate-100 mt-0.5 font-mono">{agent.engine_version}</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-slate-100 mt-0.5 font-mono">
+              {agent.engine_version}
+              {updateAvailable && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400">
+                  Update Available
+                </span>
+              )}
+            </p>
           </div>
           <div className="rounded-lg bg-gray-50 dark:bg-slate-900 px-4 py-3">
             <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Registered</span>
@@ -412,6 +425,53 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
             />
           </div>
           <ResultBanner result={isolationResult} />
+        </div>
+
+        {/* Agent Update */}
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm dark:shadow-slate-900/50">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400">
+              <RefreshCw className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Agent Update</h4>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                Current: <span className="font-mono">{agent.engine_version || 'unknown'}</span>
+                {updateAvailable && <> &mdash; Latest: <span className="font-mono">{latestVersion}</span></>}
+              </p>
+            </div>
+          </div>
+          {updateAvailable ? (
+            <button
+              onClick={async () => {
+                setUpdatePending(true)
+                setUpdateResult(null)
+                try {
+                  const res = await api.updateAgent(agent.id)
+                  if (res.error) throw new Error(res.error.message)
+                  setUpdateResult({ success: true, message: 'Update command sent. Agent will download the MSI and restart.' })
+                  queryClient.invalidateQueries({ queryKey: ['agent-commands', agent.id] })
+                } catch (e) {
+                  setUpdateResult({ success: false, message: e instanceof Error ? e.message : 'Failed to send update' })
+                } finally {
+                  setUpdatePending(false)
+                }
+              }}
+              disabled={updatePending || isPending}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg bg-fibratus-600 text-white hover:bg-fibratus-700 disabled:opacity-50 transition-colors"
+            >
+              {updatePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {updatePending ? 'Sending...' : `Update to ${latestVersion}`}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                {latestVersion ? 'Up to date' : 'No target version configured'}
+              </span>
+            </div>
+          )}
+          <ResultBanner result={updateResult} />
         </div>
 
         {/* Uninstall Agent */}

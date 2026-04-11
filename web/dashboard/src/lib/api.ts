@@ -379,6 +379,10 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     }),
+  updateAgent: (agentId: string) =>
+    fetchApi<Command>(orgPath(`/agents/${agentId}/update`), { method: 'POST' }),
+  updateAllAgents: () =>
+    fetchApi<{ count: number }>(orgPath('/agents/update-all'), { method: 'POST' }),
 
   // Users
   getUsers: () => fetchApi<User[]>(orgPath('/users')),
