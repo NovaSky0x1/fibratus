@@ -479,11 +479,16 @@ func (h *AgentHandler) CheckAutoUpdate(ctx context.Context, orgID, agentID strin
 	if agent.EngineVersion == account.LatestAgentVersion {
 		return
 	}
-	// Check if there's already a pending update command for this agent
-	cmds, _ := h.commands.ListByAgent(ctx, orgID, agentID, 10)
+	// Check if there's already a recent update command for this agent (pending, running, or completed within last hour)
+	cmds, _ := h.commands.ListByAgent(ctx, orgID, agentID, 20)
 	for _, c := range cmds {
-		if c.Type == fleet.CmdUpdateAgent && c.Status == "pending" {
-			return // already queued
+		if c.Type == fleet.CmdUpdateAgent {
+			if c.Status == "pending" || c.Status == "running" {
+				return // already queued or running
+			}
+			if c.Status == "completed" && time.Since(c.CreatedAt) < time.Hour {
+				return // completed recently — don't re-queue
+			}
 		}
 	}
 	// Create the update command
