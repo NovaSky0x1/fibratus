@@ -402,6 +402,8 @@ func (s *Server) Run(ctx context.Context) error {
 			agentHandler.HeartbeatHistory(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/events") && r.Method == http.MethodGet:
 			telemetryHandler.GetLiveEvents(w, r)
+		case strings.HasPrefix(subpath, "/commands/") && r.Method == http.MethodGet:
+			commandHandler.GetCommand(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodGet:
 			commandHandler.ListCommands(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/commands") && r.Method == http.MethodPost:

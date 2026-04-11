@@ -66,9 +66,8 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(r => setTimeout(r, intervalMs))
       try {
-        const res = await api.getAgentCommands(agentId)
-        const commands = (res as { data: Command[] }).data
-        const cmd = commands.find(c => c.id === cmdId)
+        const res = await api.getCommand(cmdId)
+        const cmd = res.data as Command | undefined
         if (cmd && (cmd.status === 'completed' || cmd.status === 'failed')) return cmd
       } catch { /* continue polling */ }
     }

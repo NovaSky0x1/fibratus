@@ -163,10 +163,10 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
       const resp = await api.createCommand(agent.id, 'collect_info')
       if (!resp.data?.id) return
       const cmdId = resp.data.id
-      // Poll for result
+      // Poll for result by command ID (doesn't go through command history)
       const poll = setInterval(async () => {
-        const cmds = await api.getAgentCommands(agent.id)
-        const cmd = (cmds.data || []).find((c: Command) => c.id === cmdId)
+        const cmdRes = await api.getCommand(cmdId)
+        const cmd = cmdRes.data as Command | undefined
         if (cmd?.status === 'completed' && cmd.result) {
           clearInterval(poll)
           const result = typeof cmd.result === 'string' ? JSON.parse(cmd.result) : cmd.result

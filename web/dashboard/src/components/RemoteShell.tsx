@@ -89,8 +89,12 @@ export default function RemoteShell({ agentId, hostname, shellType: initialShell
     const pending = history.filter(e => e.status === 'pending' || e.status === 'running')
     if (pending.length === 0) return
     const interval = setInterval(async () => {
-      const res = await api.getAgentCommands(agentId)
-      const commands = (res.data || []) as Command[]
+      const pendingIds = history.filter(e => e.status === 'pending' || e.status === 'running').map(e => e.id)
+      const commands: Command[] = []
+      for (const id of pendingIds) {
+        const r = await api.getCommand(id)
+        if (r.data) commands.push(r.data as Command)
+      }
       setHistory(prev => prev.map(entry => {
         if (entry.status === 'completed' || entry.status === 'failed') return entry
         const cmd = commands.find(c => c.id === entry.id)

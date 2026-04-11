@@ -488,6 +488,8 @@ export const api = {
   // Commands (active response)
   getAgentCommands: (agentId: string) =>
     fetchApi<Command[]>(orgPath(`/agents/${agentId}/commands`)),
+  getCommand: (cmdId: string) =>
+    fetchApi<Command>(orgPath(`/commands/${cmdId}`)),
   getAgentHeartbeatHistory: (agentId: string, limit = 60) =>
     fetchApi<Array<{ cpu_pct: number; mem_mb: number; events_per_sec: number; active_rules: number; timestamp: string }>>(orgPath(`/agents/${agentId}/heartbeat-history?limit=${limit}`)),
   createCommand: (agentId: string, type: string, payload?: Record<string, unknown>) =>

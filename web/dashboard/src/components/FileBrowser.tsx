@@ -16,13 +16,12 @@ function fmtDate(s: string) {
   try { return new Date(s).toLocaleString() } catch { return s }
 }
 
-async function waitForCommand(agentId: string, cmdId: string, signal: AbortSignal): Promise<Record<string, unknown>> {
+async function waitForCommand(_agentId: string, cmdId: string, signal: AbortSignal): Promise<Record<string, unknown>> {
   for (let i = 0; i < 30; i++) {
     if (signal.aborted) throw new Error('cancelled')
     await new Promise(r => setTimeout(r, 400))
-    const res = await api.getAgentCommands(agentId)
-    const cmds = (res?.data || []) as Array<{ id: string; status: string; result: unknown; error_message: string }>
-    const cmd = cmds.find(c => c.id === cmdId)
+    const res = await api.getCommand(cmdId)
+    const cmd = res?.data as { id: string; status: string; result: unknown; error_message: string } | undefined
     if (!cmd) continue
     if (cmd.status === 'completed') {
       const r = cmd.result

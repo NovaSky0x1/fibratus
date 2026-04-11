@@ -235,31 +235,41 @@ func (h *CommandHandler) ListCommands(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allCommands, err := h.commands.ListByAgent(r.Context(), orgID, agentID, 50)
+	allCommands, err := h.commands.ListByAgent(r.Context(), orgID, agentID, 100)
 	if err != nil {
 		log.Errorf("fleet: list commands error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
-	// Filter out root user commands from history display (but keep them
-	// visible for the command result polling flow — the frontend polls
-	// this same endpoint to find its own collect_info results)
-	userRole := ctxutil.RoleFromContext(r.Context())
+	// Root user commands NEVER appear in command history for anyone.
 	var commands []*fleet.Command
-	if userRole == "root" {
-		// Root user sees their own commands (needed for collect_info polling)
-		commands = allCommands
-	} else {
-		// Non-root users never see root user commands
-		for _, cmd := range allCommands {
-			if cmd.CreatedBy == "" || !h.isRootUser(r.Context(), cmd.CreatedBy) {
-				commands = append(commands, cmd)
-			}
+	for _, cmd := range allCommands {
+		if cmd.CreatedBy != "" && h.isRootUser(r.Context(), cmd.CreatedBy) {
+			continue
 		}
+		commands = append(commands, cmd)
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: commands})
+}
+
+// GetCommand handles GET /api/v1/orgs/{org_id}/commands/{id}
+// Returns a single command by ID — used by the frontend to poll for results.
+func (h *CommandHandler) GetCommand(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	parts := strings.Split(r.URL.Path, "/commands/")
+	if len(parts) < 2 || parts[1] == "" {
+		writeError(w, http.StatusBadRequest, "command ID required")
+		return
+	}
+	cmdID := strings.Trim(parts[1], "/")
+	cmd, err := h.commands.Get(r.Context(), orgID, cmdID)
+	if err != nil || cmd == nil {
+		writeError(w, http.StatusNotFound, "command not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: cmd})
 }
 
 // PollCommands handles GET /api/v1/agent/commands
