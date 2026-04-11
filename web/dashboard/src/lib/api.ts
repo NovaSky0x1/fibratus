@@ -586,7 +586,7 @@ export const api = {
 
   // Admin (root only)
   adminGetAccounts: () => fetchApi<unknown[]>('/admin/accounts'),
-  adminCreateAccount: (data: { name: string; plan: string }) =>
+  adminCreateAccount: (data: Record<string, string>) =>
     fetchApi<unknown>('/admin/accounts', { method: 'POST', body: JSON.stringify(data) }),
   adminDeleteAccount: (id: string) =>
     fetchApi<void>(`/admin/accounts/${id}`, { method: 'DELETE' }),
