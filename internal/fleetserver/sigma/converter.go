@@ -173,13 +173,8 @@ func convertDetection(rule *SigmaRule, cfg *logsourceConfig) (string, []string, 
 	fullCondition = strings.ReplaceAll(fullCondition, "(not ", "(true and not ")
 	fullCondition = strings.ReplaceAll(fullCondition, "( not ", "(true and not ")
 
-	// Clean up unnecessary "true and" patterns from empty selections
-	for strings.Contains(fullCondition, "true and ") && !strings.Contains(fullCondition, "true and not") {
-		fullCondition = strings.ReplaceAll(fullCondition, "true and ", "")
-		break
-	}
-	fullCondition = strings.ReplaceAll(fullCondition, " and true)", ")")
-	fullCondition = strings.ReplaceAll(fullCondition, " and true and ", " and ")
+	// No "true and" cleanup needed — empty selections now fail conversion
+	// instead of producing "true" which would match everything
 
 	// Format for readability: break into multi-line with proper indentation
 	fullCondition = formatCondition(fullCondition)
@@ -264,7 +259,9 @@ func convertMapSelection(name string, m map[string]interface{}, cfg *logsourceCo
 	}
 
 	if len(conditions) == 0 {
-		return "true", warnings, nil // empty selection matches everything
+		// All fields in this selection were unmapped — this selection cannot be
+		// converted. Return an error rather than "true" which would match everything.
+		return "", warnings, fmt.Errorf("selection %q: all fields unmapped, cannot convert", name)
 	}
 	if len(conditions) == 1 {
 		return conditions[0], warnings, nil
