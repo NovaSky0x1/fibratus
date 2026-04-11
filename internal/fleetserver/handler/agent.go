@@ -454,9 +454,9 @@ func (h *AgentHandler) HeartbeatHistory(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: history})
 }
 
-// checkAutoUpdate checks if auto-update is enabled and the agent needs updating.
+// CheckAutoUpdate checks if auto-update is enabled and the agent needs updating.
 // Runs in a goroutine from the heartbeat handler so it doesn't block.
-func (h *AgentHandler) checkAutoUpdate(ctx context.Context, orgID, agentID string) {
+func (h *AgentHandler) CheckAutoUpdate(ctx context.Context, orgID, agentID string) {
 	if h.accounts == nil || h.commands == nil {
 		return
 	}

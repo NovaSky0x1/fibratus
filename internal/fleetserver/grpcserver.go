@@ -19,6 +19,7 @@
 package fleetserver
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -52,9 +53,10 @@ type NATSConfig struct {
 
 // GRPCServer wraps the gRPC server for agent communication.
 type GRPCServer struct {
-	server  *grpc.Server
-	config  GRPCConfig
-	streams *StreamManager
+	server   *grpc.Server
+	config   GRPCConfig
+	streams  *StreamManager
+	agentSvc *agentService
 }
 
 // NewGRPCServer creates and configures the gRPC server with agent and enrollment services.
@@ -136,9 +138,10 @@ func NewGRPCServer(
 	pb.RegisterEnrollmentServiceServer(srv, enrollSvc)
 
 	return &GRPCServer{
-		server:  srv,
-		config:  cfg,
-		streams: streams,
+		server:   srv,
+		config:   cfg,
+		streams:  streams,
+		agentSvc: agentSvc,
 	}, nil
 }
 
@@ -160,6 +163,13 @@ func (s *GRPCServer) Stop() {
 
 // Streams returns the stream manager for use by HTTP handlers
 // (e.g., when a rule is created via dashboard, push to agents).
+// SetHeartbeatCallback registers a function called on each agent heartbeat (for auto-update checks).
+func (s *GRPCServer) SetHeartbeatCallback(cb func(ctx context.Context, orgID, agentID string)) {
+	if s.agentSvc != nil {
+		s.agentSvc.onHeartbeat = cb
+	}
+}
+
 func (s *GRPCServer) Streams() *StreamManager {
 	return s.streams
 }

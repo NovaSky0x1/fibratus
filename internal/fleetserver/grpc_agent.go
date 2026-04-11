@@ -109,8 +109,9 @@ type agentService struct {
 	telemetry  store.TelemetryStore
 	captures   store.CaptureStore
 	streams    *StreamManager
-	natsProd   *natsPkg.Producer // nil if NATS disabled (direct store writes)
-	dedup      *detectionDedup
+	natsProd    *natsPkg.Producer // nil if NATS disabled (direct store writes)
+	dedup       *detectionDedup
+	onHeartbeat func(ctx context.Context, orgID, agentID string) // auto-update check callback
 }
 
 // newAgentService creates a new gRPC agent service.
@@ -232,6 +233,11 @@ func (s *agentService) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) 
 
 	if err := s.agents.UpdateHeartbeat(ctx, orgID, agentID, hb); err != nil {
 		return nil, status.Errorf(codes.Internal, "heartbeat: %v", err)
+	}
+
+	// Check auto-update in background (non-blocking)
+	if s.onHeartbeat != nil {
+		go s.onHeartbeat(ctx, orgID, agentID)
 	}
 
 	return &pb.HeartbeatResponse{Status: "ok"}, nil

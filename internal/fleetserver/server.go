@@ -233,6 +233,11 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	s.grpcServer = grpcSrv
 
+	// Wire auto-update heartbeat callback
+	grpcSrv.SetHeartbeatCallback(func(ctx context.Context, orgID, agentID string) {
+		agentHandler.CheckAutoUpdate(ctx, orgID, agentID)
+	})
+
 	// Start NATS consumer if enabled
 	if s.config.NATS.Enabled {
 		natsConsumer, err := natsPkg.NewConsumer(natsPkg.ConsumerConfig{
