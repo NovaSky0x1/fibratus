@@ -90,9 +90,14 @@ export default function Detections() {
 
   // Sync selected detection with URL ?id= param.
   // If the detection isn't in the current page, fetch it directly by ID.
+  // When ?id= is cleared (e.g. clicking Detections in sidebar), close the detail panel.
   const urlDetId = searchParams.get('id')
   useEffect(() => {
-    if (!urlDetId || selectedDet) return
+    if (!urlDetId) {
+      setSelectedDet(null)
+      return
+    }
+    if (selectedDet) return
     // Try to find in current page first
     const found = allDetections.find(d => d.id === urlDetId)
     if (found) {

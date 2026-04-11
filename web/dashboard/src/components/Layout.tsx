@@ -212,6 +212,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Link
               key={item.name}
               to={item.href}
+              onClick={(e) => {
+                // Force navigation even if already on the same path (clears query params like ?id=)
+                if (location.pathname === item.href) {
+                  e.preventDefault()
+                  navigate(item.href, { replace: true })
+                }
+              }}
               className={clsx(
                 'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mb-1',
                 location.pathname === item.href
