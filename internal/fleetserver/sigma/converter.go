@@ -166,20 +166,21 @@ func convertDetection(rule *SigmaRule, cfg *logsourceConfig) (string, []string, 
 	}
 
 	// Prepend the logsource event type prefix
-	fullCondition := cfg.conditionPrefix + " and\n  (" + condition + ")"
+	fullCondition := cfg.conditionPrefix + " and (" + condition + ")"
 
 	// Fix: ensure 'not' never appears as first token inside parentheses
-	// The QL parser doesn't support (not ...) — rewrite as (true and not ...)
 	fullCondition = strings.ReplaceAll(fullCondition, "(not ", "(true and not ")
 
 	// Clean up unnecessary "true and" patterns from empty selections
-	// Careful: preserve "true and not" which is our fix for the (not...) issue
 	for strings.Contains(fullCondition, "true and ") && !strings.Contains(fullCondition, "true and not") {
 		fullCondition = strings.ReplaceAll(fullCondition, "true and ", "")
 		break
 	}
 	fullCondition = strings.ReplaceAll(fullCondition, " and true)", ")")
 	fullCondition = strings.ReplaceAll(fullCondition, " and true and ", " and ")
+
+	// Format for readability: break into multi-line with proper indentation
+	fullCondition = formatCondition(fullCondition)
 
 	return fullCondition, warnings, nil
 }
@@ -266,11 +267,7 @@ func convertMapSelection(name string, m map[string]interface{}, cfg *logsourceCo
 	if len(conditions) == 1 {
 		return conditions[0], warnings, nil
 	}
-	// Multi-condition selections: join with "and", add line breaks for readability
-	if len(conditions) <= 3 {
-		return "(" + strings.Join(conditions, " and ") + ")", warnings, nil
-	}
-	return "(\n    " + strings.Join(conditions, " and\n    ") + "\n  )", warnings, nil
+	return "(" + strings.Join(conditions, " and ") + ")", warnings, nil
 }
 
 // convertFieldValue converts a SIGMA field+value+modifiers into a Fibratus QL expression.
@@ -839,6 +836,188 @@ func toBool(v interface{}) bool {
 	default:
 		return false
 	}
+}
+
+// formatCondition takes a flat condition string and formats it into a
+// readable multi-line layout matching native Fibratus rule style:
+//
+//	spawn_process and
+//	  (ps.exe iendswith '\\cmd.exe' or
+//	   ps.exe iendswith '\\powershell.exe') and
+//	  ps.cmdline icontains 'whoami' and
+//	  not (ps.parent.exe iendswith '\\explorer.exe')
+func formatCondition(cond string) string {
+	// Split on top-level " and " and " or " boundaries, respecting parens
+	// Strategy: break on " and " that are at paren depth 0 or 1
+	var lines []string
+	depth := 0
+	current := strings.Builder{}
+	i := 0
+
+	for i < len(cond) {
+		ch := cond[i]
+
+		if ch == '(' {
+			depth++
+			current.WriteByte(ch)
+			i++
+			continue
+		}
+		if ch == ')' {
+			depth--
+			current.WriteByte(ch)
+			i++
+			continue
+		}
+
+		// Check for " and not " at depth <= 1 — always break here
+		if depth <= 1 && i+9 <= len(cond) && cond[i:i+9] == " and not " {
+			lines = append(lines, strings.TrimSpace(current.String())+" and")
+			current.Reset()
+			current.WriteString("not ")
+			i += 9
+			continue
+		}
+
+		// Check for " and " at depth <= 1
+		if depth <= 1 && i+5 <= len(cond) && cond[i:i+5] == " and " {
+			lines = append(lines, strings.TrimSpace(current.String())+" and")
+			current.Reset()
+			i += 5
+			continue
+		}
+
+		current.WriteByte(ch)
+		i++
+	}
+	if current.Len() > 0 {
+		lines = append(lines, strings.TrimSpace(current.String()))
+	}
+
+	if len(lines) <= 1 {
+		return cond
+	}
+
+	// Now format OR lists within each line: if a line contains " or " inside
+	// parens and is long, break the OR items onto separate lines
+	var formatted []string
+	for _, line := range lines {
+		if len(line) > 100 && strings.Contains(line, " or ") {
+			formatted = append(formatted, formatOrList(line))
+		} else {
+			formatted = append(formatted, line)
+		}
+	}
+
+	// Join with newline + indent
+	return strings.Join(formatted, "\n  ")
+}
+
+// formatOrList breaks a long OR-list into multiple lines with alignment.
+func formatOrList(line string) string {
+	// Find the first ( that contains " or "
+	depth := 0
+	orStart := -1
+	for i, ch := range line {
+		if ch == '(' {
+			depth++
+			if orStart == -1 {
+				// Check if this paren group contains " or "
+				sub := line[i:]
+				d := 0
+				for j, c := range sub {
+					if c == '(' {
+						d++
+					}
+					if c == ')' {
+						d--
+						if d == 0 {
+							inner := sub[1:j]
+							if strings.Contains(inner, " or ") {
+								orStart = i
+							}
+							break
+						}
+					}
+				}
+			}
+		}
+		if ch == ')' {
+			depth--
+		}
+	}
+
+	if orStart == -1 || len(line) < 120 {
+		return line
+	}
+
+	// Find the matching closing paren for the OR group
+	prefix := line[:orStart+1]
+	rest := line[orStart+1:]
+	depth = 1
+	closeIdx := -1
+	for i, ch := range rest {
+		if ch == '(' {
+			depth++
+		}
+		if ch == ')' {
+			depth--
+			if depth == 0 {
+				closeIdx = i
+				break
+			}
+		}
+	}
+	if closeIdx == -1 {
+		return line
+	}
+
+	inner := rest[:closeIdx]
+	suffix := rest[closeIdx:]
+
+	// Split inner on " or " at depth 0
+	var orParts []string
+	d := 0
+	cur := strings.Builder{}
+	for j := 0; j < len(inner); j++ {
+		if inner[j] == '(' {
+			d++
+		}
+		if inner[j] == ')' {
+			d--
+		}
+		if d == 0 && j+4 <= len(inner) && inner[j:j+4] == " or " {
+			orParts = append(orParts, strings.TrimSpace(cur.String()))
+			cur.Reset()
+			j += 3
+			continue
+		}
+		cur.WriteByte(inner[j])
+	}
+	if cur.Len() > 0 {
+		orParts = append(orParts, strings.TrimSpace(cur.String()))
+	}
+
+	if len(orParts) <= 2 {
+		return line // Not worth breaking
+	}
+
+	// Calculate indent: align with the content after the opening paren
+	indent := strings.Repeat(" ", len(prefix))
+
+	var b strings.Builder
+	b.WriteString(prefix)
+	for i, part := range orParts {
+		if i == 0 {
+			b.WriteString(part)
+		} else {
+			b.WriteString(" or\n")
+			b.WriteString(indent)
+			b.WriteString(part)
+		}
+	}
+	b.WriteString(suffix)
+	return b.String()
 }
 
 func sortedKeys[V any](m map[string]V) []string {
