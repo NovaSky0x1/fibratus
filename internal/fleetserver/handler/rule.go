@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
@@ -75,6 +76,7 @@ type RuleHandler struct {
 	rules          store.RuleStore
 	agents         store.AgentStore
 	macros         store.MacroStore
+	detections     store.DetectionStore
 	audit          store.AuditStore
 	users          store.UserStore
 	orgs           store.OrgStore
@@ -83,6 +85,9 @@ type RuleHandler struct {
 
 // SetOrgStore sets the org store for cross-org aggregation.
 func (h *RuleHandler) SetOrgStore(orgs store.OrgStore) { h.orgs = orgs }
+
+// SetDetectionStore sets the detection store for noisy-rule queries.
+func (h *RuleHandler) SetDetectionStore(dets store.DetectionStore) { h.detections = dets }
 
 // NewRuleHandler creates a new rule handler.
 func NewRuleHandler(rules store.RuleStore, agents store.AgentStore, macros store.MacroStore, audit store.AuditStore, users store.UserStore) *RuleHandler {
@@ -359,6 +364,10 @@ func (h *RuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	name := ""
 	if existing != nil {
 		name = existing.Name
+		// Record deletion of synced rules so they aren't re-created on next sync
+		if existing.Source != "manual" {
+			h.rules.RecordSyncDeletion(r.Context(), orgID, ruleID, existing.Source)
+		}
 	}
 
 	if err := h.rules.Delete(r.Context(), orgID, ruleID); err != nil {
@@ -449,6 +458,24 @@ func (h *RuleHandler) ValidateAll(w http.ResponseWriter, r *http.Request) {
 		"invalid":   invalid,
 		"valid":     validated - invalid,
 	}})
+}
+
+// NoisyRules handles GET /api/v1/orgs/{org_id}/rules/noisy
+// Returns the rules with the highest detection counts.
+func (h *RuleHandler) NoisyRules(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	results, err := h.detections.TopNoisyRules(r.Context(), orgID, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to query noisy rules")
+		return
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: results})
 }
 
 // GetForAgent handles GET /api/v1/agent/rules
