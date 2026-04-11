@@ -610,6 +610,8 @@ export const api = {
   adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),
   adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string; account_id?: string; org_restrictions?: string[]; set_org_restrictions?: boolean }) =>
     fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  adminCreateUser: (data: { email: string; name: string; password: string; role: string; account_id: string }) =>
+    fetchApi<User>('/admin/users', { method: 'POST', body: JSON.stringify(data) }),
   adminDeleteUser: (id: string) =>
     fetchApi<void>(`/admin/users/${id}`, { method: 'DELETE' }),
   adminUnlockUser: (id: string) =>

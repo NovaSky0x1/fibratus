@@ -865,7 +865,16 @@ func (s *Server) Run(ctx context.Context) error {
 			http.NotFound(w, r)
 		}
 	})
-	dashMux.HandleFunc("/api/v1/admin/users", methodGuard(http.MethodGet, adminHandler.ListAllUsers))
+	dashMux.HandleFunc("/api/v1/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.ListAllUsers(w, r)
+		case http.MethodPost:
+			adminHandler.CreateUser(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	dashMux.HandleFunc("/api/v1/admin/users/", func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/unlock") && r.Method == http.MethodPost:

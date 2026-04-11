@@ -530,6 +530,91 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": "updated"}})
 }
 
+// CreateUser handles POST /api/v1/admin/users
+// Creates a user in any account — root can create users including other root users.
+func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+
+	var req struct {
+		Email     string `json:"email"`
+		Name      string `json:"name"`
+		Password  string `json:"password"`
+		Role      string `json:"role"`
+		AccountID string `json:"account_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Email == "" || req.Password == "" || req.AccountID == "" {
+		writeError(w, http.StatusBadRequest, "email, password, and account_id are required")
+		return
+	}
+	if req.Name == "" {
+		req.Name = req.Email
+	}
+	if req.Role == "" {
+		req.Role = fleetauth.RoleMember
+	}
+
+	// Verify account exists
+	account, err := h.accounts.Get(r.Context(), req.AccountID)
+	if err != nil || account == nil {
+		writeError(w, http.StatusBadRequest, "account not found")
+		return
+	}
+
+	hashedPassword, err := fleetauth.HashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	now := time.Now().UTC()
+	userID := GenerateID()
+	user := &fleet.User{
+		ID:        userID,
+		Email:     req.Email,
+		Name:      req.Name,
+		Password:  hashedPassword,
+		AccountID: req.AccountID,
+		Role:      req.Role,
+		CreatedAt: now,
+	}
+	if err := h.users.Create(r.Context(), user); err != nil {
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
+			writeError(w, http.StatusConflict, "a user with this email already exists")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to create user")
+		return
+	}
+
+	// Grant access to all orgs in the account
+	orgs, _ := h.orgs.ListByAccount(r.Context(), req.AccountID)
+	for _, org := range orgs {
+		h.users.AddOrgAccess(r.Context(), userID, org.ID, "admin")
+	}
+
+	// Add to Administrators group if one exists
+	if h.groups != nil {
+		groups, _ := h.groups.List(r.Context(), req.AccountID)
+		for _, g := range groups {
+			if g.Name == "Administrators" {
+				h.groups.AddMember(r.Context(), userID, g.ID)
+				break
+			}
+		}
+	}
+
+	log.Infof("fleet: user %s (%s) created by root in account %s with role %s", req.Email, userID, req.AccountID, req.Role)
+	writeJSON(w, http.StatusCreated, fleet.Response{Data: user})
+}
+
 // DeleteUser handles DELETE /api/v1/admin/users/{id}
 func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	role := ctxutil.RoleFromContext(r.Context())

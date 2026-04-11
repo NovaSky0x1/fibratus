@@ -416,6 +416,9 @@ function UsersTab({ currentUser }: { currentUser?: User }) {
   const [search, setSearch] = useState('')
   const [editingUser, setEditingUser] = useState<(User & { account_name?: string }) | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [createForm, setCreateForm] = useState({ email: '', name: '', password: '', role: 'member', account_id: '' })
+  const [createError, setCreateError] = useState('')
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -423,6 +426,13 @@ function UsersTab({ currentUser }: { currentUser?: User }) {
     enabled: currentUser?.role === 'root',
   })
   const allUsers = (usersData?.data || []) as (User & { account_name?: string })[]
+
+  const { data: accountsData } = useQuery({
+    queryKey: ['admin-accounts'],
+    queryFn: () => api.adminGetAccounts(),
+    enabled: currentUser?.role === 'root',
+  })
+  const accounts = (accountsData?.data || []) as Account[]
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allUsers
@@ -446,6 +456,19 @@ function UsersTab({ currentUser }: { currentUser?: User }) {
     },
   })
 
+  const createMut = useMutation({
+    mutationFn: (data: typeof createForm) => api.adminCreateUser(data),
+    onSuccess: (res) => {
+      if (res.error) { setCreateError(res.error.message); return }
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-accounts'] })
+      setShowCreate(false)
+      setCreateForm({ email: '', name: '', password: '', role: 'member', account_id: '' })
+      setCreateError('')
+    },
+    onError: () => setCreateError('Failed to create user'),
+  })
+
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-4">
@@ -459,7 +482,54 @@ function UsersTab({ currentUser }: { currentUser?: User }) {
             className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none w-72"
           />
         </div>
+        <button onClick={() => setShowCreate(true)} className={btnPrimary}>Create User</button>
       </div>
+
+      {/* Create User Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">Create User</h2>
+            <form onSubmit={e => { e.preventDefault(); setCreateError(''); if (!createForm.account_id) { setCreateError('Select an account'); return } createMut.mutate(createForm) }} className="mt-4 space-y-3">
+              <div>
+                <label className={labelCls}>Account *</label>
+                <select value={createForm.account_id} onChange={e => setCreateForm(f => ({ ...f, account_id: e.target.value }))} className={inputCls} required>
+                  <option value="">Select account...</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Email *</label>
+                  <input type="email" value={createForm.email} onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))} className={inputCls} required />
+                </div>
+                <div>
+                  <label className={labelCls}>Display Name</label>
+                  <input value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="Admin" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Password *</label>
+                  <input type="password" value={createForm.password} onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))} className={inputCls} required minLength={8} />
+                </div>
+                <div>
+                  <label className={labelCls}>Role</label>
+                  <select value={createForm.role} onChange={e => setCreateForm(f => ({ ...f, role: e.target.value }))} className={inputCls}>
+                    <option value="member">Member</option>
+                    <option value="root">Root (super admin)</option>
+                  </select>
+                </div>
+              </div>
+              {createError && <p className="text-xs text-red-600">{createError}</p>}
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => { setShowCreate(false); setCreateError('') }} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">Cancel</button>
+                <button type="submit" disabled={createMut.isPending} className={btnPrimary}>{createMut.isPending ? 'Creating...' : 'Create User'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
