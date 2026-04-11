@@ -181,6 +181,13 @@ func (s *RuleStore) DeleteBySourceExcept(ctx context.Context, orgID, source stri
 	return int(n), nil
 }
 
+func (s *RuleStore) CountBySource(ctx context.Context, orgID, source string) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM rules WHERE org_id = $1 AND source = $2`, orgID, source).Scan(&count)
+	return count, err
+}
+
 // GetForAgent returns all enabled rules for an agent's organization and
 // computes an ETag based on rule IDs and versions. The ETag allows agents
 // to skip downloading rules that haven't changed.

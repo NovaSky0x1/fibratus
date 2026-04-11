@@ -80,6 +80,42 @@ export default function TelemetryTab() {
   const [sigmaTab, setSigmaTab] = useState<'convert' | 'sigmahq'>('convert')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // ── SigmaHQ Integration state ─────────────────────────────────
+  const [sigmahqResult, setSigmahqResult] = useState<Record<string, unknown> | null>(null)
+
+  const { data: sigmahqStatusData, refetch: refetchSigmaHQ } = useQuery({
+    queryKey: ['sigmahq-status'],
+    queryFn: () => api.getSigmaHQStatus(),
+  })
+  const sigmahqStatus = sigmahqStatusData?.data as { enabled: boolean; available: boolean; rule_count: number; last_commit: string; last_updated: string; total_files: number } | undefined
+
+  const enableSigmaHQMutation = useMutation({
+    mutationFn: () => api.enableSigmaHQ(),
+    onSuccess: (res) => {
+      if (res.data) setSigmahqResult(res.data as Record<string, unknown>)
+      refetchSigmaHQ()
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  const disableSigmaHQMutation = useMutation({
+    mutationFn: () => api.disableSigmaHQ(),
+    onSuccess: (res) => {
+      if (res.data) setSigmahqResult(res.data as Record<string, unknown>)
+      refetchSigmaHQ()
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
+  const refreshSigmaHQMutation = useMutation({
+    mutationFn: () => api.refreshSigmaHQ(),
+    onSuccess: (res) => {
+      if (res.data) setSigmahqResult(res.data as Record<string, unknown>)
+      refetchSigmaHQ()
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+  })
+
   // ── Event Log Queries ───────────────────────────────────────
 
   const { data: settingsData } = useQuery({
@@ -777,58 +813,115 @@ export default function TelemetryTab() {
           </div>
         )}
 
-        {/* SigmaHQ Sync Tab */}
+        {/* SigmaHQ Integration Tab */}
         {sigmaTab === 'sigmahq' && (
           <div className="mt-4 space-y-4">
-            <div className="rounded-md bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 px-4 py-3">
-              <p className="text-xs text-purple-700 dark:text-purple-400">
-                <strong>SigmaHQ Integration:</strong> Connect directly to the SigmaHQ GitHub repository to sync community detection rules.
-                Use the Detection as Code section above to add <code className="bg-purple-100 dark:bg-purple-900/40 px-1 rounded">github.com/SigmaHQ/sigma</code> as a source.
-                Set the rules path to <code className="bg-purple-100 dark:bg-purple-900/40 px-1 rounded">rules/windows</code> to pull all Windows-compatible SIGMA rules.
-                Rules will be automatically converted to Fibratus format during sync.
-              </p>
-            </div>
-
+            {/* Toggle Card */}
             <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Quick Setup: SigmaHQ</h4>
-              <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
-                Add the SigmaHQ repository as a Detection as Code source to automatically sync and convert SIGMA rules.
-                Only convertible rules (Windows ETW + Event Log compatible) will be imported.
-              </p>
-              <div className="space-y-3">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="w-24 text-xs font-medium text-gray-500 dark:text-slate-400">Repository:</span>
-                  <code className="text-xs font-mono text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 px-2 py-1 rounded">github.com/SigmaHQ/sigma</code>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="w-24 text-xs font-medium text-gray-500 dark:text-slate-400">Branch:</span>
-                  <code className="text-xs font-mono text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 px-2 py-1 rounded">master</code>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="w-24 text-xs font-medium text-gray-500 dark:text-slate-400">Rules Path:</span>
-                  <code className="text-xs font-mono text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-900 px-2 py-1 rounded">rules/windows</code>
-                </div>
-                <div className="pt-2 border-t border-gray-100 dark:border-slate-700">
-                  <p className="text-[10px] text-gray-400 dark:text-slate-500">
-                    Recommended paths for specific categories:
-                  </p>
-                  <div className="mt-1 grid grid-cols-2 gap-1">
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/process_creation</code>
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/registry</code>
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/file</code>
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/network_connection</code>
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/dns_query</code>
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/image_load</code>
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/powershell</code>
-                    <code className="text-[10px] font-mono text-gray-500 dark:text-slate-500">rules/windows/driver_load</code>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100">SigmaHQ Community Rules</h4>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                      {sigmahqStatus?.total_files ? `${sigmahqStatus.total_files.toLocaleString()} rules available` : 'Loading...'}
+                      {sigmahqStatus?.enabled && sigmahqStatus?.rule_count > 0 && (
+                        <span className="ml-2 text-emerald-600 dark:text-emerald-400">{sigmahqStatus.rule_count.toLocaleString()} active</span>
+                      )}
+                    </p>
                   </div>
                 </div>
+                <div className="flex items-center gap-3">
+                  {sigmahqStatus?.enabled && (
+                    <button
+                      onClick={() => refreshSigmaHQMutation.mutate()}
+                      disabled={refreshSigmaHQMutation.isPending}
+                      className="rounded-md border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                    >
+                      {refreshSigmaHQMutation.isPending ? 'Updating...' : 'Pull & Refresh'}
+                    </button>
+                  )}
+                  <ToggleSwitch
+                    enabled={sigmahqStatus?.enabled ?? false}
+                    onToggle={() => {
+                      if (sigmahqStatus?.enabled) {
+                        disableSigmaHQMutation.mutate()
+                      } else {
+                        enableSigmaHQMutation.mutate()
+                      }
+                    }}
+                    disabled={enableSigmaHQMutation.isPending || disableSigmaHQMutation.isPending || !sigmahqStatus?.available}
+                  />
+                </div>
               </div>
+
+              {!sigmahqStatus?.available && (
+                <div className="mt-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2">
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    SigmaHQ repository not available on server. Clone it to <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">/opt/fibratus-fleet/sigmahq</code> to enable this integration.
+                  </p>
+                </div>
+              )}
+
+              {(enableSigmaHQMutation.isPending || disableSigmaHQMutation.isPending || refreshSigmaHQMutation.isPending) && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  {enableSigmaHQMutation.isPending ? 'Converting SIGMA rules to Fibratus format...' :
+                   disableSigmaHQMutation.isPending ? 'Removing SIGMA rules...' :
+                   'Pulling latest rules and re-syncing...'}
+                </div>
+              )}
             </div>
 
-            {/* Conversion format note */}
+            {/* Sync Result */}
+            {sigmahqResult && (
+              <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-gray-900 dark:text-slate-100">Result</h4>
+                  <button onClick={() => setSigmahqResult(null)} className="text-xs text-gray-400 hover:text-gray-600">dismiss</button>
+                </div>
+                <div className="mt-2 flex gap-6 text-sm">
+                  {sigmahqResult.converted !== undefined && (
+                    <span className="text-emerald-600 dark:text-emerald-400">{sigmahqResult.converted as number} converted</span>
+                  )}
+                  {sigmahqResult.skipped !== undefined && (
+                    <span className="text-gray-500">{sigmahqResult.skipped as number} skipped</span>
+                  )}
+                  {sigmahqResult.failed !== undefined && (sigmahqResult.failed as number) > 0 && (
+                    <span className="text-red-600 dark:text-red-400">{sigmahqResult.failed as number} failed</span>
+                  )}
+                  {sigmahqResult.invalid !== undefined && (sigmahqResult.invalid as number) > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400">{sigmahqResult.invalid as number} invalid</span>
+                  )}
+                  {sigmahqResult.deleted !== undefined && (
+                    <span className="text-red-600 dark:text-red-400">{sigmahqResult.deleted as number} removed</span>
+                  )}
+                  {sigmahqResult.duration && (
+                    <span className="text-gray-400 text-xs">in {sigmahqResult.duration as string}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Status Info */}
+            {sigmahqStatus?.available && (
+              <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-3">
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  <strong>How it works:</strong> The server maintains a local clone of the SigmaHQ repository.
+                  When enabled, all Windows-compatible SIGMA rules are automatically converted to Fibratus detection format
+                  and deployed to all organizations. The server checks for updates every 6 hours. Disabling removes all SIGMA-converted rules.
+                </p>
+                {sigmahqStatus.last_commit && (
+                  <p className="mt-1 text-[10px] text-blue-500 dark:text-blue-500">
+                    Latest commit: {sigmahqStatus.last_commit.substring(0, 8)}
+                    {sigmahqStatus.last_updated && <span className="ml-2">Last pull: {new Date(sigmahqStatus.last_updated).toLocaleString()}</span>}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Mapping reference */}
             <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">SIGMA to Fibratus Mapping</h4>
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Supported SIGMA Categories</h4>
               <div className="space-y-2 text-xs">
                 <div className="grid grid-cols-3 gap-2 text-gray-500 dark:text-slate-400 font-medium border-b border-gray-100 dark:border-slate-700 pb-1">
                   <span>SIGMA Logsource</span><span>Fibratus Event</span><span>Key Fields</span>
@@ -842,14 +935,14 @@ export default function TelemetryTab() {
                   ['image_load', 'load_module', 'image.name, ps.exe'],
                   ['driver_load', 'load_driver', 'image.name, image.signature.*'],
                   ['process_access', 'open_process', 'ps.exe, ps.access.mask'],
-                  ['Sysmon (generic)', 'eventlog_event', 'eventlog.channel, eventlog.event.id'],
+                  ['Sysmon', 'eventlog_event', 'eventlog.channel, eventlog.event.id'],
                   ['PowerShell', 'eventlog_event', 'eventlog.data[ScriptBlockText]'],
                   ['Security Log', 'eventlog_event', 'eventlog.event.id, eventlog.data[*]'],
-                ].map(([sigma, fibratus, fields]) => (
-                  <div key={sigma} className="grid grid-cols-3 gap-2 text-gray-700 dark:text-slate-300">
-                    <span className="font-mono">{sigma}</span>
-                    <span className="font-mono text-fibratus-600 dark:text-fibratus-400">{fibratus}</span>
-                    <span className="text-gray-500 dark:text-slate-400">{fields}</span>
+                ].map(([s, f, flds]) => (
+                  <div key={s} className="grid grid-cols-3 gap-2 text-gray-700 dark:text-slate-300">
+                    <span className="font-mono">{s}</span>
+                    <span className="font-mono text-fibratus-600 dark:text-fibratus-400">{f}</span>
+                    <span className="text-gray-500 dark:text-slate-400">{flds}</span>
                   </div>
                 ))}
               </div>

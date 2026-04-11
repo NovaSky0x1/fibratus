@@ -398,6 +398,9 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS eventlog_collection BOOLEAN DEFAULT 
 -- CMMC/HIPAA file access compliance policy (allowed download extensions)
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS allowed_file_extensions JSONB DEFAULT 'null';
 
+-- SigmaHQ integration
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS sigmahq_enabled BOOLEAN DEFAULT FALSE;
+
 -- ═══════════════════════════════════════════════════════════════
 -- Decommissioned agents — deleted agents that should auto-uninstall on reconnect
 -- ═══════════════════════════════════════════════════════════════

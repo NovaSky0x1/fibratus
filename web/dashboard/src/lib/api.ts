@@ -537,6 +537,16 @@ export const api = {
   getSigmaFieldMappings: () =>
     fetchApi<SigmaFieldMapping[]>(orgPath('/sigma/field-mappings')),
 
+  // SigmaHQ Integration
+  getSigmaHQStatus: () =>
+    fetchApi<{ enabled: boolean; available: boolean; rule_count: number; last_commit: string; last_updated: string; total_files: number }>('/account/sigmahq/status'),
+  enableSigmaHQ: () =>
+    fetchApi<{ converted: number; skipped: number; failed: number; invalid: number; errors?: string[]; duration: string }>('/account/sigmahq/enable', { method: 'POST' }),
+  disableSigmaHQ: () =>
+    fetchApi<{ deleted: number }>('/account/sigmahq/disable', { method: 'POST' }),
+  refreshSigmaHQ: () =>
+    fetchApi<{ converted: number; skipped: number; failed: number; invalid: number; errors?: string[]; duration: string }>('/account/sigmahq/refresh', { method: 'POST' }),
+
   // Account Settings
   getAccountSettings: () => fetchApi<{ require_2fa: boolean; account_name: string; plan: string; tamper_protection_enabled: boolean; isolation_whitelist: string[]; org_protection: Array<{ id: string; name: string; tamper_protection_enabled: boolean }> }>('/account/settings'),
   updateAccountSettings: (data: { require_2fa?: boolean; tamper_protection_enabled?: boolean; eventlog_enabled?: boolean; isolation_whitelist?: string[]; allowed_file_extensions?: string[] }) =>

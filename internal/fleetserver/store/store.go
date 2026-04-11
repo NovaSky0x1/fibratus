@@ -103,6 +103,7 @@ type RuleStore interface {
 	Delete(ctx context.Context, orgID, id string) error
 	DeleteBySource(ctx context.Context, orgID, source string) (int, error)
 	DeleteBySourceExcept(ctx context.Context, orgID, source string, keepIDs []string) (int, error)
+	CountBySource(ctx context.Context, orgID, source string) (int, error)
 	GetForAgent(ctx context.Context, orgID, agentID string) ([]*fleet.Rule, string, error)
 }
 

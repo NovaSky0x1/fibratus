@@ -321,6 +321,23 @@ CGO_ENABLED=0 go build \
 chmod +x "${INSTALL_DIR}/bin/fleet-server"
 ok "Binary built at ${INSTALL_DIR}/bin/fleet-server"
 
+# ─── Step 8b: Clone SigmaHQ repository ─────────────────────────────────────
+
+step "Step 8b/14: SigmaHQ community rules repository"
+
+SIGMAHQ_DIR="${INSTALL_DIR}/sigmahq"
+if [ -d "${SIGMAHQ_DIR}/.git" ]; then
+    info "SigmaHQ repo exists, pulling latest..."
+    git -C "${SIGMAHQ_DIR}" pull --ff-only 2>/dev/null || warn "SigmaHQ pull failed (non-fatal)"
+    ok "SigmaHQ repository updated"
+else
+    info "Cloning SigmaHQ repository (shallow clone)..."
+    git clone --depth=1 https://github.com/SigmaHQ/sigma.git "${SIGMAHQ_DIR}" 2>/dev/null
+    ok "SigmaHQ repository cloned to ${SIGMAHQ_DIR}"
+fi
+SIGMAHQ_RULE_COUNT=$(find "${SIGMAHQ_DIR}/rules/windows" -name "*.yml" 2>/dev/null | wc -l)
+info "SigmaHQ: ${SIGMAHQ_RULE_COUNT} Windows rules available for conversion"
+
 # ─── Step 9: Create service user ────────────────────────────────────────────
 
 step "Step 9/14: Service user"

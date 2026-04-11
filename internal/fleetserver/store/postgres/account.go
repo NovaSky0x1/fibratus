@@ -50,6 +50,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 		`SELECT id, name, plan, COALESCE(require_2fa, false), COALESCE(tamper_protection_enabled, false),
 			COALESCE(isolation_whitelist, '[]'::jsonb), COALESCE(eventlog_enabled, false),
 			COALESCE(telemetry_retention_days, 1), COALESCE(allowed_file_extensions, 'null'::jsonb),
+			COALESCE(sigmahq_enabled, false),
 			created_at, updated_at
 		 FROM accounts WHERE id = $1`, id)
 
@@ -57,6 +58,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 	var wlJSON, afeJSON []byte
 	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.TamperProtectionEnabled,
 		&wlJSON, &a.EventLogEnabled, &a.TelemetryRetentionDays, &afeJSON,
+		&a.SigmaHQEnabled,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {

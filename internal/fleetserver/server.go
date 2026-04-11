@@ -186,6 +186,8 @@ func (s *Server) Run(ctx context.Context) error {
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 	sigmaHandler := handler.NewSigmaHandler(ruleStore, macroStore, auditStore, userStore)
+	sigmahqHandler := handler.NewSigmaHQHandler(ruleStore, macroStore, accountStore, orgStore, auditStore, userStore, "/opt/fibratus-fleet/sigmahq")
+	sigmahqHandler.StartBackgroundUpdater(ctx)
 
 	// Wire org store for cross-org aggregation (account-scoped views)
 	detHandler.SetOrgStore(orgStore)
@@ -764,6 +766,20 @@ func (s *Server) Run(ctx context.Context) error {
 	})
 	dashMux.HandleFunc("/api/v1/account/sigma/field-mappings", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet { sigmaHandler.FieldMappings(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+
+	// Account-scoped: SigmaHQ integration
+	dashMux.HandleFunc("/api/v1/account/sigmahq/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet { sigmahqHandler.Status(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigmahq/enable", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { requirePermission(fleetauth.PermManageRules, sigmahqHandler.Enable)(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigmahq/disable", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { requirePermission(fleetauth.PermManageRules, sigmahqHandler.Disable)(w, r) } else { http.Error(w, "method not allowed", 405) }
+	})
+	dashMux.HandleFunc("/api/v1/account/sigmahq/refresh", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost { requirePermission(fleetauth.PermManageRules, sigmahqHandler.Refresh)(w, r) } else { http.Error(w, "method not allowed", 405) }
 	})
 
 	dashMux.HandleFunc("/api/v1/account/settings", func(w http.ResponseWriter, r *http.Request) {
