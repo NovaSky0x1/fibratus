@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -36,8 +38,11 @@ import (
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/validator"
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
 )
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -56,6 +61,8 @@ type AuthHandler struct {
 	eventlogPolicy store.EventLogPolicyStore
 	groups         store.UserGroupStore
 	apiKeys        store.APIKeyStore
+	macros         store.MacroStore
+	rules          store.RuleStore
 	jwtSecret      string
 	onCmdCreated   CommandPushCallback
 	onRetentionChange RetentionCallback
@@ -86,6 +93,16 @@ func (h *AuthHandler) SetRetentionCallback(cb RetentionCallback) {
 // SetCommandPushCallback registers a callback for instant command delivery.
 func (h *AuthHandler) SetCommandPushCallback(cb CommandPushCallback) {
 	h.onCmdCreated = cb
+}
+
+// SetMacroStore sets the macro store for seeding defaults on signup.
+func (h *AuthHandler) SetMacroStore(s store.MacroStore) {
+	h.macros = s
+}
+
+// SetRuleStore sets the rule store for seeding defaults on signup.
+func (h *AuthHandler) SetRuleStore(s store.RuleStore) {
+	h.rules = s
 }
 
 // SetGroupStore sets the user group store for permission resolution.
@@ -283,6 +300,9 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Seed default macros and official rules for the new org
+	go h.seedOrgDefaults(context.Background(), orgID)
 
 	// Create user (role=member — permissions come from groups)
 	userID := GenerateID()
@@ -920,6 +940,9 @@ func (h *AuthHandler) CreateOrganization(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Seed default macros and official rules for the new org
+	go h.seedOrgDefaults(context.Background(), org.ID)
+
 	// Grant current user access
 	userID := ctxutil.UserIDFromContext(r.Context())
 	if userID != "" {
@@ -1144,6 +1167,145 @@ func (h *AuthHandler) seedDefaultGroupsForSignup(ctx context.Context, accountID 
 	}
 	log.Infof("fleet: seeded default groups for signup account %s", accountID)
 	return adminGroupID
+}
+
+// seedOrgDefaults loads the default Fibratus macros and official detection rules
+// into a newly created organization. Called during signup and org creation.
+func (h *AuthHandler) seedOrgDefaults(ctx context.Context, orgID string) {
+	h.seedOrgMacros(ctx, orgID)
+	h.seedOrgRules(ctx, orgID)
+}
+
+func (h *AuthHandler) seedOrgMacros(ctx context.Context, orgID string) {
+	if h.macros == nil {
+		return
+	}
+	pStore, ok := h.macros.(*postgres.MacroStore)
+	if !ok {
+		return
+	}
+	for _, path := range []string{
+		"rules/macros/macros.yml",
+		"/opt/fibratus-fleet/src/rules/macros/macros.yml",
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		n, err := pStore.ImportFromYAML(ctx, orgID, data)
+		if err != nil {
+			log.Warnf("fleet: failed to seed macros for org %s: %v", orgID, err)
+			return
+		}
+		log.Infof("fleet: seeded %d macros for org %s", n, orgID)
+		return
+	}
+}
+
+func (h *AuthHandler) seedOrgRules(ctx context.Context, orgID string) {
+	if h.rules == nil {
+		return
+	}
+	// Find rules directory
+	var rulesDir string
+	for _, dir := range []string{
+		"rules",
+		"/opt/fibratus-fleet/src/rules",
+	} {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			rulesDir = dir
+			break
+		}
+	}
+	if rulesDir == "" {
+		return
+	}
+
+	// Load macros for validation
+	var macros map[string]interface{}
+	if h.macros != nil {
+		macros = make(map[string]interface{})
+	}
+
+	var count int
+	filepath.Walk(rulesDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(path, ".yml") && !strings.HasSuffix(path, ".yaml") {
+			return nil
+		}
+		// Skip macros directory
+		if strings.Contains(path, "macros/") || strings.Contains(path, "macros\\") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		// Parse as Fibratus rule YAML
+		var ruleData struct {
+			Name        string            `yaml:"name"`
+			ID          string            `yaml:"id"`
+			Version     string            `yaml:"version"`
+			Description string            `yaml:"description"`
+			Condition   string            `yaml:"condition"`
+			Output      string            `yaml:"output"`
+			Severity    string            `yaml:"severity"`
+			Labels      map[string]string `yaml:"labels"`
+			Tags        []string          `yaml:"tags"`
+			References  []string          `yaml:"references"`
+		}
+		if err := yaml.Unmarshal(data, &ruleData); err != nil || ruleData.Name == "" {
+			return nil
+		}
+		rule := &fleet.Rule{
+			ID:          ruleData.ID,
+			OrgID:       orgID,
+			Name:        ruleData.Name,
+			Version:     ruleData.Version,
+			Description: ruleData.Description,
+			Condition:   ruleData.Condition,
+			Output:      ruleData.Output,
+			Severity:    ruleData.Severity,
+			Labels:      ruleData.Labels,
+			Tags:        ruleData.Tags,
+			References:  ruleData.References,
+			RawYAML:     string(data),
+			Enabled:     true,
+			Source:       "official",
+		}
+		if rule.ID == "" {
+			rule.ID = GenerateID()
+		}
+		if rule.Version == "" {
+			rule.Version = "1.0.0"
+		}
+		if rule.Severity == "" {
+			rule.Severity = "medium"
+		}
+		// Validate condition
+		_ = macros // validator uses DB macros via the handler
+		condResult := validator.ValidateCondition(rule.Condition)
+		if condResult.Valid {
+			rule.ValidationStatus = "valid"
+			rule.ValidationErrors = json.RawMessage(`[]`)
+		} else {
+			rule.ValidationStatus = "invalid"
+			errJSON, _ := json.Marshal(condResult.Errors)
+			rule.ValidationErrors = errJSON
+			rule.Enabled = false
+		}
+		if err := h.rules.Create(ctx, rule); err != nil {
+			// Likely duplicate — skip silently
+			return nil
+		}
+		count++
+		return nil
+	})
+	if count > 0 {
+		log.Infof("fleet: seeded %d official rules for org %s", count, orgID)
+	}
 }
 
 func slugify(name string) string {

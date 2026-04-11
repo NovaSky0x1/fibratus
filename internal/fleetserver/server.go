@@ -182,6 +182,8 @@ func (s *Server) Run(ctx context.Context) error {
 	authHandler.SetAPIKeyStore(apiKeyStoreInst)
 	SetAPIKeyStore(apiKeyStoreInst)
 	authHandler.SetGroupStore(groupStore)
+	authHandler.SetMacroStore(macroStore)
+	authHandler.SetRuleStore(ruleStore)
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
