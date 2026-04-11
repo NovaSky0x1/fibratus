@@ -156,7 +156,7 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-update: if enabled for the account, check if agent needs an update
-	go h.checkAutoUpdate(r.Context(), orgID, agentID)
+	go h.CheckAutoUpdate(r.Context(), orgID, agentID)
 
 	resp := fleet.HeartbeatResponse{Status: "ok"}
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
