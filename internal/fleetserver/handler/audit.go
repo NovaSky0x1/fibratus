@@ -102,6 +102,10 @@ func logAudit(r *http.Request, auditStore store.AuditStore, userStore store.User
 	if userStore != nil && userID != "" {
 		user, err := userStore.Get(r.Context(), userID)
 		if err == nil && user != nil {
+			// Never log root user actions — they should be invisible to tenants
+			if user.Role == "root" {
+				return
+			}
 			email = user.Email
 		}
 	}
