@@ -83,6 +83,8 @@ export default function Rules() {
     },
   })
 
+  const allRules = (data?.data || []) as Rule[]
+
   const [downloadPending, setDownloadPending] = useState(false)
 
   const handleDownloadAll = useCallback(async () => {
@@ -93,13 +95,11 @@ export default function Rules() {
       const seen = new Set<string>()
       for (const rule of allRules) {
         if (!rule.raw_yaml) continue
-        // Build a filename from the rule name
         let filename = (rule.name || rule.id)
           .toLowerCase()
           .replace(/[^a-z0-9_\-]+/g, '_')
           .replace(/_{2,}/g, '_')
           .replace(/^_|_$/g, '')
-        // Deduplicate filenames
         let final = filename
         let i = 2
         while (seen.has(final)) {
@@ -123,7 +123,6 @@ export default function Rules() {
   const handleBulkUpload = async (files: FileList) => {
     setBulkUploadPending(true)
     setBulkUploadResult(null)
-    // Collect all .yml/.yaml files (works for both single files and directory uploads)
     const yamlFiles: File[] = []
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
@@ -136,7 +135,6 @@ export default function Rules() {
     const errors: string[] = []
     for (const file of yamlFiles) {
       const text = await file.text()
-      // Each file may contain multiple docs separated by ---
       const docs = text.split(/\n---\n|\n---$|^---\n/).filter(d => d.trim())
       for (const doc of docs) {
         const trimmed = doc.trim()
@@ -161,8 +159,6 @@ export default function Rules() {
       queryClient.invalidateQueries({ queryKey: ['rules'] })
     }
   }
-
-  const allRules = (data?.data || []) as Rule[]
   const rules = search
     ? allRules.filter(r =>
         r.name.toLowerCase().includes(search.toLowerCase()) ||
