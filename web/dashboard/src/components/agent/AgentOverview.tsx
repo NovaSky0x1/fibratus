@@ -75,10 +75,6 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
   const [isolationResult, setIsolationResult] = useState<ActionResult | null>(null)
   const [whitelistIps, setWhitelistIps] = useState('')
 
-  // Update state
-  const [updatePending, setUpdatePending] = useState(false)
-  const [updateResult, setUpdateResult] = useState<ActionResult | null>(null)
-
   // Uninstall state
   const [uninstallConfirm, setUninstallConfirm] = useState(false)
   const [uninstallResult, setUninstallResult] = useState<ActionResult | null>(null)
