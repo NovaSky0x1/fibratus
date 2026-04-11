@@ -1080,8 +1080,8 @@ func formatCondition(cond string) string {
 			continue
 		}
 
-		// Check for " and not " at depth <= 1 — always break here
-		if depth <= 1 && i+9 <= len(cond) && cond[i:i+9] == " and not " {
+		// Break on " and not " at depth <= 2 (accounts for outer condition wrapper parens)
+		if depth <= 2 && i+9 <= len(cond) && cond[i:i+9] == " and not " {
 			lines = append(lines, strings.TrimSpace(current.String())+" and")
 			current.Reset()
 			current.WriteString("not ")
@@ -1089,8 +1089,8 @@ func formatCondition(cond string) string {
 			continue
 		}
 
-		// Check for " and " at depth <= 1
-		if depth <= 1 && i+5 <= len(cond) && cond[i:i+5] == " and " {
+		// Break on " and " at depth <= 2
+		if depth <= 2 && i+5 <= len(cond) && cond[i:i+5] == " and " {
 			lines = append(lines, strings.TrimSpace(current.String())+" and")
 			current.Reset()
 			i += 5
@@ -1108,11 +1108,11 @@ func formatCondition(cond string) string {
 		return cond
 	}
 
-	// Now format OR lists within each line: if a line contains " or " inside
+	// Format OR lists within each line: if a line contains " or " inside
 	// parens and is long, break the OR items onto separate lines
 	var formatted []string
 	for _, line := range lines {
-		if len(line) > 100 && strings.Contains(line, " or ") {
+		if len(line) > 60 && strings.Contains(line, " or ") {
 			formatted = append(formatted, formatOrList(line))
 		} else {
 			formatted = append(formatted, line)

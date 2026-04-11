@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +37,66 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// detectionDedup provides rate limiting for detections. The same rule+agent
+// combination is allowed up to maxPerWindow detections within a sliding
+// window. After the burst limit, further detections are suppressed until the
+// window resets. This prevents a noisy rule from flooding with thousands of
+// identical detections while still allowing legitimate repeated triggers.
+type detectionDedup struct {
+	mu   sync.Mutex
+	hits map[string]*dedupEntry
+}
+
+type dedupEntry struct {
+	count    int
+	windowStart time.Time
+}
+
+const (
+	dedupWindow    = 60 * time.Second  // sliding window duration
+	maxPerWindow   = 5                 // allow up to 5 detections per rule+agent per window
+)
+
+func newDetectionDedup() *detectionDedup {
+	d := &detectionDedup{
+		hits: make(map[string]*dedupEntry),
+	}
+	go d.cleanupLoop()
+	return d
+}
+
+// shouldAllow returns true if this detection should be stored.
+// Allows up to maxPerWindow detections per rule+agent per window.
+func (d *detectionDedup) shouldAllow(ruleID, agentID string) bool {
+	key := ruleID + "|" + agentID
+	now := time.Now()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	entry, ok := d.hits[key]
+	if !ok || now.Sub(entry.windowStart) > dedupWindow {
+		// New window
+		d.hits[key] = &dedupEntry{count: 1, windowStart: now}
+		return true
+	}
+	entry.count++
+	return entry.count <= maxPerWindow
+}
+
+func (d *detectionDedup) cleanupLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	for range ticker.C {
+		d.mu.Lock()
+		now := time.Now()
+		for k, e := range d.hits {
+			if now.Sub(e.windowStart) > dedupWindow*2 {
+				delete(d.hits, k)
+			}
+		}
+		d.mu.Unlock()
+	}
+}
+
 // agentService implements the pb.AgentServiceServer interface.
 type agentService struct {
 	pb.UnimplementedAgentServiceServer
@@ -48,7 +109,8 @@ type agentService struct {
 	telemetry  store.TelemetryStore
 	captures   store.CaptureStore
 	streams    *StreamManager
-	natsProd *natsPkg.Producer // nil if NATS disabled (direct store writes)
+	natsProd   *natsPkg.Producer // nil if NATS disabled (direct store writes)
+	dedup      *detectionDedup
 }
 
 // newAgentService creates a new gRPC agent service.
@@ -71,8 +133,9 @@ func newAgentService(
 		detections: detections,
 		telemetry:  telemetry,
 		captures:   captures,
-		streams:    streams,
+		streams:  streams,
 		natsProd: natsProducer,
+		dedup:    newDetectionDedup(),
 	}
 }
 
@@ -279,6 +342,11 @@ func (s *agentService) SendDetection(ctx context.Context, req *pb.DetectionRepor
 		Tags:          req.Tags,
 		Events:        json.RawMessage(req.Events),
 		Timestamp:     ts,
+	}
+
+	// Rate limit: allow up to 5 detections per rule+agent per 60s window
+	if !s.dedup.shouldAllow(req.RuleId, req.AgentId) {
+		return &pb.DetectionAck{DetectionId: detID}, nil // silently drop
 	}
 
 	if err := s.detections.Create(ctx, det); err != nil {
