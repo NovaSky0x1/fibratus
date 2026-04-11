@@ -165,10 +165,11 @@ func convertDetection(rule *SigmaRule, cfg *logsourceConfig) (string, []string, 
 		return "", nil, fmt.Errorf("condition %q: %w", condStr, err)
 	}
 
-	// Prepend the logsource event type prefix.
-	// Not scoping is handled in buildCondition via (true and not <expr>)
-	// wrappers, so no special handling needed here.
-	fullCondition := cfg.conditionPrefix + " and\n  " + condition
+	// Prepend the logsource event type prefix. Always wrap the condition in
+	// parens so that OR branches don't bypass the event type check. The
+	// (true and not ...) wrappers inside ensure not-scoping still works
+	// correctly since the closing ) provides the ParseExpr boundary.
+	fullCondition := cfg.conditionPrefix + " and\n  (" + condition + ")"
 
 	// Format for readability: break into multi-line with proper indentation
 	fullCondition = formatCondition(fullCondition)

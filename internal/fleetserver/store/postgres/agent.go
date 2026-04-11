@@ -200,8 +200,8 @@ func (s *AgentStore) IsDecommissioned(ctx context.Context, agentID string) bool 
 
 func (s *AgentStore) UpdateHeartbeat(ctx context.Context, orgID, id string, hb *fleet.Heartbeat) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE agents SET last_heartbeat=$3, status='online', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
-		id, orgID, hb.Timestamp,
+		`UPDATE agents SET last_heartbeat=NOW(), status='online', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
+		id, orgID,
 	)
 	if err != nil {
 		return err
