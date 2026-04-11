@@ -88,7 +88,7 @@ var logsourceConfigs = map[string]*logsourceConfig{
 		fields:          registryEventFields,
 	},
 	"registry_delete|windows|": {
-		conditionPrefix: "evt.name = 'RegDeleteKey' or evt.name = 'RegDeleteValue'",
+		conditionPrefix: "(evt.name = 'RegDeleteKey' or evt.name = 'RegDeleteValue')",
 		fields:          registryEventFields,
 	},
 	"network_connection|windows|": {
@@ -342,8 +342,8 @@ var dnsQueryFields = map[string]string{
 }
 
 var imageLoadFields = map[string]string{
-	"ImageLoaded":     "image.name",
-	"imageloaded":     "image.name",
+	"ImageLoaded":     "module.name",
+	"imageloaded":     "module.name",
 	"Image":           "ps.exe",
 	"image":           "ps.exe",
 	"User":            "ps.username",
@@ -366,8 +366,8 @@ var imageLoadFields = map[string]string{
 }
 
 var driverLoadFields = map[string]string{
-	"ImageLoaded":     "image.name",
-	"imageloaded":     "image.name",
+	"ImageLoaded":     "module.name",
+	"imageloaded":     "module.name",
 	"Signed":          "module.signature.exists",
 	"signed":          "module.signature.exists",
 	"SignatureStatus": "module.signature.trusted",
@@ -381,8 +381,8 @@ var driverLoadFields = map[string]string{
 var processAccessFields = map[string]string{
 	"SourceImage":      "ps.exe",
 	"sourceimage":      "ps.exe",
-	"TargetImage":      "ps.name",
-	"targetimage":      "ps.name",
+	"TargetImage":      "evt.arg[exe]",
+	"targetimage":      "evt.arg[exe]",
 	"GrantedAccess":    "ps.access.mask",
 	"grantedaccess":    "ps.access.mask",
 	"CallTrace":        "thread.callstack.detail",
@@ -396,8 +396,8 @@ var processAccessFields = map[string]string{
 var createRemoteThreadFields = map[string]string{
 	"SourceImage":     "ps.exe",
 	"sourceimage":     "ps.exe",
-	"TargetImage":     "ps.name",
-	"targetimage":     "ps.name",
+	"TargetImage":     "evt.arg[exe]",
+	"targetimage":     "evt.arg[exe]",
 	"StartFunction":   "thread.start_address.symbol",
 	"StartModule":     "thread.start_address.module",
 	"StartAddress":    "thread.start_address",
