@@ -1,13 +1,33 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import JSZip from 'jszip'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { api, type Rule, type ValidationError, type ApiResponse } from '../lib/api'
+import { api, type Rule, type RuleDetectionCount, type ValidationError, type ApiResponse } from '../lib/api'
 import SeverityBadge from '../components/SeverityBadge'
 import SlidePanel from '../components/SlidePanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useTableSort } from '../hooks/useTableSort'
 import SortableHeader from '../components/SortableHeader'
+
+type RuleTab = 'all' | 'official' | 'sigma' | 'custom' | 'tuning'
+
+function sourceBadge(source: string) {
+  if (source === 'sigmahq' || source === 'sigma') return <span className="rounded bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:text-purple-400">SIGMA</span>
+  if (source === 'official') return <span className="rounded bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">Official</span>
+  if (source?.startsWith('github:')) return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">GitHub</span>
+  return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">Custom</span>
+}
+
+function highlightMatch(text: string, search: string): ReactNode {
+  if (!search || !text) return text
+  const lower = text.toLowerCase()
+  const idx = lower.indexOf(search.toLowerCase())
+  if (idx === -1) return text
+  return <>{text.slice(0, idx)}<mark className="bg-yellow-200 dark:bg-yellow-800/50 rounded px-0.5">{text.slice(idx, idx + search.length)}</mark>{text.slice(idx + search.length)}</>
+}
+
+function isSigmaSource(s: string) { return s === 'sigmahq' || s === 'sigma' }
+function isCustomSource(s: string) { return s === 'manual' || s?.startsWith('github:') }
 
 export default function Rules() {
   const queryClient = useQueryClient()
@@ -20,6 +40,7 @@ export default function Rules() {
   const [editYaml, setEditYaml] = useState('')
   const [editError, setEditError] = useState('')
   const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState<RuleTab>('all')
   const [validateAllPending, setValidateAllPending] = useState(false)
   const [bulkUploadPending, setBulkUploadPending] = useState(false)
   const [bulkUploadResult, setBulkUploadResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null)
@@ -159,13 +180,28 @@ export default function Rules() {
       queryClient.invalidateQueries({ queryKey: ['rules'] })
     }
   }
-  const rules = search
-    ? allRules.filter(r =>
-        r.name.toLowerCase().includes(search.toLowerCase()) ||
-        r.description?.toLowerCase().includes(search.toLowerCase()) ||
-        r.condition?.toLowerCase().includes(search.toLowerCase()) ||
-        r.labels?.['technique.id']?.toLowerCase().includes(search.toLowerCase()))
+  // Tab counts
+  const sigmaCount = allRules.filter(r => isSigmaSource(r.source)).length
+  const officialCount = allRules.filter(r => r.source === 'official').length
+  const customCount = allRules.filter(r => isCustomSource(r.source)).length
+
+  // Tab filtering
+  const tabRules = activeTab === 'all' ? allRules
+    : activeTab === 'sigma' ? allRules.filter(r => isSigmaSource(r.source))
+    : activeTab === 'official' ? allRules.filter(r => r.source === 'official')
+    : activeTab === 'custom' ? allRules.filter(r => isCustomSource(r.source))
     : allRules
+
+  // Search filtering — across name, description, condition, all labels
+  const lowerSearch = search.toLowerCase()
+  const rules = search
+    ? tabRules.filter(r =>
+        r.name?.toLowerCase().includes(lowerSearch) ||
+        r.description?.toLowerCase().includes(lowerSearch) ||
+        r.condition?.toLowerCase().includes(lowerSearch) ||
+        Object.values(r.labels || {}).some(v => v?.toLowerCase().includes(lowerSearch)) ||
+        r.tags?.some(t => t.toLowerCase().includes(lowerSearch)))
+    : tabRules
   const { sorted: sortedRules, sort, toggleSort } = useTableSort(rules, 'name', 'asc')
   const total = data?.meta?.total ?? allRules.length
 
@@ -387,28 +423,57 @@ export default function Rules() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="mt-6 flex gap-4">
+      {/* Tabs */}
+      <div className="mt-6 flex border-b border-gray-200 dark:border-slate-700">
+        {([
+          ['all', `All (${allRules.length})`],
+          ['official', `Official (${officialCount})`],
+          ['sigma', `SIGMA (${sigmaCount})`],
+          ['custom', `Custom (${customCount})`],
+          ['tuning', 'Tuning'],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab as RuleTab)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === tab
+                ? 'border-fibratus-600 text-fibratus-600 dark:text-fibratus-400 dark:border-fibratus-400'
+                : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 hover:border-gray-300 dark:hover:border-slate-600'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Search (shown on all tabs except tuning) */}
+      {activeTab !== 'tuning' && (
+      <div className="mt-4 flex gap-4">
         <input
           type="text"
-          placeholder="Search rules by name, technique, condition..."
+          placeholder="Search by name, condition, technique, tag (e.g. sliver c2, rundll32.exe, ntdll.dll)..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-fibratus-500 focus:outline-none focus:ring-1 focus:ring-fibratus-500"
         />
         <span className="flex items-center text-sm text-gray-400 dark:text-slate-500">{rules.length} shown</span>
       </div>
+      )}
+
+      {/* Tuning tab */}
+      {activeTab === 'tuning' && <TuningTab allRules={allRules} toggleMutation={toggleMutation} queryClient={queryClient} />}
 
       {/* Rules table */}
+      {activeTab !== 'tuning' && (
       <div className="mt-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
               <tr>
                 <SortableHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} />
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Source</th>
                 <SortableHeader label="Severity" sortKey="severity" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">MITRE</th>
-                <SortableHeader label="Version" sortKey="version" sort={sort} onSort={toggleSort} />
                 <SortableHeader label="Status" sortKey="enabled" sort={sort} onSort={toggleSort} />
                 <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Actions</th>
               </tr>
@@ -425,13 +490,22 @@ export default function Rules() {
                 sortedRules.map((rule) => (
                   <tr key={rule.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/30">
                     <td className="px-6 py-3">
-                      <div className="font-medium text-gray-900 dark:text-slate-100">{rule.name}</div>
+                      <div className="font-medium text-gray-900 dark:text-slate-100">
+                        {search ? highlightMatch(rule.name, search) : rule.name}
+                        {rule.user_modified && <span className="ml-2 rounded bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">edited</span>}
+                      </div>
                       {rule.description && (
-                        <div className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
-                          {rule.description}
+                        <div className="mt-0.5 text-xs text-gray-500 dark:text-slate-400 line-clamp-1">
+                          {search ? highlightMatch(rule.description, search) : rule.description}
+                        </div>
+                      )}
+                      {search && rule.condition?.toLowerCase().includes(lowerSearch) && (
+                        <div className="mt-1 font-mono text-[11px] text-gray-400 dark:text-slate-500 line-clamp-2">
+                          {highlightMatch(rule.condition.slice(0, 120), search)}
                         </div>
                       )}
                     </td>
+                    <td className="px-6 py-3">{sourceBadge(rule.source)}</td>
                     <td className="px-6 py-3">
                       <SeverityBadge severity={rule.severity} />
                     </td>
@@ -441,9 +515,6 @@ export default function Rules() {
                           {rule.labels['technique.id']}
                         </span>
                       )}
-                    </td>
-                    <td className="px-6 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">
-                      {rule.version}
                     </td>
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-2">
@@ -528,6 +599,7 @@ export default function Rules() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Rule editor slide panel */}
       <SlidePanel open={!!editRule} title={'Edit: ' + (editRule?.name || '')} onClose={() => setEditRule(null)} wide>
@@ -804,4 +876,102 @@ function buildYamlFromRule(rule: Rule): string {
     }
   }
   return lines.join('\n') + '\n'
+}
+
+// ── Tuning Tab ──
+function TuningTab({ allRules, toggleMutation, queryClient }: {
+  allRules: Rule[]
+  toggleMutation: ReturnType<typeof useMutation<ApiResponse<Rule>, Error, { id: string; enabled: boolean }>>
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['noisy-rules'],
+    queryFn: () => api.getNoisyRules(50),
+    refetchInterval: 30000,
+  })
+
+  const noisyRules = (data?.data || []) as RuleDetectionCount[]
+
+  return (
+    <div className="mt-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Noisiest Rules</h2>
+        <p className="text-sm text-gray-500 dark:text-slate-400">
+          Rules ranked by detection count. Disable noisy rules to reduce false positive volume.
+        </p>
+      </div>
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50">
+              <tr>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400 w-16">#</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Rule</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Source</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Severity</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400 text-right">Detections</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Status</th>
+                <th className="px-6 py-3 font-medium text-gray-500 dark:text-slate-400">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+              {isLoading && (
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading detection stats...</td></tr>
+              )}
+              {!isLoading && noisyRules.length === 0 && (
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">No detections recorded yet. Rules will appear here once events are evaluated.</td></tr>
+              )}
+              {noisyRules.map((nr, idx) => {
+                const rule = allRules.find(r => r.id === nr.rule_id)
+                return (
+                  <tr key={nr.rule_id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/30">
+                    <td className="px-6 py-3 font-mono text-xs text-gray-400 dark:text-slate-500">{idx + 1}</td>
+                    <td className="px-6 py-3">
+                      <div className="font-medium text-gray-900 dark:text-slate-100">{nr.rule_name}</div>
+                    </td>
+                    <td className="px-6 py-3">{sourceBadge(nr.source)}</td>
+                    <td className="px-6 py-3"><SeverityBadge severity={nr.severity} /></td>
+                    <td className="px-6 py-3 text-right">
+                      <span className={`font-mono text-sm font-bold ${nr.count > 100 ? 'text-red-600 dark:text-red-400' : nr.count > 20 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-slate-300'}`}>
+                        {nr.count.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        nr.enabled
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400'
+                      }`}>
+                        {nr.enabled ? 'Active' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3">
+                      {nr.enabled && rule && (
+                        <button
+                          onClick={() => {
+                            toggleMutation.mutate({ id: nr.rule_id, enabled: false }, {
+                              onSuccess: () => {
+                                queryClient.invalidateQueries({ queryKey: ['rules'] })
+                                queryClient.invalidateQueries({ queryKey: ['noisy-rules'] })
+                              },
+                            })
+                          }}
+                          className="rounded-lg border border-red-300 dark:border-red-700 px-3 py-1 text-xs font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          Disable
+                        </button>
+                      )}
+                      {!nr.enabled && (
+                        <span className="text-xs text-gray-400 dark:text-slate-500">Already disabled</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
 }

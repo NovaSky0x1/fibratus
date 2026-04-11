@@ -123,10 +123,22 @@ export interface Rule {
   tags: string[]
   raw_yaml: string
   enabled: boolean
+  source: string
+  user_modified?: boolean
+  user_disabled?: boolean
   validation_status: 'valid' | 'invalid' | 'pending'
   validation_errors?: ValidationError[]
   created_at: string
   updated_at: string
+}
+
+export interface RuleDetectionCount {
+  rule_id: string
+  rule_name: string
+  severity: string
+  enabled: boolean
+  source: string
+  count: number
 }
 
 export interface SigmaConversionResult {
@@ -454,6 +466,8 @@ export const api = {
       orgPath('/rules/validate-all'),
       { method: 'POST' },
     ),
+  getNoisyRules: (limit = 50) =>
+    fetchApi<RuleDetectionCount[]>(orgPath(`/rules/noisy?limit=${limit}`)),
 
   // Telemetry (live events)
   getOrgTelemetry: (params?: Record<string, string>) => {
