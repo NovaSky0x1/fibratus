@@ -54,7 +54,7 @@ type dedupEntry struct {
 
 const (
 	dedupWindow    = 60 * time.Second  // sliding window duration
-	maxPerWindow   = 5                 // allow up to 5 detections per rule+agent per window
+	maxPerWindow   = 20                // allow up to 20 detections per rule+agent per window
 )
 
 func newDetectionDedup() *detectionDedup {

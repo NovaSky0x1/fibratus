@@ -1080,8 +1080,8 @@ func formatCondition(cond string) string {
 			continue
 		}
 
-		// Break on " and not " at depth <= 2 (accounts for outer condition wrapper parens)
-		if depth <= 2 && i+9 <= len(cond) && cond[i:i+9] == " and not " {
+		// Break on " and not " at depth <= 3 (accounts for outer condition wrapper parens + nested groups)
+		if depth <= 3 && i+9 <= len(cond) && cond[i:i+9] == " and not " {
 			lines = append(lines, strings.TrimSpace(current.String())+" and")
 			current.Reset()
 			current.WriteString("not ")
@@ -1089,8 +1089,8 @@ func formatCondition(cond string) string {
 			continue
 		}
 
-		// Break on " and " at depth <= 2
-		if depth <= 2 && i+5 <= len(cond) && cond[i:i+5] == " and " {
+		// Break on " and " at depth <= 3
+		if depth <= 3 && i+5 <= len(cond) && cond[i:i+5] == " and " {
 			lines = append(lines, strings.TrimSpace(current.String())+" and")
 			current.Reset()
 			i += 5
