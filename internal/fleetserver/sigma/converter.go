@@ -235,6 +235,21 @@ func convertMapSelection(name string, m map[string]interface{}, cfg *logsourceCo
 		fieldName := parts[0]
 		modifiers := parts[1:]
 
+		// Special handling for Sysmon's composite Hashes field.
+		// Hashes contains "SHA256=...,MD5=...,IMPHASH=..." — extract the
+		// hash type and remap to the correct Fibratus field.
+		if strings.EqualFold(fieldName, "Hashes") {
+			expr, err := convertHashesField(value, modifiers, cfg)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("field %q in selection %q: %v, skipped", fieldName, name, err))
+				continue
+			}
+			if expr != "" {
+				conditions = append(conditions, expr)
+			}
+			continue
+		}
+
 		// Map field to Fibratus
 		fibratusField, ok := mapField(fieldName, cfg)
 		if !ok {
@@ -550,11 +565,20 @@ func buildCondition(condStr string, selectionExprs map[string]string) (string, e
 		return match
 	})
 
-	// Replace selection names with their expressions
+	// Replace selection names with their expressions.
+	// Handle "not <selection>" specially: wrap as "(not <expr>)" to limit
+	// the scope of negation, since Fibratus QL's "not" after "and" consumes
+	// the entire remaining expression via ParseExpr().
 	for _, name := range names {
 		expr := selectionExprs[name]
-		// Use word boundary replacement to avoid partial matches
-		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
+		quotedName := regexp.QuoteMeta(name)
+
+		// First pass: replace "not <selection>" with "(not <expr>)"
+		notRe := regexp.MustCompile(`\bnot\s+` + quotedName + `\b`)
+		result = notRe.ReplaceAllString(result, "(not "+expr+")")
+
+		// Second pass: replace remaining (non-negated) occurrences
+		re := regexp.MustCompile(`\b` + quotedName + `\b`)
 		result = re.ReplaceAllString(result, expr)
 	}
 
@@ -824,6 +848,73 @@ func isBooleanField(field string) bool {
 		"file.is_exec":             true,
 	}
 	return boolFields[field]
+}
+
+// convertHashesField handles the Sysmon composite "Hashes" field.
+// SIGMA uses Hashes|contains: 'IMPHASH=xxx' to match imphashes via the
+// composite field. We extract the hash type and value, mapping to the
+// appropriate Fibratus field (e.g. pe.imphash for IMPHASH=).
+func convertHashesField(value interface{}, modifiers []string, cfg *logsourceConfig) (string, error) {
+	// Determine the imphash field for this logsource
+	imphashField := ""
+	if f, ok := cfg.fields["Imphash"]; ok && f != "" {
+		imphashField = f
+	} else if f, ok := cfg.fields["imphash"]; ok && f != "" {
+		imphashField = f
+	}
+
+	// Extract hash values from the value
+	values := toStringSlice(value)
+	if len(values) == 0 {
+		return "", fmt.Errorf("empty Hashes value")
+	}
+
+	var parts []string
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		upper := strings.ToUpper(v)
+		if strings.HasPrefix(upper, "IMPHASH=") && imphashField != "" {
+			hash := v[len("IMPHASH="):]
+			parts = append(parts, imphashField+" ~= '"+escapeQL(hash)+"'")
+		}
+		// SHA256, MD5, SHA1 — skip (no Fibratus field for loaded module hashes)
+	}
+
+	if len(parts) == 0 {
+		return "", fmt.Errorf("no convertible hash types in Hashes field")
+	}
+	if len(parts) == 1 {
+		return parts[0], nil
+	}
+	// Use OR if |contains| modifier (any match) or AND if |all|
+	op := " or "
+	if hasModifier(modifiers, "all") {
+		op = " and "
+	}
+	return "(" + strings.Join(parts, op) + ")", nil
+}
+
+// toStringSlice converts a SIGMA value (string, []interface{}, etc.) to a []string.
+func toStringSlice(value interface{}) []string {
+	switch v := value.(type) {
+	case string:
+		return []string{v}
+	case []interface{}:
+		var result []string
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			} else if item != nil {
+				result = append(result, fmt.Sprintf("%v", item))
+			}
+		}
+		return result
+	default:
+		if value != nil {
+			return []string{fmt.Sprintf("%v", value)}
+		}
+		return nil
+	}
 }
 
 // escapeQL escapes a string for use in Fibratus QL single-quoted strings.
