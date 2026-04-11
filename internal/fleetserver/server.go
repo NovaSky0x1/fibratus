@@ -192,6 +192,9 @@ func (s *Server) Run(ctx context.Context) error {
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
+	releaseChecker := handler.NewReleaseChecker(accountStore, 15*time.Minute)
+	releaseChecker.Start(ctx)
+	_ = releaseChecker
 	sigmaHandler := handler.NewSigmaHandler(ruleStore, macroStore, auditStore, userStore)
 	sigmahqHandler := handler.NewSigmaHQHandler(ruleStore, macroStore, accountStore, orgStore, auditStore, userStore, "/opt/fibratus-fleet/sigmahq")
 	sigmahqHandler.StartBackgroundUpdater(ctx)

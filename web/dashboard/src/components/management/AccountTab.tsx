@@ -42,6 +42,7 @@ interface AccountSettings {
   latest_agent_version: string
   latest_agent_msi_url: string
   auto_update_agents: boolean
+  agent_update_repo: string
   org_protection: Array<{
     id: string
     name: string
@@ -324,6 +325,7 @@ export default function AccountTab() {
         latestVersion={settings?.latest_agent_version || ''}
         msiUrl={settings?.latest_agent_msi_url || ''}
         autoUpdate={settings?.auto_update_agents ?? false}
+        repo={settings?.agent_update_repo || 'NovaSky0x1/fibratus'}
       />
 
       {/* ── Your Security ─────────────────────────────────────── */}
@@ -758,27 +760,23 @@ function SecuritySection() {
 // Agent Updates Section
 // ================================================================
 
-function AgentUpdatesSection({ latestVersion, msiUrl, autoUpdate }: {
+function AgentUpdatesSection({ latestVersion, msiUrl, autoUpdate, repo }: {
   latestVersion: string
   msiUrl: string
   autoUpdate: boolean
+  repo: string
 }) {
   const queryClient = useQueryClient()
-  const [version, setVersion] = useState(latestVersion)
-  const [url, setUrl] = useState(msiUrl)
   const [auto, setAuto] = useState(autoUpdate)
+  const [repoValue, setRepoValue] = useState(repo || 'NovaSky0x1/fibratus')
   const [saved, setSaved] = useState(false)
   const [updateAllPending, setUpdateAllPending] = useState(false)
   const [updateAllResult, setUpdateAllResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  // Sync from props when settings reload
-  useState(() => { setVersion(latestVersion); setUrl(msiUrl); setAuto(autoUpdate) })
-
   const saveMut = useMutation({
     mutationFn: () => api.updateAccountSettings({
-      latest_agent_version: version,
-      latest_agent_msi_url: url,
       auto_update_agents: auto,
+      agent_update_repo: repoValue,
     } as Record<string, unknown>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['account-settings'] })
@@ -809,26 +807,38 @@ function AgentUpdatesSection({ latestVersion, msiUrl, autoUpdate }: {
       <div className="px-6 py-4">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Agent Updates</h3>
         <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-          Configure the latest agent version and MSI download URL. Push updates to all agents in this account.
+          The server automatically checks for new releases every 15 minutes.
         </p>
       </div>
 
       <div className="px-6 py-5 space-y-4">
+        {/* Current version info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Latest Agent Version</label>
-            <input type="text" value={version} onChange={e => setVersion(e.target.value)} placeholder="e.g. 3.0.0-rc4" className={inputCls} />
+          <div className="rounded-lg bg-gray-50 dark:bg-slate-900 px-4 py-3">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Latest Release</span>
+            <p className="text-sm font-medium text-gray-900 dark:text-slate-100 mt-0.5 font-mono">
+              {latestVersion || <span className="text-gray-400 dark:text-slate-500 italic">Checking...</span>}
+            </p>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">MSI Download URL</label>
-            <input type="text" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://github.com/.../fibratus.msi" className={inputCls} />
+          <div className="rounded-lg bg-gray-50 dark:bg-slate-900 px-4 py-3">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-slate-500">Release Source</span>
+            <p className="text-sm font-medium text-gray-900 dark:text-slate-100 mt-0.5 font-mono">
+              {repo || 'NovaSky0x1/fibratus'}
+            </p>
           </div>
+        </div>
+
+        {/* Release repo config */}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">GitHub Repository (owner/repo)</label>
+          <input type="text" value={repoValue} onChange={e => setRepoValue(e.target.value)} placeholder="NovaSky0x1/fibratus" className={inputCls} />
+          <p className="mt-1 text-[10px] text-gray-400 dark:text-slate-500">Change this to check a different GitHub repo for releases</p>
         </div>
 
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Auto-Update Agents</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400">Automatically push updates to agents when they heartbeat with an outdated version</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Automatically push updates when agents heartbeat with an outdated version</p>
           </div>
           <ToggleSwitch enabled={auto} onToggle={() => setAuto(!auto)} />
         </div>
@@ -841,13 +851,15 @@ function AgentUpdatesSection({ latestVersion, msiUrl, autoUpdate }: {
           >
             {saveMut.isPending ? 'Saving...' : saved ? 'Saved' : 'Save Settings'}
           </button>
-          <button
-            onClick={handleUpdateAll}
-            disabled={updateAllPending || !version || !url}
-            className="rounded-lg border border-fibratus-600 px-4 py-2 text-sm font-medium text-fibratus-600 dark:text-fibratus-400 hover:bg-fibratus-50 dark:hover:bg-fibratus-900/20 disabled:opacity-50"
-          >
-            {updateAllPending ? 'Sending...' : 'Update All Agents Now'}
-          </button>
+          {latestVersion && (
+            <button
+              onClick={handleUpdateAll}
+              disabled={updateAllPending}
+              className="rounded-lg border border-fibratus-600 px-4 py-2 text-sm font-medium text-fibratus-600 dark:text-fibratus-400 hover:bg-fibratus-50 dark:hover:bg-fibratus-900/20 disabled:opacity-50"
+            >
+              {updateAllPending ? 'Sending...' : `Update All Agents to ${latestVersion}`}
+            </button>
+          )}
         </div>
 
         {updateAllResult && (

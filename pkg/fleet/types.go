@@ -43,6 +43,7 @@ type Account struct {
 	LatestAgentVersion string `json:"latest_agent_version"`
 	LatestAgentMSIURL  string `json:"latest_agent_msi_url"`
 	AutoUpdateAgents   bool   `json:"auto_update_agents"`
+	AgentUpdateRepo    string `json:"agent_update_repo"`
 	OrgCount                int      `json:"org_count,omitempty"`
 	UserCount       int       `json:"user_count,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`

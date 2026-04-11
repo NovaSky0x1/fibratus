@@ -37,6 +37,7 @@ type AccountStore interface {
 	UpdateFilePolicy(ctx context.Context, id string, extensions []string) error
 	UpdateProfile(ctx context.Context, id, name, plan string) error
 	UpdateAgentVersion(ctx context.Context, id, version, msiURL string, autoUpdate bool) error
+	UpdateAgentRepo(ctx context.Context, id, repo string) error
 }
 
 // OrgStore manages organization persistence.

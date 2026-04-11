@@ -56,7 +56,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 			COALESCE(telemetry_retention_days, 1), COALESCE(allowed_file_extensions, 'null'::jsonb),
 			COALESCE(sigmahq_enabled, false),
 			COALESCE(latest_agent_version, ''), COALESCE(latest_agent_msi_url, ''),
-			COALESCE(auto_update_agents, false),
+			COALESCE(auto_update_agents, false), COALESCE(agent_update_repo, 'NovaSky0x1/fibratus'),
 			created_at, updated_at
 		 FROM accounts WHERE id = $1`, id)
 
@@ -65,7 +65,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.TamperProtectionEnabled,
 		&wlJSON, &a.EventLogEnabled, &a.TelemetryRetentionDays, &afeJSON,
 		&a.SigmaHQEnabled,
-		&a.LatestAgentVersion, &a.LatestAgentMSIURL, &a.AutoUpdateAgents,
+		&a.LatestAgentVersion, &a.LatestAgentMSIURL, &a.AutoUpdateAgents, &a.AgentUpdateRepo,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -183,6 +183,13 @@ func (s *AccountStore) UpdateAgentVersion(ctx context.Context, id, version, msiU
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE accounts SET latest_agent_version=$2, latest_agent_msi_url=$3, auto_update_agents=$4, updated_at=NOW() WHERE id=$1`,
 		id, version, msiURL, autoUpdate)
+	return err
+}
+
+func (s *AccountStore) UpdateAgentRepo(ctx context.Context, id, repo string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE accounts SET agent_update_repo=$2, updated_at=NOW() WHERE id=$1`,
+		id, repo)
 	return err
 }
 
