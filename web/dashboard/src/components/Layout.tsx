@@ -56,7 +56,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [, setMfaRequired] = useState(false)
   const isAdminOrRoot = user?.role === 'admin' || user?.role === 'root'
   const [accounts, setAccounts] = useState<Account[]>([])
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(
+    () => localStorage.getItem('selectedAccountId') || ''
+  )
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme)
 
   const isRoot = user?.role === 'root'
@@ -96,7 +98,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const accts = acctRes.data as Account[] | undefined
             if (accts) {
               setAccounts(accts)
-              if (data.account_id) setSelectedAccountId(data.account_id)
+              // Restore persisted account selection, or default to user's own account
+              const saved = localStorage.getItem('selectedAccountId')
+              const restoredId = saved && accts.some(a => a.id === saved) ? saved : data.account_id
+              if (restoredId) {
+                setSelectedAccountId(restoredId)
+                // If restoring a different account, load its orgs
+                if (restoredId !== data.account_id) {
+                  api.adminGetAccountOrgs(restoredId).then(orgRes => {
+                    const accountOrgs = orgRes.data as Organization[] | undefined
+                    if (accountOrgs && accountOrgs.length > 0) {
+                      setOrgs(accountOrgs)
+                      setCurrentOrgId(accountOrgs[0].id)
+                      setCurrentOrg(accountOrgs[0].id)
+                    }
+                  })
+                }
+              }
             }
           })
         }
@@ -112,6 +130,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const handleAccountChange = async (accountId: string) => {
     setSelectedAccountId(accountId)
+    localStorage.setItem('selectedAccountId', accountId)
     try {
       const res = await api.adminGetAccountOrgs(accountId)
       const accountOrgs = res.data as Organization[] | undefined
