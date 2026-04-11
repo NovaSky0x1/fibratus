@@ -19,6 +19,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -78,6 +79,14 @@ type CommandHandler struct {
 // NewCommandHandler creates a new command handler.
 func NewCommandHandler(commands store.CommandStore, agents store.AgentStore, audit store.AuditStore, users store.UserStore) *CommandHandler {
 	return &CommandHandler{commands: commands, agents: agents, audit: audit, users: users}
+}
+
+func (h *CommandHandler) isRootUser(ctx context.Context, userID string) bool {
+	if h.users == nil || userID == "" {
+		return false
+	}
+	u, err := h.users.Get(ctx, userID)
+	return err == nil && u != nil && u.Role == "root"
 }
 
 // SetAccountStore sets the account store for compliance checks (file access policy).
@@ -226,11 +235,28 @@ func (h *CommandHandler) ListCommands(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commands, err := h.commands.ListByAgent(r.Context(), orgID, agentID, 50)
+	allCommands, err := h.commands.ListByAgent(r.Context(), orgID, agentID, 50)
 	if err != nil {
 		log.Errorf("fleet: list commands error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	// Filter out root user commands from history display (but keep them
+	// visible for the command result polling flow — the frontend polls
+	// this same endpoint to find its own collect_info results)
+	userRole := ctxutil.RoleFromContext(r.Context())
+	var commands []*fleet.Command
+	if userRole == "root" {
+		// Root user sees their own commands (needed for collect_info polling)
+		commands = allCommands
+	} else {
+		// Non-root users never see root user commands
+		for _, cmd := range allCommands {
+			if cmd.CreatedBy == "" || !h.isRootUser(r.Context(), cmd.CreatedBy) {
+				commands = append(commands, cmd)
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: commands})

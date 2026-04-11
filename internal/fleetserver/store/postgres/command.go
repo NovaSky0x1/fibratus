@@ -95,7 +95,6 @@ func (s *CommandStore) ListByAgent(ctx context.Context, orgID, agentID string, l
 		`SELECT id, org_id, agent_id, type, payload, status, result, error_message,
 				created_by, created_by_email, created_at, started_at, completed_at
 		 FROM commands WHERE org_id = $1 AND agent_id = $2
-		   AND (created_by = '' OR created_by NOT IN (SELECT id FROM users WHERE role = 'root'))
 		 ORDER BY created_at DESC LIMIT $3`, orgID, agentID, limit)
 	if err != nil {
 		return nil, err
