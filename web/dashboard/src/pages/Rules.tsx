@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import JSZip from 'jszip'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { api, type Rule, type ValidationError, type ApiResponse } from '../lib/api'
@@ -82,43 +83,76 @@ export default function Rules() {
     },
   })
 
-  const handleDownloadAll = () => {
-    if (!allRules.length) return
-    const yaml = allRules
-      .filter(r => r.raw_yaml)
-      .map(r => r.raw_yaml.trim())
-      .join('\n---\n')
-    const blob = new Blob([yaml], { type: 'application/x-yaml' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `fibratus-rules-${new Date().toISOString().slice(0, 10)}.yml`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const [downloadPending, setDownloadPending] = useState(false)
 
-  const handleBulkUpload = async (file: File) => {
+  const handleDownloadAll = useCallback(async () => {
+    if (!allRules.length) return
+    setDownloadPending(true)
+    try {
+      const zip = new JSZip()
+      const seen = new Set<string>()
+      for (const rule of allRules) {
+        if (!rule.raw_yaml) continue
+        // Build a filename from the rule name
+        let filename = (rule.name || rule.id)
+          .toLowerCase()
+          .replace(/[^a-z0-9_\-]+/g, '_')
+          .replace(/_{2,}/g, '_')
+          .replace(/^_|_$/g, '')
+        // Deduplicate filenames
+        let final = filename
+        let i = 2
+        while (seen.has(final)) {
+          final = `${filename}_${i++}`
+        }
+        seen.add(final)
+        zip.file(`${final}.yml`, rule.raw_yaml.trim() + '\n')
+      }
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `fibratus-rules-${new Date().toISOString().slice(0, 10)}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDownloadPending(false)
+    }
+  }, [allRules])
+
+  const handleBulkUpload = async (files: FileList) => {
     setBulkUploadPending(true)
     setBulkUploadResult(null)
-    const text = await file.text()
-    const docs = text.split(/\n---\n|\n---$|^---\n/).filter(d => d.trim())
+    // Collect all .yml/.yaml files (works for both single files and directory uploads)
+    const yamlFiles: File[] = []
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]
+      if (f.name.endsWith('.yml') || f.name.endsWith('.yaml')) {
+        yamlFiles.push(f)
+      }
+    }
     let created = 0
     let failed = 0
     const errors: string[] = []
-    for (const doc of docs) {
-      const trimmed = doc.trim()
-      if (!trimmed) continue
-      try {
-        const res = await api.createRule(trimmed)
-        if (res.error) {
+    for (const file of yamlFiles) {
+      const text = await file.text()
+      // Each file may contain multiple docs separated by ---
+      const docs = text.split(/\n---\n|\n---$|^---\n/).filter(d => d.trim())
+      for (const doc of docs) {
+        const trimmed = doc.trim()
+        if (!trimmed) continue
+        try {
+          const res = await api.createRule(trimmed)
+          if (res.error) {
+            failed++
+            const name = trimmed.match(/^name:\s*(.+)$/m)?.[1] || file.name
+            errors.push(`${name}: ${res.error.message}`)
+          } else {
+            created++
+          }
+        } catch {
           failed++
-          const name = trimmed.match(/^name:\s*(.+)$/m)?.[1] || 'unknown'
-          errors.push(`${name}: ${res.error.message}`)
-        } else {
-          created++
         }
-      } catch {
-        failed++
       }
     }
     setBulkUploadPending(false)
@@ -264,16 +298,23 @@ export default function Rules() {
           </label>
           <button
             onClick={handleDownloadAll}
-            disabled={!allRules.length}
+            disabled={!allRules.length || downloadPending}
             className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
           >
-            Download All
+            {downloadPending ? 'Zipping...' : 'Download All'}
           </button>
           <label className={`rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 ${bulkUploadPending ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
-            {bulkUploadPending ? 'Uploading...' : 'Bulk Upload'}
-            <input type="file" accept=".yml,.yaml" className="hidden" disabled={bulkUploadPending} onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) handleBulkUpload(file)
+            {bulkUploadPending ? 'Uploading...' : 'Upload Files'}
+            <input type="file" accept=".yml,.yaml" multiple className="hidden" disabled={bulkUploadPending} onChange={(e) => {
+              if (e.target.files?.length) handleBulkUpload(e.target.files)
+              e.target.value = ''
+            }} />
+          </label>
+          <label className={`rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 ${bulkUploadPending ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+            {bulkUploadPending ? 'Uploading...' : 'Upload Folder'}
+            {/* @ts-expect-error webkitdirectory is non-standard but widely supported */}
+            <input type="file" webkitdirectory="" className="hidden" disabled={bulkUploadPending} onChange={(e) => {
+              if (e.target.files?.length) handleBulkUpload(e.target.files)
               e.target.value = ''
             }} />
           </label>
