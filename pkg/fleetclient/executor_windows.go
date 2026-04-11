@@ -502,10 +502,9 @@ $newPath = ($path -split ";" | Where-Object { $_ -notlike "*Fibratus*" }) -join 
 	return result, nil
 }
 
-// getProcesses returns structured process information using a single WMI query.
+// getProcesses returns structured process information using WMI, with fallback to Get-Process.
 func (e *WindowsExecutor) getProcesses(cmd *fleet.Command) (json.RawMessage, error) {
-	// Single WMI call gets PID, name, cmdline, path, memory in one pass — no per-process lookups
-	psCmd := `Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine,ExecutablePath,@{N='mem_mb';E={[math]::Round($_.WorkingSet64/1MB,1)}},@{N='username';E={try{$o=$_.GetOwner();if($o.User){"$($o.Domain)\$($o.User)"}else{''}}catch{''}}} | ConvertTo-Json -Depth 2 -Compress`
+	psCmd := `try{Get-CimInstance Win32_Process -EA Stop|Select-Object ProcessId,Name,CommandLine,ExecutablePath,@{N='mem_mb';E={[math]::Round($_.WorkingSet64/1MB,1)}},@{N='username';E={try{$o=$_.GetOwner();if($o.User){"$($o.Domain)\$($o.User)"}else{''}}catch{''}}}|ConvertTo-Json -Depth 2 -Compress}catch{Get-Process|Select-Object Id,ProcessName,Path,@{N='mem_mb';E={[math]::Round($_.WorkingSet64/1MB,1)}}|ConvertTo-Json -Depth 2 -Compress}`
 	out, err := runPowerShellLong(psCmd, 30)
 	if err != nil {
 		return nil, fmt.Errorf("get_processes: %v: %s", err, out)
@@ -531,9 +530,9 @@ func (e *WindowsExecutor) getNetwork(cmd *fleet.Command) (json.RawMessage, error
 	return result, nil
 }
 
-// getServices returns structured Windows service information.
+// getServices returns structured Windows service information, with fallback to Get-Service.
 func (e *WindowsExecutor) getServices(cmd *fleet.Command) (json.RawMessage, error) {
-	psCmd := `Get-CimInstance Win32_Service|Select Name,DisplayName,State,StartMode,@{N='account';E={$_.StartName}},PathName,ProcessId|ConvertTo-Json -Depth 2 -Compress`
+	psCmd := `try{Get-CimInstance Win32_Service -EA Stop|Select Name,DisplayName,State,StartMode,@{N='account';E={$_.StartName}},PathName,ProcessId|ConvertTo-Json -Depth 2 -Compress}catch{Get-Service|Select Name,DisplayName,Status,StartType|ConvertTo-Json -Depth 2 -Compress}`
 	out, err := runPowerShellLong(psCmd, 20)
 	if err != nil {
 		return nil, fmt.Errorf("get_services: %v: %s", err, out)
@@ -544,9 +543,9 @@ func (e *WindowsExecutor) getServices(cmd *fleet.Command) (json.RawMessage, erro
 	return result, nil
 }
 
-// getDrivers returns loaded kernel driver information.
+// getDrivers returns loaded kernel driver information, with fallback to driverquery.
 func (e *WindowsExecutor) getDrivers(cmd *fleet.Command) (json.RawMessage, error) {
-	psCmd := `Get-CimInstance Win32_SystemDriver|Select Name,DisplayName,State,StartMode,PathName,ServiceType|ConvertTo-Json -Depth 2 -Compress`
+	psCmd := `try{Get-CimInstance Win32_SystemDriver -EA Stop|Select Name,DisplayName,State,StartMode,PathName,ServiceType|ConvertTo-Json -Depth 2 -Compress}catch{driverquery /fo csv /v|ConvertFrom-Csv|Select 'Module Name','Display Name','State','Start Mode','Path'|ConvertTo-Json -Depth 2 -Compress}`
 	out, err := runPowerShellLong(psCmd, 20)
 	if err != nil {
 		return nil, fmt.Errorf("get_drivers: %v: %s", err, out)
