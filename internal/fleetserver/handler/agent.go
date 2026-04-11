@@ -503,7 +503,7 @@ func (h *AgentHandler) checkAutoUpdate(ctx context.Context, orgID, agentID strin
 		return
 	}
 	if h.onCmdCreated != nil {
-		h.onCmdCreated(orgID, agentID, cmd)
+		h.onCmdCreated(agentID, cmd.ID, cmd.Type, payload)
 	}
 	log.Infof("fleet: auto-update queued for agent %s (current: %s, target: %s)", agentID, agent.EngineVersion, account.LatestAgentVersion)
 }
