@@ -94,12 +94,13 @@ Write-Host "  MSI installation complete" -ForegroundColor Green
 
 # Enroll agent
 Write-Host "[3/5] Enrolling agent..." -ForegroundColor Yellow
-try {
-    Stop-Service fibratus -ErrorAction SilentlyContinue
-    & "C:\Program Files\Fibratus\Bin\fibratus.exe" enroll --token $enrollToken --server $serverURL --insecure 2>&1 | Out-Host
+Stop-Service fibratus -ErrorAction SilentlyContinue
+$enrollOut = & "C:\Program Files\Fibratus\Bin\fibratus.exe" enroll --token $enrollToken --server $serverURL --insecure 2>&1
+$enrollOut | ForEach-Object { Write-Host "  $_" }
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Enrollment failed (exit $LASTEXITCODE)" -ForegroundColor Red
+} else {
     Write-Host "  Enrollment complete" -ForegroundColor Green
-} catch {
-    Write-Host "  Enrollment failed: $_" -ForegroundColor Red
 }
 
 # Start service
