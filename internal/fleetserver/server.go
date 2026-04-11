@@ -199,6 +199,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Wire org store for cross-org aggregation (account-scoped views)
 	detHandler.SetOrgStore(orgStore)
 	ruleHandler.SetOrgStore(orgStore)
+	ruleHandler.SetDetectionStore(detStore)
 	dashHandler.SetOrgStore(orgStore)
 	auditHandler.SetOrgStore(orgStore)
 	enrollTokenHandler.SetOrgStore(orgStore)
@@ -411,6 +412,8 @@ func (s *Server) Run(ctx context.Context) error {
 			ruleHandler.List(w, r)
 		case subpath == "/rules" && r.Method == http.MethodPost:
 			requirePermission(fleetauth.PermManageRules, ruleHandler.Create)(w, r)
+		case subpath == "/rules/noisy" && r.Method == http.MethodGet:
+			ruleHandler.NoisyRules(w, r)
 		case subpath == "/rules/validate-condition" && r.Method == http.MethodPost:
 			ruleHandler.ValidateCondition(w, r)
 		case subpath == "/rules/validate-all" && r.Method == http.MethodPost:
@@ -598,6 +601,13 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/account/detections", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			detHandler.List(w, r)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/rules/noisy", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			ruleHandler.NoisyRules(w, r)
 		} else {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
