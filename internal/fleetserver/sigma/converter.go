@@ -165,16 +165,17 @@ func convertDetection(rule *SigmaRule, cfg *logsourceConfig) (string, []string, 
 		return "", nil, fmt.Errorf("condition %q: %w", condStr, err)
 	}
 
-	// Prepend the logsource event type prefix
-	fullCondition := cfg.conditionPrefix + " and (" + condition + ")"
-
-	// Fix: ensure 'not' never appears as first token inside parentheses
-	// Handle both "(not " and "( not " patterns
-	fullCondition = strings.ReplaceAll(fullCondition, "(not ", "(true and not ")
-	fullCondition = strings.ReplaceAll(fullCondition, "( not ", "(true and not ")
-
-	// No "true and" cleanup needed — empty selections now fail conversion
-	// instead of producing "true" which would match everything
+	// Prepend the logsource event type prefix.
+	// Don't wrap in parens if the condition already starts with "not" since
+	// the QL parser doesn't support (not ...) as first token.
+	var fullCondition string
+	trimCond := strings.TrimSpace(condition)
+	if strings.HasPrefix(trimCond, "not ") || strings.HasPrefix(trimCond, "not(") {
+		// Condition starts with NOT — don't wrap, just join with "and"
+		fullCondition = cfg.conditionPrefix + " and\n  " + condition
+	} else {
+		fullCondition = cfg.conditionPrefix + " and\n  " + condition
+	}
 
 	// Format for readability: break into multi-line with proper indentation
 	fullCondition = formatCondition(fullCondition)
