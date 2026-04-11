@@ -253,7 +253,11 @@ func convertMapSelection(name string, m map[string]interface{}, cfg *logsourceCo
 	if len(conditions) == 1 {
 		return conditions[0], warnings, nil
 	}
-	return "(" + strings.Join(conditions, " and ") + ")", warnings, nil
+	// Multi-condition selections: join with "and", add line breaks for readability
+	if len(conditions) <= 3 {
+		return "(" + strings.Join(conditions, " and ") + ")", warnings, nil
+	}
+	return "(\n    " + strings.Join(conditions, " and\n    ") + "\n  )", warnings, nil
 }
 
 // convertFieldValue converts a SIGMA field+value+modifiers into a Fibratus QL expression.
@@ -415,10 +419,11 @@ func convertListValues(field string, values []interface{}, op string, useAll boo
 }
 
 // convertCIDR converts a CIDR value to a cidr_contains() function call.
+// Fibratus signature: cidr_contains(ip_field, 'cidr_notation')
 func convertCIDR(field string, value interface{}) (string, error) {
 	switch v := value.(type) {
 	case string:
-		return fmt.Sprintf("cidr_contains('%s', %s)", v, field), nil
+		return fmt.Sprintf("cidr_contains(%s, '%s')", field, v), nil
 	case []interface{}:
 		var parts []string
 		for _, item := range v {
@@ -426,14 +431,14 @@ func convertCIDR(field string, value interface{}) (string, error) {
 			if !ok {
 				continue
 			}
-			parts = append(parts, fmt.Sprintf("cidr_contains('%s', %s)", s, field))
+			parts = append(parts, fmt.Sprintf("cidr_contains(%s, '%s')", field, s))
 		}
 		if len(parts) == 0 {
 			return "", nil
 		}
 		return "(" + strings.Join(parts, " or ") + ")", nil
 	default:
-		return fmt.Sprintf("cidr_contains('%v', %s)", v, field), nil
+		return fmt.Sprintf("cidr_contains(%s, '%v')", field, v), nil
 	}
 }
 
