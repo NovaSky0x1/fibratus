@@ -37,10 +37,14 @@ func NewAccountStore(db *sql.DB) *AccountStore {
 }
 
 func (s *AccountStore) Create(ctx context.Context, account *fleet.Account) error {
+	retDays := account.TelemetryRetentionDays
+	if retDays <= 0 {
+		retDays = 1 // default to 1 day retention
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO accounts (id, name, plan, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		account.ID, account.Name, account.Plan, account.CreatedAt, account.UpdatedAt,
+		`INSERT INTO accounts (id, name, plan, telemetry_retention_days, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		account.ID, account.Name, account.Plan, retDays, account.CreatedAt, account.UpdatedAt,
 	)
 	return err
 }
