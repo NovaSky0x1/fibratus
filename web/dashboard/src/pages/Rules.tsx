@@ -20,6 +20,8 @@ export default function Rules() {
   const [editError, setEditError] = useState('')
   const [search, setSearch] = useState('')
   const [validateAllPending, setValidateAllPending] = useState(false)
+  const [bulkUploadPending, setBulkUploadPending] = useState(false)
+  const [bulkUploadResult, setBulkUploadResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null)
 
   // Editor validation state
   const [editorValidated, setEditorValidated] = useState(false)
@@ -79,6 +81,52 @@ export default function Rules() {
       queryClient.invalidateQueries({ queryKey: ['rules'] })
     },
   })
+
+  const handleDownloadAll = () => {
+    if (!allRules.length) return
+    const yaml = allRules
+      .filter(r => r.raw_yaml)
+      .map(r => r.raw_yaml.trim())
+      .join('\n---\n')
+    const blob = new Blob([yaml], { type: 'application/x-yaml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `fibratus-rules-${new Date().toISOString().slice(0, 10)}.yml`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleBulkUpload = async (file: File) => {
+    setBulkUploadPending(true)
+    setBulkUploadResult(null)
+    const text = await file.text()
+    const docs = text.split(/\n---\n|\n---$|^---\n/).filter(d => d.trim())
+    let created = 0
+    let failed = 0
+    const errors: string[] = []
+    for (const doc of docs) {
+      const trimmed = doc.trim()
+      if (!trimmed) continue
+      try {
+        const res = await api.createRule(trimmed)
+        if (res.error) {
+          failed++
+          const name = trimmed.match(/^name:\s*(.+)$/m)?.[1] || 'unknown'
+          errors.push(`${name}: ${res.error.message}`)
+        } else {
+          created++
+        }
+      } catch {
+        failed++
+      }
+    }
+    setBulkUploadPending(false)
+    setBulkUploadResult({ created, failed, errors })
+    if (created > 0) {
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    }
+  }
 
   const allRules = (data?.data || []) as Rule[]
   const rules = search
@@ -215,6 +263,21 @@ export default function Rules() {
             }} />
           </label>
           <button
+            onClick={handleDownloadAll}
+            disabled={!allRules.length}
+            className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
+          >
+            Download All
+          </button>
+          <label className={`rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 ${bulkUploadPending ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+            {bulkUploadPending ? 'Uploading...' : 'Bulk Upload'}
+            <input type="file" accept=".yml,.yaml" className="hidden" disabled={bulkUploadPending} onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleBulkUpload(file)
+              e.target.value = ''
+            }} />
+          </label>
+          <button
             onClick={() => setShowUpload(!showUpload)}
             className="rounded-lg bg-fibratus-600 px-4 py-2 text-sm font-medium text-white hover:bg-fibratus-700"
           >
@@ -222,6 +285,24 @@ export default function Rules() {
           </button>
         </div>
       </div>
+
+      {/* Bulk upload result banner */}
+      {bulkUploadResult && (
+        <div className={`mt-4 rounded-xl border p-4 shadow-sm ${bulkUploadResult.failed > 0 ? 'border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20' : 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20'}`}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-gray-900 dark:text-slate-100">
+              Bulk upload complete: {bulkUploadResult.created} created{bulkUploadResult.failed > 0 && `, ${bulkUploadResult.failed} failed`}
+            </p>
+            <button onClick={() => setBulkUploadResult(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">&times;</button>
+          </div>
+          {bulkUploadResult.errors.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-red-700 dark:text-red-400">
+              {bulkUploadResult.errors.slice(0, 10).map((err, i) => <li key={i}>{err}</li>)}
+              {bulkUploadResult.errors.length > 10 && <li>...and {bulkUploadResult.errors.length - 10} more</li>}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Upload panel */}
       {showUpload && (
