@@ -323,7 +323,6 @@ export default function AccountTab() {
       {/* ── Agent Updates ──────────────────────────────────────── */}
       <AgentUpdatesSection
         latestVersion={settings?.latest_agent_version || ''}
-        msiUrl={settings?.latest_agent_msi_url || ''}
         autoUpdate={settings?.auto_update_agents ?? false}
         repo={settings?.agent_update_repo || 'NovaSky0x1/fibratus'}
       />
@@ -760,9 +759,8 @@ function SecuritySection() {
 // Agent Updates Section
 // ================================================================
 
-function AgentUpdatesSection({ latestVersion, msiUrl, autoUpdate, repo }: {
+function AgentUpdatesSection({ latestVersion, autoUpdate, repo }: {
   latestVersion: string
-  msiUrl: string
   autoUpdate: boolean
   repo: string
 }) {
