@@ -169,7 +169,9 @@ func convertDetection(rule *SigmaRule, cfg *logsourceConfig) (string, []string, 
 	fullCondition := cfg.conditionPrefix + " and (" + condition + ")"
 
 	// Fix: ensure 'not' never appears as first token inside parentheses
+	// Handle both "(not " and "( not " patterns
 	fullCondition = strings.ReplaceAll(fullCondition, "(not ", "(true and not ")
+	fullCondition = strings.ReplaceAll(fullCondition, "( not ", "(true and not ")
 
 	// Clean up unnecessary "true and" patterns from empty selections
 	for strings.Contains(fullCondition, "true and ") && !strings.Contains(fullCondition, "true and not") {
