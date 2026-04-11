@@ -543,11 +543,12 @@ func (e *WindowsExecutor) updateAgent(cmd *fleet.Command) (json.RawMessage, erro
 	}
 	log.Infof("fleet: MSI downloaded to %s (%d bytes)", tempMSI, n)
 
-	// Write update script that runs after we exit
+	// Write update script that runs after we exit.
+	// Must force-kill the process (ETW sessions prevent graceful stop).
 	updateScript := fmt.Sprintf(`
 Start-Sleep -Seconds 3
-Stop-Service fibratus -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
+Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 3
 $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList '/i "%s" /quiet /norestart' -Wait -PassThru
 Start-Sleep -Seconds 5
 Start-Service fibratus -ErrorAction SilentlyContinue
