@@ -895,8 +895,8 @@ export default function TelemetryTab() {
                   {sigmahqResult.deleted !== undefined && (
                     <span className="text-red-600 dark:text-red-400">{sigmahqResult.deleted as number} removed</span>
                   )}
-                  {sigmahqResult.duration && (
-                    <span className="text-gray-400 text-xs">in {sigmahqResult.duration as string}</span>
+                  {sigmahqResult.duration != null && (
+                    <span className="text-gray-400 text-xs">in {String(sigmahqResult.duration)}</span>
                   )}
                 </div>
               </div>
