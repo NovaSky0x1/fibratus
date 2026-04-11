@@ -58,6 +58,7 @@ var allowedCommandTypes = map[string]bool{
 	fleet.CmdListEventLogChannels: true,
 	fleet.CmdQueryEventLog:        true,
 	fleet.CmdExportEvtx:           true,
+	fleet.CmdUpdateAgent:          true,
 }
 
 // CommandHandler handles command queue API requests.

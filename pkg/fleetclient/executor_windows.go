@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,6 +80,8 @@ func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
 		return e.runCommand(cmd)
 	case fleet.CmdCollectInfo:
 		return e.collectInfo(cmd)
+	case fleet.CmdUpdateAgent:
+		return e.updateAgent(cmd)
 	case fleet.CmdUninstall:
 		return e.uninstall(cmd)
 	case fleet.CmdGetProcesses:
@@ -498,6 +501,75 @@ $newPath = ($path -split ";" | Where-Object { $_ -notlike "*Fibratus*" }) -join 
 		"uninstalled": true,
 		"method":      method,
 		"message":     "Uninstall initiated. Cleanup script will force-kill, remove service, run MSI uninstall, and delete files.",
+	})
+	return result, nil
+}
+
+// updateAgent downloads a new MSI and launches a detached PowerShell script
+// that stops the service, installs the MSI, and restarts the service.
+func (e *WindowsExecutor) updateAgent(cmd *fleet.Command) (json.RawMessage, error) {
+	var payload struct {
+		Version string `json:"version"`
+		MSIURL  string `json:"msi_url"`
+	}
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		return nil, fmt.Errorf("invalid update payload: %w", err)
+	}
+	if payload.MSIURL == "" {
+		return nil, fmt.Errorf("msi_url required in update payload")
+	}
+
+	log.Infof("fleet: agent update initiated — downloading %s (target version: %s)", payload.MSIURL, payload.Version)
+
+	// Download MSI to temp directory
+	tempMSI := filepath.Join(os.TempDir(), "fibratus-update.msi")
+	resp, err := http.Get(payload.MSIURL)
+	if err != nil {
+		return nil, fmt.Errorf("download MSI: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("download MSI: HTTP %d", resp.StatusCode)
+	}
+	f, err := os.Create(tempMSI)
+	if err != nil {
+		return nil, fmt.Errorf("create temp MSI: %w", err)
+	}
+	n, err := io.Copy(f, resp.Body)
+	f.Close()
+	if err != nil {
+		os.Remove(tempMSI)
+		return nil, fmt.Errorf("write MSI: %w", err)
+	}
+	log.Infof("fleet: MSI downloaded to %s (%d bytes)", tempMSI, n)
+
+	// Write update script that runs after we exit
+	updateScript := fmt.Sprintf(`
+Start-Sleep -Seconds 3
+Stop-Service fibratus -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+$proc = Start-Process -FilePath "msiexec.exe" -ArgumentList '/i "%s" /quiet /norestart' -Wait -PassThru
+Start-Sleep -Seconds 5
+Start-Service fibratus -ErrorAction SilentlyContinue
+Remove-Item "%s" -Force -ErrorAction SilentlyContinue
+Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+`, tempMSI, tempMSI)
+
+	scriptPath := filepath.Join(os.TempDir(), "fibratus-update.ps1")
+	os.WriteFile(scriptPath, []byte(updateScript), 0o644)
+
+	c := exec.Command("powershell", "-NoProfile", "-NonInteractive",
+		"-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+		"-File", scriptPath)
+	if err := c.Start(); err != nil {
+		return nil, fmt.Errorf("launch update script: %w", err)
+	}
+
+	result, _ := json.Marshal(map[string]interface{}{
+		"status":         "update_initiated",
+		"target_version": payload.Version,
+		"msi_downloaded": tempMSI,
+		"msi_size":       n,
 	})
 	return result, nil
 }

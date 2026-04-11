@@ -651,6 +651,8 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		EventLogEnabled         *bool    `json:"eventlog_enabled,omitempty"`
 		IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
 		AllowedFileExtensions   []string `json:"allowed_file_extensions,omitempty"`
+		LatestAgentVersion      string   `json:"latest_agent_version,omitempty"`
+		LatestAgentMSIURL       string   `json:"latest_agent_msi_url,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -666,6 +668,13 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 	if req.AllowedFileExtensions != nil {
 		if err := h.accounts.UpdateFilePolicy(r.Context(), accountID, req.AllowedFileExtensions); err != nil {
 			log.Warnf("fleet: failed to update file policy for account %s: %v", accountID, err)
+		}
+	}
+
+	// Update agent version settings if provided
+	if req.LatestAgentVersion != "" || req.LatestAgentMSIURL != "" {
+		if err := h.accounts.UpdateAgentVersion(r.Context(), accountID, req.LatestAgentVersion, req.LatestAgentMSIURL); err != nil {
+			log.Warnf("fleet: failed to update agent version for account %s: %v", accountID, err)
 		}
 	}
 
@@ -698,6 +707,8 @@ func (h *AuthHandler) UpdateAccountSettings(w http.ResponseWriter, r *http.Reque
 		"eventlog_enabled":           account.EventLogEnabled,
 		"isolation_whitelist":        account.IsolationWhitelist,
 		"allowed_file_extensions":    account.AllowedFileExtensions,
+		"latest_agent_version":       account.LatestAgentVersion,
+		"latest_agent_msi_url":       account.LatestAgentMSIURL,
 	}})
 }
 
@@ -751,6 +762,8 @@ func (h *AuthHandler) GetAccountSettings(w http.ResponseWriter, r *http.Request)
 		"isolation_whitelist":         account.IsolationWhitelist,
 		"allowed_file_extensions":     fileExts,
 		"org_protection":             orgProtection,
+		"latest_agent_version":       account.LatestAgentVersion,
+		"latest_agent_msi_url":       account.LatestAgentMSIURL,
 	}})
 }
 

@@ -501,6 +501,10 @@ CREATE TABLE IF NOT EXISTS deleted_sync_rules (
 );
 
 CREATE INDEX IF NOT EXISTS idx_detections_noisy ON detections(org_id, rule_name);
+
+-- Agent self-update: store latest version and MSI URL per account
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS latest_agent_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS latest_agent_msi_url TEXT NOT NULL DEFAULT '';
 `
 
 // Migrate runs the database schema migrations.

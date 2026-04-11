@@ -450,6 +450,155 @@ func (h *AgentHandler) HeartbeatHistory(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: history})
 }
 
+// UpdateAgent handles POST /api/v1/orgs/{org_id}/agents/{id}/update
+func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
+	orgID := ctxutil.OrgIDFromContext(r.Context())
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "org context required")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/agents/")
+	if len(parts) < 2 {
+		writeError(w, http.StatusBadRequest, "agent ID required")
+		return
+	}
+	agentID := strings.TrimSuffix(parts[1], "/update")
+	agentID = strings.TrimSuffix(agentID, "/")
+
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusBadRequest, "account context required")
+		return
+	}
+
+	account, err := h.accounts.Get(r.Context(), accountID)
+	if err != nil || account == nil {
+		writeError(w, http.StatusInternalServerError, "failed to load account settings")
+		return
+	}
+	if account.LatestAgentVersion == "" || account.LatestAgentMSIURL == "" {
+		writeError(w, http.StatusBadRequest, "agent update not configured — set latest_agent_version and latest_agent_msi_url in account settings")
+		return
+	}
+
+	agent, err := h.agents.Get(r.Context(), orgID, agentID)
+	if err != nil || agent == nil {
+		writeError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
+	if agent.EngineVersion == account.LatestAgentVersion {
+		writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{
+			"status":  "already_up_to_date",
+			"version": agent.EngineVersion,
+		}})
+		return
+	}
+
+	payload, _ := json.Marshal(map[string]string{
+		"version": account.LatestAgentVersion,
+		"msi_url": account.LatestAgentMSIURL,
+	})
+	cmd := &fleet.Command{
+		ID:        GenerateID(),
+		OrgID:     orgID,
+		AgentID:   agentID,
+		Type:      fleet.CmdUpdateAgent,
+		Payload:   payload,
+		Status:    fleet.CmdStatusPending,
+		CreatedBy: ctxutil.UserIDFromContext(r.Context()),
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := h.commands.Create(r.Context(), cmd); err != nil {
+		log.Errorf("fleet: create update command error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to create update command")
+		return
+	}
+
+	if h.onCmdCreated != nil {
+		if h.onCmdCreated(agentID, cmd.ID, cmd.Type, cmd.Payload) {
+			cmd.Status = fleet.CmdStatusRunning
+			h.commands.MarkRunning(r.Context(), cmd.ID)
+		}
+	}
+
+	log.Infof("fleet: agent update queued for %s (%s -> %s)", agent.Hostname, agent.EngineVersion, account.LatestAgentVersion)
+	writeJSON(w, http.StatusCreated, fleet.Response{Data: cmd})
+}
+
+// UpdateAllAgents handles POST /api/v1/orgs/{org_id}/agents/update-all
+func (h *AgentHandler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {
+	accountID := ctxutil.AccountIDFromContext(r.Context())
+	if accountID == "" {
+		writeError(w, http.StatusBadRequest, "account context required")
+		return
+	}
+
+	account, err := h.accounts.Get(r.Context(), accountID)
+	if err != nil || account == nil {
+		writeError(w, http.StatusInternalServerError, "failed to load account settings")
+		return
+	}
+	if account.LatestAgentVersion == "" || account.LatestAgentMSIURL == "" {
+		writeError(w, http.StatusBadRequest, "agent update not configured — set latest_agent_version and latest_agent_msi_url in account settings")
+		return
+	}
+
+	orgs, _ := h.orgs.ListByAccount(r.Context(), accountID)
+	payload, _ := json.Marshal(map[string]string{
+		"version": account.LatestAgentVersion,
+		"msi_url": account.LatestAgentMSIURL,
+	})
+
+	userID := ctxutil.UserIDFromContext(r.Context())
+	updated := 0
+	skipped := 0
+
+	for _, org := range orgs {
+		agents, _, err := h.agents.List(r.Context(), org.ID, fleet.AgentListOptions{
+			ListOptions: fleet.ListOptions{Page: 1, PerPage: 10000},
+		})
+		if err != nil {
+			continue
+		}
+		for _, agent := range agents {
+			if agent.EngineVersion == account.LatestAgentVersion {
+				skipped++
+				continue
+			}
+			cmd := &fleet.Command{
+				ID:        GenerateID(),
+				OrgID:     org.ID,
+				AgentID:   agent.ID,
+				Type:      fleet.CmdUpdateAgent,
+				Payload:   payload,
+				Status:    fleet.CmdStatusPending,
+				CreatedBy: userID,
+				CreatedAt: time.Now().UTC(),
+			}
+			if err := h.commands.Create(r.Context(), cmd); err != nil {
+				log.Warnf("fleet: failed to queue update for agent %s: %v", agent.Hostname, err)
+				continue
+			}
+			if h.onCmdCreated != nil {
+				if h.onCmdCreated(agent.ID, cmd.ID, cmd.Type, cmd.Payload) {
+					h.commands.MarkRunning(r.Context(), cmd.ID)
+				}
+			}
+			updated++
+		}
+	}
+
+	log.Infof("fleet: bulk agent update queued: %d agents updated, %d skipped (already on %s)", updated, skipped, account.LatestAgentVersion)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"updated":        updated,
+		"skipped":        skipped,
+		"target_version": account.LatestAgentVersion,
+	}})
+}
+
 func intParam(r *http.Request, key string, defaultVal int) int {
 	v := r.URL.Query().Get(key)
 	if v == "" {

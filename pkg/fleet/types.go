@@ -40,6 +40,8 @@ type Account struct {
 	TelemetryRetentionDays  int      `json:"telemetry_retention_days"`
 	IsolationWhitelist      []string `json:"isolation_whitelist,omitempty"`
 	AllowedFileExtensions   []string `json:"allowed_file_extensions,omitempty"`
+	LatestAgentVersion string `json:"latest_agent_version"`
+	LatestAgentMSIURL  string `json:"latest_agent_msi_url"`
 	OrgCount                int      `json:"org_count,omitempty"`
 	UserCount       int       `json:"user_count,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -331,6 +333,7 @@ const (
 	CmdListEventLogChannels = "list_eventlog_channels"
 	CmdQueryEventLog        = "query_eventlog"
 	CmdExportEvtx           = "export_evtx"
+	CmdUpdateAgent          = "update_agent"
 )
 
 // Command status values

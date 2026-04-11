@@ -55,6 +55,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 			COALESCE(isolation_whitelist, '[]'::jsonb), COALESCE(eventlog_enabled, false),
 			COALESCE(telemetry_retention_days, 1), COALESCE(allowed_file_extensions, 'null'::jsonb),
 			COALESCE(sigmahq_enabled, false),
+			COALESCE(latest_agent_version, ''), COALESCE(latest_agent_msi_url, ''),
 			created_at, updated_at
 		 FROM accounts WHERE id = $1`, id)
 
@@ -63,6 +64,7 @@ func (s *AccountStore) Get(ctx context.Context, id string) (*fleet.Account, erro
 	err := row.Scan(&a.ID, &a.Name, &a.Plan, &a.Require2FA, &a.TamperProtectionEnabled,
 		&wlJSON, &a.EventLogEnabled, &a.TelemetryRetentionDays, &afeJSON,
 		&a.SigmaHQEnabled,
+		&a.LatestAgentVersion, &a.LatestAgentMSIURL,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -174,6 +176,13 @@ func (s *AccountStore) UpdateProfile(ctx context.Context, id, name, plan string)
 		return err
 	}
 	return nil
+}
+
+func (s *AccountStore) UpdateAgentVersion(ctx context.Context, id, version, msiURL string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE accounts SET latest_agent_version=$2, latest_agent_msi_url=$3, updated_at=NOW() WHERE id=$1`,
+		id, version, msiURL)
+	return err
 }
 
 // OrgStore implements store.OrgStore backed by PostgreSQL.

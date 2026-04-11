@@ -402,6 +402,10 @@ func (s *Server) Run(ctx context.Context) error {
 			captureHandler.ListCaptures(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/captures") && r.Method == http.MethodPost:
 			requirePermission(fleetauth.PermExecuteCommands, captureHandler.CreateCapture)(w, r)
+		case subpath == "/agents/update-all" && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageAgents, agentHandler.UpdateAllAgents)(w, r)
+		case strings.HasPrefix(subpath, "/agents/") && strings.HasSuffix(subpath, "/update") && r.Method == http.MethodPost:
+			requirePermission(fleetauth.PermManageAgents, agentHandler.UpdateAgent)(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodGet:
 			agentHandler.Get(w, r)
 		case strings.HasPrefix(subpath, "/agents/") && r.Method == http.MethodDelete:
