@@ -21,9 +21,11 @@ package fleetserver
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,7 +40,9 @@ import (
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
+	"github.com/rabbitstack/fibratus/pkg/fleet"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
 
 	_ "github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -146,8 +150,9 @@ func (s *Server) Run(ctx context.Context) error {
 	auditStore := postgres.NewAuditStore(db)
 	captureStore := postgres.NewCaptureStore(db)
 
-	// Auto-seed macros from filesystem for each org that has no macros in DB
+	// Auto-seed macros and official rules for any org missing them
 	seedMacrosFromFile(ctx, macroStore, orgStore, db)
+	seedRulesFromFiles(ctx, ruleStore, db)
 
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, agentStore, commandStore, s.config.Auth.JWTSecret)
@@ -1075,20 +1080,10 @@ func methodGuard(method string, h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// seedMacrosFromFile imports macros from the rules/macros/ filesystem into the
-// database for each org that has no macros yet. This ensures a smooth transition
-// from file-based macros to DB-managed macros.
+// seedMacrosFromFile ensures every org has the default Fibratus macros.
+// Orgs that already have the full set are skipped.
 func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgStore store.OrgStore, db *sql.DB) {
-	// Check if there are any macros in the DB already
-	var count int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM macros").Scan(&count); err != nil {
-		return
-	}
-	if count > 0 {
-		return // macros already seeded
-	}
-
-	// Try to load macros from well-known filesystem locations
+	// Load macros YAML from disk
 	var macrosData []byte
 	for _, path := range []string{
 		"rules/macros/macros.yml",
@@ -1097,7 +1092,6 @@ func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgSto
 		data, err := os.ReadFile(path)
 		if err == nil {
 			macrosData = data
-			log.Infof("fleet: seeding macros from %s (%d bytes)", path, len(data))
 			break
 		}
 	}
@@ -1105,7 +1099,12 @@ func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgSto
 		return
 	}
 
-	// Get all orgs and seed macros for each
+	pStore, ok := macroStore.(*postgres.MacroStore)
+	if !ok {
+		return
+	}
+
+	// Get all orgs
 	rows, err := db.QueryContext(ctx, "SELECT id FROM organizations")
 	if err != nil {
 		return
@@ -1120,11 +1119,13 @@ func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgSto
 		}
 	}
 
-	pStore, ok := macroStore.(*postgres.MacroStore)
-	if !ok {
-		return
-	}
 	for _, orgID := range orgIDs {
+		// Check how many macros this org has
+		var count int
+		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM macros WHERE org_id = $1", orgID).Scan(&count)
+		if count >= 60 {
+			continue // already has macros, skip
+		}
 		n, err := pStore.ImportFromYAML(ctx, orgID, macrosData)
 		if err != nil {
 			log.Warnf("fleet: failed to seed macros for org %s: %v", orgID, err)
@@ -1132,6 +1133,107 @@ func seedMacrosFromFile(ctx context.Context, macroStore store.MacroStore, orgSto
 		}
 		if n > 0 {
 			log.Infof("fleet: seeded %d macros for org %s", n, orgID)
+		}
+	}
+}
+
+// seedRulesFromFiles ensures every org has the official Fibratus detection rules.
+// Orgs that already have official rules are skipped.
+func seedRulesFromFiles(ctx context.Context, ruleStore store.RuleStore, db *sql.DB) {
+	// Find rules directory
+	var rulesDir string
+	for _, dir := range []string{
+		"rules",
+		"/opt/fibratus-fleet/src/rules",
+	} {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			rulesDir = dir
+			break
+		}
+	}
+	if rulesDir == "" {
+		return
+	}
+
+	// Get all orgs
+	rows, err := db.QueryContext(ctx, "SELECT id FROM organizations")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var orgIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			orgIDs = append(orgIDs, id)
+		}
+	}
+
+	for _, orgID := range orgIDs {
+		// Check if this org already has official rules
+		var count int
+		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM rules WHERE org_id = $1 AND source = 'official'", orgID).Scan(&count)
+		if count >= 100 {
+			continue // already has official rules
+		}
+
+		var seeded int
+		filepath.Walk(rulesDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(path, ".yml") && !strings.HasSuffix(path, ".yaml") {
+				return nil
+			}
+			if strings.Contains(path, "macros/") || strings.Contains(path, "macros\\") {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+			var ruleData struct {
+				Name      string            `yaml:"name"`
+				ID        string            `yaml:"id"`
+				Version   string            `yaml:"version"`
+				Desc      string            `yaml:"description"`
+				Condition string            `yaml:"condition"`
+				Output    string            `yaml:"output"`
+				Severity  string            `yaml:"severity"`
+				Labels    map[string]string `yaml:"labels"`
+				Tags      []string          `yaml:"tags"`
+				Refs      []string          `yaml:"references"`
+			}
+			if err := yaml.Unmarshal(data, &ruleData); err != nil || ruleData.Name == "" {
+				return nil
+			}
+			rule := &fleet.Rule{
+				ID: ruleData.ID, OrgID: orgID, Name: ruleData.Name,
+				Version: ruleData.Version, Description: ruleData.Desc,
+				Condition: ruleData.Condition, Output: ruleData.Output,
+				Severity: ruleData.Severity, Labels: ruleData.Labels,
+				Tags: ruleData.Tags, References: ruleData.Refs,
+				RawYAML: string(data), Enabled: true, Source: "official",
+				ValidationStatus: "valid", ValidationErrors: json.RawMessage(`[]`),
+			}
+			if rule.ID == "" {
+				rule.ID = handler.GenerateID()
+			}
+			if rule.Version == "" {
+				rule.Version = "1.0.0"
+			}
+			if rule.Severity == "" {
+				rule.Severity = "medium"
+			}
+			if err := ruleStore.Create(ctx, rule); err != nil {
+				return nil // duplicate, skip
+			}
+			seeded++
+			return nil
+		})
+		if seeded > 0 {
+			log.Infof("fleet: seeded %d official rules for org %s", seeded, orgID)
 		}
 	}
 }
