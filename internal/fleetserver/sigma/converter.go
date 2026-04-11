@@ -971,14 +971,47 @@ func toBool(v interface{}) bool {
 //	  not (ps.parent.exe iendswith '\\explorer.exe')
 func formatCondition(cond string) string {
 	// Split on top-level " and " and " or " boundaries, respecting parens
-	// Strategy: break on " and " that are at paren depth 0 or 1
+	// and string literals. Never break inside quoted strings.
 	var lines []string
 	depth := 0
+	inString := false
 	current := strings.Builder{}
 	i := 0
 
 	for i < len(cond) {
 		ch := cond[i]
+
+		// Track string literals — don't interpret anything inside quotes
+		if ch == '\'' && !inString {
+			inString = true
+			current.WriteByte(ch)
+			i++
+			continue
+		}
+		if ch == '\'' && inString {
+			// Check for escaped quote \'
+			if i+1 < len(cond) && cond[i+1] == '\'' {
+				current.WriteByte(ch)
+				current.WriteByte(cond[i+1])
+				i += 2
+				continue
+			}
+			// Check if preceded by backslash (escaped)
+			if i > 0 && cond[i-1] == '\\' {
+				current.WriteByte(ch)
+				i++
+				continue
+			}
+			inString = false
+			current.WriteByte(ch)
+			i++
+			continue
+		}
+		if inString {
+			current.WriteByte(ch)
+			i++
+			continue
+		}
 
 		if ch == '(' {
 			depth++
