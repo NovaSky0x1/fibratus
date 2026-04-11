@@ -177,6 +177,7 @@ func (s *Server) Run(ctx context.Context) error {
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
 	adminHandler.SetGroupStore(groupStore)
+	adminHandler.SetAuthHandler(authHandler)
 	dbAdminHandler := handler.NewDBAdminHandler(db, chDB)
 	groupHandler := handler.NewGroupHandler(groupStore)
 	captureHandler := handler.NewCaptureHandler(captureStore, agentStore, commandStore, auditStore, userStore)

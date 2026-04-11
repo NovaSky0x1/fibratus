@@ -16,10 +16,11 @@ import (
 
 // AdminHandler handles system administration API requests (root only).
 type AdminHandler struct {
-	accounts store.AccountStore
-	orgs     store.OrgStore
-	users    store.UserStore
-	groups   store.UserGroupStore
+	accounts    store.AccountStore
+	orgs        store.OrgStore
+	users       store.UserStore
+	groups      store.UserGroupStore
+	authHandler *AuthHandler
 }
 
 // NewAdminHandler creates a new admin handler.
@@ -32,10 +33,17 @@ func (h *AdminHandler) SetGroupStore(s store.UserGroupStore) {
 	h.groups = s
 }
 
+// SetAuthHandler sets the auth handler for org defaults seeding on account creation.
+func (h *AdminHandler) SetAuthHandler(a *AuthHandler) {
+	h.authHandler = a
+}
+
 // seedDefaultGroups creates the default user groups for a new account.
-func (h *AdminHandler) seedDefaultGroups(ctx context.Context, accountID string) {
+// Returns the Administrators group ID so the initial user can be added.
+func (h *AdminHandler) seedDefaultGroups(ctx context.Context, accountID string) string {
+	var adminGroupID string
 	if h.groups == nil {
-		return
+		return ""
 	}
 
 	defaults := []struct {
@@ -131,8 +139,12 @@ func (h *AdminHandler) seedDefaultGroups(ctx context.Context, accountID string) 
 		if err := h.groups.Create(ctx, g); err != nil {
 			log.Warnf("fleet: failed to seed default group %q for account %s: %v", d.name, accountID, err)
 		}
+		if d.name == "Administrators" {
+			adminGroupID = id
+		}
 	}
 	log.Infof("fleet: seeded default groups for account %s", accountID)
+	return adminGroupID
 }
 
 // ListAccounts handles GET /api/v1/admin/accounts
@@ -162,8 +174,13 @@ func (h *AdminHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name string `json:"name"`
-		Plan string `json:"plan"`
+		Name     string `json:"name"`
+		Plan     string `json:"plan"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		UserName string `json:"user_name"`
+		OrgName  string `json:"org_name"`
+		UserRole string `json:"user_role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
@@ -172,10 +189,14 @@ func (h *AdminHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	if req.Plan == "" {
 		req.Plan = "free"
 	}
+	if req.OrgName == "" {
+		req.OrgName = req.Name
+	}
 
 	now := time.Now().UTC()
+	accountID := GenerateID()
 	account := &fleet.Account{
-		ID:        GenerateID(),
+		ID:        accountID,
 		Name:      req.Name,
 		Plan:      req.Plan,
 		CreatedAt: now,
@@ -186,11 +207,70 @@ func (h *AdminHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Seed default user groups for the new account
-	h.seedDefaultGroups(r.Context(), account.ID)
+	// Create default organization
+	orgID := GenerateID()
+	org := &fleet.Organization{
+		ID:        orgID,
+		AccountID: accountID,
+		Name:      req.OrgName,
+		Slug:      slugify(req.OrgName),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := h.orgs.Create(r.Context(), org); err != nil {
+		log.Warnf("fleet: admin create account: failed to create org: %v", err)
+	}
 
-	log.Infof("fleet: account created by root: %s (%s)", account.Name, account.ID)
-	writeJSON(w, http.StatusCreated, fleet.Response{Data: account})
+	// Seed default groups
+	adminGroupID := h.seedDefaultGroups(r.Context(), accountID)
+
+	// Create initial admin user if email + password provided
+	var userID string
+	if req.Email != "" && req.Password != "" {
+		hashedPassword, err := fleetauth.HashPassword(req.Password)
+		if err != nil {
+			log.Warnf("fleet: admin create account: failed to hash password: %v", err)
+		} else {
+			userID = GenerateID()
+			userRole := fleetauth.RoleMember
+			if req.UserRole == "root" {
+				userRole = "root"
+			}
+			userName := req.UserName
+			if userName == "" {
+				userName = req.Email
+			}
+			user := &fleet.User{
+				ID:        userID,
+				Email:     req.Email,
+				Name:      userName,
+				Password:  hashedPassword,
+				AccountID: accountID,
+				Role:      userRole,
+				CreatedAt: now,
+			}
+			if err := h.users.Create(r.Context(), user); err != nil {
+				log.Warnf("fleet: admin create account: failed to create user: %v", err)
+			} else {
+				h.users.AddOrgAccess(r.Context(), userID, orgID, "admin")
+				if adminGroupID != "" {
+					h.groups.AddMember(r.Context(), userID, adminGroupID)
+				}
+			}
+		}
+	}
+
+	// Seed default macros and rules for the org (background)
+	if h.authHandler != nil {
+		go h.authHandler.seedOrgDefaults(context.Background(), orgID)
+	}
+
+	log.Infof("fleet: account created by root: %s (%s) with org %s, user %s", account.Name, accountID, orgID, userID)
+	writeJSON(w, http.StatusCreated, fleet.Response{Data: map[string]interface{}{
+		"account": account,
+		"org_id":  orgID,
+		"user_id": userID,
+	}})
 }
 
 // DeleteAccount handles DELETE /api/v1/admin/accounts/{id}

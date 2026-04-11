@@ -144,7 +144,7 @@ export default function Admin() {
 function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void }) {
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ name: '', plan: 'standard' })
+  const [createForm, setCreateForm] = useState({ name: '', plan: 'standard', email: '', password: '', user_name: '', org_name: '', user_role: 'member' })
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
@@ -174,11 +174,12 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
   const { sorted: sortedAccounts, sort: accountSort, toggleSort: toggleAccountSort } = useTableSort<Account>(filtered, 'name', 'asc')
 
   const createMut = useMutation({
-    mutationFn: (data: { name: string; plan: string }) => api.adminCreateAccount(data),
+    mutationFn: (data: Record<string, string>) => api.adminCreateAccount(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
       setShowCreate(false)
-      setCreateForm({ name: '', plan: 'standard' })
+      setCreateForm({ name: '', plan: 'standard', email: '', password: '', user_name: '', org_name: '', user_role: 'member' })
       setError('')
     },
     onError: () => setError('Failed to create account'),
@@ -293,9 +294,15 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">Create Account</h2>
             <form onSubmit={handleCreate} className="mt-4 space-y-3">
-              <div>
-                <label className={labelCls}>Account Name</label>
-                <input value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} className={inputCls} required />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Account Name *</label>
+                  <input value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} className={inputCls} required />
+                </div>
+                <div>
+                  <label className={labelCls}>Organization Name</label>
+                  <input value={createForm.org_name} onChange={e => setCreateForm(f => ({ ...f, org_name: e.target.value }))} className={inputCls} placeholder={createForm.name || 'Same as account'} />
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Plan</label>
@@ -305,6 +312,31 @@ function AccountsTab({ onAccountClick }: { onAccountClick: (id: string) => void 
                   <option value="professional">Professional</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
+              </div>
+              <hr className="border-gray-200 dark:border-slate-700" />
+              <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Initial Admin User</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Email *</label>
+                  <input type="email" value={createForm.email} onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))} className={inputCls} required />
+                </div>
+                <div>
+                  <label className={labelCls}>Display Name</label>
+                  <input value={createForm.user_name} onChange={e => setCreateForm(f => ({ ...f, user_name: e.target.value }))} className={inputCls} placeholder="Admin" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Password *</label>
+                  <input type="password" value={createForm.password} onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))} className={inputCls} required minLength={8} />
+                </div>
+                <div>
+                  <label className={labelCls}>Role</label>
+                  <select value={createForm.user_role} onChange={e => setCreateForm(f => ({ ...f, user_role: e.target.value }))} className={inputCls}>
+                    <option value="member">Member (standard)</option>
+                    <option value="root">Root (super admin)</option>
+                  </select>
+                </div>
               </div>
               {error && <p className="text-xs text-red-600">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">
