@@ -168,7 +168,7 @@ func (h *InstallHandler) Binary(w http.ResponseWriter, r *http.Request) {
 
 // MSI handles GET /api/v1/agent/msi — redirects to the GitHub release MSI.
 func (h *InstallHandler) MSI(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "https://github.com/NovaSky0x1/fibratus/releases/download/v3.0.0-rc4/fibratus-3.0.0-rc4-slim-amd64.msi", http.StatusFound)
+	http.Redirect(w, r, "https://github.com/NovaSky0x1/fibratus/releases/download/v3.0.0-rc5/fibratus-3.0.0-rc5-slim-amd64.msi", http.StatusFound)
 }
 
 // Config handles GET /api/v1/agent/config — serves the default agent config.
