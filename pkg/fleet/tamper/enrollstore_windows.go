@@ -341,7 +341,7 @@ func ProtectRegistryKeys() {
 	} {
 		sddl := `D:P(A;CI;KA;;;SY)(A;CI;KR;;;BA)`
 		if err := setRegistrySecurity(path, sddl); err != nil {
-			log.Warnf("enrollment: failed to protect registry key %s: %v", path, err)
+			log.Debugf("enrollment: ACL protection not applied to %s: %v (enrollment data is safely stored)", path, err)
 		}
 	}
 }

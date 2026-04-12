@@ -12,7 +12,7 @@ import SortableHeader from '../components/SortableHeader'
 type RuleTab = 'all' | 'official' | 'sigma' | 'custom' | 'tuning'
 
 function sourceBadge(source: string) {
-  if (source === 'sigmahq' || source === 'sigma') return <span className="rounded bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:text-purple-400">SIGMA</span>
+  if (source === 'sigmahq' || source === 'sigma') return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">SIGMA</span>
   if (source === 'official') return <span className="rounded bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">Official</span>
   if (source?.startsWith('github:')) return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">GitHub</span>
   return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">Custom</span>
@@ -607,12 +607,29 @@ export default function Rules() {
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-4 mb-4">
               <SeverityBadge severity={editRule.severity} />
+              {sourceBadge(editRule.source || 'custom')}
               <span className="font-mono text-xs text-gray-400 dark:text-slate-500">{editRule.id}</span>
               {editRule.labels?.['technique.id'] && (
                 <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-mono text-gray-600 dark:text-slate-400">
                   {editRule.labels['technique.id']} — {editRule.labels?.['technique.name'] || ''}
                 </span>
               )}
+              <button
+                onClick={() => {
+                  if (!editRule.enabled && editRule.validation_status === 'invalid') return
+                  toggleMutation.mutate({ id: editRule.id, enabled: !editRule.enabled }, {
+                    onSuccess: () => setEditRule({ ...editRule, enabled: !editRule.enabled })
+                  })
+                }}
+                className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  editRule.enabled
+                    ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
+                    : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-600'
+                }`}
+                title={editRule.validation_status === 'invalid' && !editRule.enabled ? 'Fix validation errors before enabling' : ''}
+              >
+                {editRule.enabled ? 'Enabled' : 'Disabled'}
+              </button>
             </div>
 
             {editError && (

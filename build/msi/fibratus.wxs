@@ -24,6 +24,11 @@
     <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
     <Property Id="SERVER_URL" Secure="yes" />
 
+    <!-- Suppress WixUI default launch conditions (.NET Framework checks, etc.)
+         that cause LaunchConditions error 1603 during silent (/qn) installs.
+         Fibratus is a pure Go binary with no .NET dependency. -->
+    <Property Id="WIXUI_SUPPRESSLAUNCHCONDITIONS" Value="1" />
+
     <UI Id="UI">
       <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLDIR" />
     </UI>
