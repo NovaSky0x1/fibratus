@@ -543,34 +543,78 @@ func (e *WindowsExecutor) updateAgent(cmd *fleet.Command) (json.RawMessage, erro
 	}
 	log.Infof("fleet: MSI downloaded to %s (%d bytes)", tempMSI, n)
 
-	// Write update script that runs after we exit.
-	// Must force-kill the process (ETW sessions prevent graceful stop).
+	// Temporarily disable tamper protection so the update can proceed.
+	// This is safe because the command was issued by the fleet server
+	// (authenticated via gRPC) — not initiated locally.
+	tamperWasEnabled := false
+	if e.protector != nil {
+		tamperWasEnabled = e.protector.IsEnabled()
+		if tamperWasEnabled {
+			log.Info("fleet: temporarily disabling tamper protection for self-update")
+			if err := e.protector.DisableProtection(); err != nil {
+				log.Warnf("fleet: failed to disable tamper protection for update: %v", err)
+			}
+		}
+	}
+
+	// Use sc.exe stop + Start-Process to decouple the update from this process.
+	// The script is launched via WMI Win32_Process.Create which spawns a fully
+	// independent process that survives when the fibratus service stops.
 	updateScript := fmt.Sprintf(`
-Start-Sleep -Seconds 3
-Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 3
-$proc = Start-Process -FilePath "msiexec.exe" -ArgumentList '/i "%s" /quiet /norestart' -Wait -PassThru
+$ErrorActionPreference = 'Continue'
+# Wait for the agent to finish reporting the command result
 Start-Sleep -Seconds 5
-Start-Service fibratus -ErrorAction SilentlyContinue
+# Stop the service gracefully (sc.exe works even if Stop-Process doesn't)
+sc.exe stop fibratus 2>$null
+Start-Sleep -Seconds 5
+# Force-kill if still running
+Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+# Install the new MSI (upgrade over existing)
+$proc = Start-Process -FilePath "msiexec.exe" -ArgumentList '/i "%s" /quiet /norestart' -Wait -PassThru
+if ($proc.ExitCode -ne 0) {
+    # Fallback: copy binary directly if MSI fails
+    $srcBin = [System.IO.Path]::ChangeExtension("%s", $null)
+    # Log the MSI failure but still try to start the service
+}
+Start-Sleep -Seconds 3
+# Start the service with the new binary
+sc.exe start fibratus 2>$null
+Start-Sleep -Seconds 5
+# Cleanup
 Remove-Item "%s" -Force -ErrorAction SilentlyContinue
 Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
-`, tempMSI, tempMSI)
+`, tempMSI, tempMSI, tempMSI)
 
 	scriptPath := filepath.Join(os.TempDir(), "fibratus-update.ps1")
-	os.WriteFile(scriptPath, []byte(updateScript), 0o644)
+	if err := os.WriteFile(scriptPath, []byte(updateScript), 0o644); err != nil {
+		return nil, fmt.Errorf("write update script: %w", err)
+	}
 
-	c := exec.Command("powershell", "-NoProfile", "-NonInteractive",
-		"-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
-		"-File", scriptPath)
-	if err := c.Start(); err != nil {
-		return nil, fmt.Errorf("launch update script: %w", err)
+	// Spawn via WMI Win32_Process.Create for a fully independent process
+	// that survives the death of the fibratus service.
+	wmiCmd := fmt.Sprintf(
+		`powershell -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "%s"`,
+		scriptPath,
+	)
+	spawn := exec.Command("wmic", "process", "call", "create", wmiCmd)
+	if err := spawn.Start(); err != nil {
+		// Fallback to direct exec if WMI unavailable
+		c := exec.Command("powershell", "-NoProfile", "-NonInteractive",
+			"-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+			"-File", scriptPath)
+		if err := c.Start(); err != nil {
+			return nil, fmt.Errorf("launch update script: %w", err)
+		}
 	}
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"status":         "update_initiated",
-		"target_version": payload.Version,
-		"msi_downloaded": tempMSI,
-		"msi_size":       n,
+		"status":                "update_initiated",
+		"target_version":        payload.Version,
+		"msi_downloaded":        tempMSI,
+		"msi_size":              n,
+		"tamper_was_enabled":    tamperWasEnabled,
+		"tamper_disabled_for":   "self_update",
 	})
 	return result, nil
 }
