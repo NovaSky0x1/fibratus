@@ -215,6 +215,19 @@ func (e *Engine) Compile() (*config.RulesCompileResult, error) {
 		}
 	}
 
+	// Release compile-only fields to reduce memory footprint.
+	// After compilation, the filter AST is what matters — the source
+	// condition string, version metadata, references, and notes are
+	// never read again at runtime.
+	for c := range filters {
+		c.Condition = ""
+		c.References = nil
+		c.Notes = ""
+		c.Authors = nil
+		c.MinEngineVersion = ""
+		c.Version = ""
+	}
+
 	return rs, nil
 }
 

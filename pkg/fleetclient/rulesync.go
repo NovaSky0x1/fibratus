@@ -85,6 +85,21 @@ func (s *EncryptedRuleStore) Decrypt() (ruleDocs [][]byte, macrosYAML []byte) {
 	return
 }
 
+// ClearRawDocs zeroes and releases the encrypted rule YAML docs from memory.
+// Call this after successful compilation — the compiled ASTs in the rule engine
+// are all the agent needs. The encrypted macros are kept (small, needed for recompile).
+func (s *EncryptedRuleStore) ClearRawDocs() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.encRuleDocs {
+		for j := range s.encRuleDocs[i] {
+			s.encRuleDocs[i][j] = 0
+		}
+		s.encRuleDocs[i] = nil
+	}
+	s.encRuleDocs = nil
+}
+
 // Version returns the current ruleset version hash.
 func (s *EncryptedRuleStore) Version() string {
 	s.mu.RLock()
