@@ -188,9 +188,8 @@ copy %SystemRoot%\System32\dbghelp.dll "%RELEASE_DIR%\Bin"
 echo Building MSI package...
 pushd .
 cd build/msi
-wix extension add WixToolset.UI.wixext/%WIX_VERSION% || goto :fail
 wix extension add WixToolset.Util.wixext/%WIX_VERSION% || goto :fail
-wix build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -b dir=fibratus-%VERSION%-slim fibratus.wxs -arch x64 -d VERSION=%VERSION% -o fibratus-%VERSION%-slim-amd64.msi ||  goto :fail
+wix build -ext WixToolset.Util.wixext -b dir=fibratus-%VERSION%-slim fibratus.wxs -arch x64 -d VERSION=%VERSION% -o fibratus-%VERSION%-slim-amd64.msi ||  goto :fail
 popd
 echo fibratus-%VERSION%-slim-amd64.msi MSI package built successfully
 

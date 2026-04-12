@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-  xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
   xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package Name="Fibratus"
@@ -24,23 +23,9 @@
     <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
     <Property Id="SERVER_URL" Secure="yes" />
 
-    <!-- Suppress WixUI default launch conditions (.NET Framework checks, etc.)
-         that cause LaunchConditions error 1603 during silent (/qn) installs.
-         Fibratus is a pure Go binary with no .NET dependency. -->
-    <Property Id="WIXUI_SUPPRESSLAUNCHCONDITIONS" Value="1" />
-
-    <UI Id="UI">
-      <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLDIR" />
-    </UI>
-
-    <!-- Custom banners -->
-    <WixVariable Id="WixUIDialogBmp" Value="background.png" /> <!-- Background bitmap used on the welcome and completion dialogs, should be 493 x 312 pixels -->
-    <WixVariable Id="WixUIBannerBmp" Value="banner.png" />  <!-- Top banner, should be 493 x 58 pixels -->
-
-    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Fibratus EDR agent is installed and running. If enrollment parameters were provided, the agent will automatically connect to the fleet server." />
-
-    <!-- License -->
-    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf"/>
+    <!-- No WixUI — agent is deployed via silent install (/qn).
+         WixUI adds launch conditions (reboot-pending, .NET checks) that
+         block silent installs and auto-updates. -->
 
     <!--Files -->
     <ComponentGroup Id="Files" Directory="INSTALLDIR">
