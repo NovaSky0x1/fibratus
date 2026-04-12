@@ -3,6 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type EnrollmentToken } from '../../lib/api'
 import ConfirmDialog from '../../components/ConfirmDialog'
 
+interface AccountSettings {
+  latest_agent_version?: string
+  latest_agent_msi_url?: string
+  auto_update_agents?: boolean
+  agent_update_repo?: string
+}
+
 function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = () => {
@@ -61,11 +68,40 @@ export default function EnrollmentTab() {
     },
   })
 
+  const { data: accountData } = useQuery({
+    queryKey: ['account-settings'],
+    queryFn: () => api.getAccountSettings(),
+  })
+
   const tokens = (tokensData?.data || []) as EnrollmentToken[]
   const serverUrl = window.location.origin
+  const account = accountData?.data as AccountSettings | undefined
+  const latestVersion = account?.latest_agent_version
+  const autoUpdate = account?.auto_update_agents
 
   return (
     <div>
+      {/* Release version banner */}
+      {latestVersion && (
+        <div className={`mb-6 rounded-xl border p-4 ${autoUpdate ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20' : 'border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20'}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-sm font-semibold ${autoUpdate ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}>
+                Agent Download Version: <span className="font-mono">v{latestVersion}</span>
+              </p>
+              <p className={`mt-0.5 text-xs ${autoUpdate ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {autoUpdate
+                  ? 'Auto-update is enabled — new installs and existing agents will use the latest release automatically.'
+                  : 'Auto-update is off — new installs use this version. Enable auto-update in Account settings to keep agents current.'}
+              </p>
+            </div>
+            <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${autoUpdate ? 'bg-emerald-100 dark:bg-emerald-800/50 text-emerald-700 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-800/50 text-amber-700 dark:text-amber-300'}`}>
+              {autoUpdate ? 'Auto-Update ON' : 'Auto-Update OFF'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* ──────────────────────────────────────────── */}
       {/* Agent Deployment Section */}
       {/* ──────────────────────────────────────────── */}

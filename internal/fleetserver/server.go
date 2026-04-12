@@ -175,6 +175,8 @@ func (s *Server) Run(ctx context.Context) error {
 	userHandler := handler.NewUserHandler(userStore, groupStore)
 	installHandler := handler.NewInstallHandler(enrollStore,
 		s.config.Server.ExternalURL, s.config.Deployment.AgentBinaryPath, s.config.Deployment.InstallDir)
+	installHandler.SetAccountStore(accountStore)
+	installHandler.SetOrgStore(orgStore)
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
 	adminHandler.SetGroupStore(groupStore)
 	adminHandler.SetAuthHandler(authHandler)

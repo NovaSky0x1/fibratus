@@ -13,6 +13,8 @@ import (
 // InstallHandler serves agent install scripts and binaries.
 type InstallHandler struct {
 	tokens     store.EnrollmentTokenStore
+	accounts   store.AccountStore
+	orgs       store.OrgStore
 	serverURL  string // External URL (e.g., https://edr.novasky.io)
 	binaryPath string // Path to agent EXE on disk
 	installDir string // Target dir on endpoints
@@ -27,6 +29,12 @@ func NewInstallHandler(tokens store.EnrollmentTokenStore, serverURL, binaryPath,
 		installDir: installDir,
 	}
 }
+
+// SetAccountStore sets the account store for dynamic MSI URL resolution.
+func (h *InstallHandler) SetAccountStore(s store.AccountStore) { h.accounts = s }
+
+// SetOrgStore sets the org store for resolving token org to account.
+func (h *InstallHandler) SetOrgStore(s store.OrgStore) { h.orgs = s }
 
 // Script handles GET /install/{token} — returns a PowerShell install script.
 // This is a public endpoint (no auth). The enrollment token IS the auth.
@@ -75,7 +83,7 @@ if (-not $isAdmin) {
 Write-Host "[1/3] Downloading MSI installer..." -ForegroundColor Yellow
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri "$serverURL/api/v1/agent/msi" -OutFile $tempMSI -UseBasicParsing
+    Invoke-WebRequest -Uri "$serverURL/api/v1/agent/msi?token=$enrollToken" -OutFile $tempMSI -UseBasicParsing
     Write-Host "  Downloaded fibratus.msi ($([math]::Round((Get-Item $tempMSI).Length / 1MB, 1)) MB)" -ForegroundColor Green
 } catch {
     Write-Host "ERROR: Failed to download MSI: $_" -ForegroundColor Red
@@ -166,9 +174,43 @@ func (h *InstallHandler) Binary(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "fibratus.exe", stat.ModTime(), f)
 }
 
-// MSI handles GET /api/v1/agent/msi — redirects to the GitHub release MSI.
+// MSI handles GET /api/v1/agent/msi — redirects to the latest GitHub release MSI.
+// The URL is resolved dynamically from account settings (set by the release checker).
+// If a ?token= query param is provided, the URL is resolved from that token's account.
+// Otherwise, it uses the first account with a configured MSI URL.
 func (h *InstallHandler) MSI(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "https://github.com/NovaSky0x1/fibratus/releases/download/v3.0.0-rc5/fibratus-3.0.0-rc5-slim-amd64.msi", http.StatusFound)
+	ctx := r.Context()
+	var msiURL string
+
+	// Try to resolve from enrollment token → org → account
+	if tokenID := r.URL.Query().Get("token"); tokenID != "" && h.tokens != nil && h.orgs != nil && h.accounts != nil {
+		if token, err := h.tokens.Get(ctx, tokenID); err == nil && token != nil {
+			if org, err := h.orgs.Get(ctx, token.OrgID); err == nil && org != nil {
+				if acct, err := h.accounts.Get(ctx, org.AccountID); err == nil && acct != nil && acct.LatestAgentMSIURL != "" {
+					msiURL = acct.LatestAgentMSIURL
+				}
+			}
+		}
+	}
+
+	// Fall back to any account with a configured MSI URL
+	if msiURL == "" && h.accounts != nil {
+		if accounts, err := h.accounts.ListAll(ctx); err == nil {
+			for _, acct := range accounts {
+				if acct.LatestAgentMSIURL != "" {
+					msiURL = acct.LatestAgentMSIURL
+					break
+				}
+			}
+		}
+	}
+
+	if msiURL == "" {
+		writeError(w, http.StatusServiceUnavailable, "no agent MSI release configured — check Management > Account > Agent Updates")
+		return
+	}
+
+	http.Redirect(w, r, msiURL, http.StatusFound)
 }
 
 // Config handles GET /api/v1/agent/config — serves the default agent config.
