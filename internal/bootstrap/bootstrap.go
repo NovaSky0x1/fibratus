@@ -246,13 +246,11 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 			// Rules arrive asynchronously after ETW trace starts, so we
 			// must collect ALL event types for late-compiled rules.
 			rs = nil
-			// Stack enrichment is disabled in fleet mode — the StackwalkDecorator
-			// queue holds CreateProcess and other events indefinitely, preventing
-			// them from reaching the rule engine and telemetry pipeline.
-			// TODO: fix the decorator flusher to work in fleet mode, then re-enable
-			// for callstack-dependent rules (40% of rules) and evasion detection.
-			cfg.EventSource.StackEnrichment = false
-			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks, stack enrichment disabled)")
+			// Stack enrichment enabled — the StackwalkDecorator flusher
+			// releases events without holding the mutex to prevent deadlock
+			// when the event channel is full (fleet mode high throughput).
+			cfg.EventSource.StackEnrichment = true
+			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks, stack enrichment enabled)")
 		}
 	} else {
 		log.Info("rule engine is disabled")
