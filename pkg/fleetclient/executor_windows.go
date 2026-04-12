@@ -560,31 +560,65 @@ func (e *WindowsExecutor) updateAgent(cmd *fleet.Command) (json.RawMessage, erro
 	// Use sc.exe stop + Start-Process to decouple the update from this process.
 	// The script is launched via WMI Win32_Process.Create which spawns a fully
 	// independent process that survives when the fibratus service stops.
+	//
+	// Strategy: try MSI upgrade first. If MSI fails (common when the current
+	// install wasn't done via MSI, or upgrade code mismatch), fall back to
+	// extracting the binary from the MSI and copying it directly.
+	installDir := filepath.Dir(filepath.Dir(os.Args[0])) // e.g., C:\Program Files\Fibratus
 	updateScript := fmt.Sprintf(`
 $ErrorActionPreference = 'Continue'
+$msiPath = "%s"
+$installDir = "%s"
+$binDir = Join-Path $installDir "Bin"
+$logFile = Join-Path $installDir "Logs\update.log"
+
+"$(Get-Date) Update started (target MSI: $msiPath)" | Out-File $logFile
+
 # Wait for the agent to finish reporting the command result
 Start-Sleep -Seconds 5
-# Stop the service gracefully (sc.exe works even if Stop-Process doesn't)
+
+# Stop the service
+"$(Get-Date) Stopping service..." | Out-File $logFile -Append
 sc.exe stop fibratus 2>$null
 Start-Sleep -Seconds 5
-# Force-kill if still running
 Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 3
-# Install the new MSI (upgrade over existing)
-$proc = Start-Process -FilePath "msiexec.exe" -ArgumentList '/i "%s" /quiet /norestart' -Wait -PassThru
+
+# Try MSI upgrade first
+"$(Get-Date) Attempting MSI install..." | Out-File $logFile -Append
+$proc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i ""$msiPath"" /quiet /norestart REINSTALLMODE=vomus REINSTALL=ALL" -Wait -PassThru
+"$(Get-Date) MSI exit code: $($proc.ExitCode)" | Out-File $logFile -Append
+
 if ($proc.ExitCode -ne 0) {
-    # Fallback: copy binary directly if MSI fails
-    $srcBin = [System.IO.Path]::ChangeExtension("%s", $null)
-    # Log the MSI failure but still try to start the service
+    # MSI failed — extract binary from MSI and copy directly
+    "$(Get-Date) MSI failed, extracting binary..." | Out-File $logFile -Append
+    $extractDir = Join-Path $env:TEMP "fibratus-extract"
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    $null = Start-Process -FilePath "msiexec.exe" -ArgumentList "/a ""$msiPath"" /qn TARGETDIR=""$extractDir""" -Wait -PassThru
+    $newBin = Get-ChildItem -Path $extractDir -Recurse -Filter "fibratus.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($newBin) {
+        "$(Get-Date) Found binary: $($newBin.FullName) ($($newBin.Length) bytes)" | Out-File $logFile -Append
+        Copy-Item $newBin.FullName (Join-Path $binDir "fibratus.exe") -Force
+        "$(Get-Date) Binary copied to $binDir" | Out-File $logFile -Append
+    } else {
+        "$(Get-Date) ERROR: Could not extract binary from MSI" | Out-File $logFile -Append
+    }
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-Start-Sleep -Seconds 3
-# Start the service with the new binary
+
+# Start the service
+"$(Get-Date) Starting service..." | Out-File $logFile -Append
 sc.exe start fibratus 2>$null
 Start-Sleep -Seconds 5
+
+# Verify
+$svc = Get-Service fibratus -ErrorAction SilentlyContinue
+"$(Get-Date) Service status: $($svc.Status)" | Out-File $logFile -Append
+
 # Cleanup
-Remove-Item "%s" -Force -ErrorAction SilentlyContinue
+Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
 Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
-`, tempMSI, tempMSI, tempMSI)
+`, tempMSI, installDir)
 
 	scriptPath := filepath.Join(os.TempDir(), "fibratus-update.ps1")
 	if err := os.WriteFile(scriptPath, []byte(updateScript), 0o644); err != nil {
