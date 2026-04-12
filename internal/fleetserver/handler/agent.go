@@ -156,7 +156,7 @@ func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-update: if enabled for the account, check if agent needs an update
-	go h.CheckAutoUpdate(r.Context(), orgID, agentID)
+	go h.CheckAutoUpdate(context.Background(), orgID, agentID)
 
 	resp := fleet.HeartbeatResponse{Status: "ok"}
 	writeJSON(w, http.StatusOK, fleet.Response{Data: resp})
@@ -479,17 +479,11 @@ func (h *AgentHandler) CheckAutoUpdate(ctx context.Context, orgID, agentID strin
 	if agent.EngineVersion == account.LatestAgentVersion {
 		return
 	}
-	// Check if there's already a recent update command for this agent (pending, running, or completed within last hour)
-	cmds, _ := h.commands.ListByAgent(ctx, orgID, agentID, 20)
-	for _, c := range cmds {
-		if c.Type == fleet.CmdUpdateAgent {
-			if c.Status == "pending" || c.Status == "running" {
-				return // already queued or running
-			}
-			if c.Status == "completed" && time.Since(c.CreatedAt) < time.Hour {
-				return // completed recently — don't re-queue
-			}
-		}
+	// Atomic dedup: single SQL query checks for pending/running or recently completed
+	// update commands. Prevents race conditions between concurrent heartbeat goroutines.
+	exists, err := h.commands.HasRecentCommand(ctx, agentID, fleet.CmdUpdateAgent, time.Hour)
+	if err != nil || exists {
+		return
 	}
 	// Create the update command
 	payload, _ := json.Marshal(map[string]string{

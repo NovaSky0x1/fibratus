@@ -157,6 +157,7 @@ type CommandStore interface {
 	SetResult(ctx context.Context, id string, status string, result json.RawMessage, errMsg string) error
 	ListByAgent(ctx context.Context, orgID, agentID string, limit int) ([]*fleet.Command, error)
 	Get(ctx context.Context, orgID, id string) (*fleet.Command, error)
+	HasRecentCommand(ctx context.Context, agentID, cmdType string, cooldown time.Duration) (bool, error)
 }
 
 // MacroStore manages macro persistence. All operations are org-scoped.

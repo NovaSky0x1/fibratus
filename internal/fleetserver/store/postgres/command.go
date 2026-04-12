@@ -22,6 +22,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 )
@@ -85,6 +86,21 @@ func (s *CommandStore) SetResult(ctx context.Context, id string, status string, 
 		`UPDATE commands SET status = $2, result = $3, error_message = $4, completed_at = NOW()
 		 WHERE id = $1`, id, status, result, errMsg)
 	return err
+}
+
+// HasRecentCommand checks if there's a pending/running command of the given type,
+// or one completed within the cooldown period. Uses a single atomic SQL query
+// to avoid race conditions between concurrent heartbeat goroutines.
+func (s *CommandStore) HasRecentCommand(ctx context.Context, agentID, cmdType string, cooldown time.Duration) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM commands
+		 WHERE agent_id = $1 AND type = $2
+		   AND (status IN ('pending', 'running')
+		        OR (status = 'completed' AND created_at > $3))`,
+		agentID, cmdType, time.Now().Add(-cooldown),
+	).Scan(&count)
+	return count > 0, err
 }
 
 func (s *CommandStore) ListByAgent(ctx context.Context, orgID, agentID string, limit int) ([]*fleet.Command, error) {
