@@ -8,18 +8,12 @@ Windows Event Log collection runs on the agent as part of the event pipeline. It
 
 ## Architecture
 
-```
-Agent:
-┌─────────────────────────────────────────────┐
-│ Event Log Collector                          │
-│                                              │
-│  EvtSubscribe(Security) ──┐                  │
-│  EvtSubscribe(System)   ──┼──▶ Read Loop ──▶ Event Pipeline ──▶ Telemetry
-│  EvtSubscribe(Sysmon)   ──┘                  │
-│                                              │
-│  Bookmark-based resume (survives restart)    │
-└─────────────────────────────────────────────┘
-```
+The agent's Event Log Collector subscribes to configured Windows Event Log channels:
+
+1. **EvtSubscribe** creates push-based subscriptions for each channel (Security, System, Sysmon)
+2. **Read Loop** polls for new events using `EvtNext` with manual-reset event signaling
+3. **Event Pipeline** converts WEL entries to Fibratus events and forwards through the telemetry output
+4. **Bookmark-based resume** ensures collection continues from the last event after service restart
 
 ## Supported Channels
 

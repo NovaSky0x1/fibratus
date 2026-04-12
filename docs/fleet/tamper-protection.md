@@ -46,15 +46,9 @@ Network isolation uses the Windows Filtering Platform (WFP) to block all network
 
 ### How It Works
 
-```
-Normal State:                    Isolated State:
-┌──────────┐                    ┌──────────┐
-│ Endpoint │◄──▶ All Traffic    │ Endpoint │◄──▶ Fleet Server ONLY
-│          │◄──▶ Internet       │          │ ╳   Internet
-│          │◄──▶ LAN            │          │ ╳   LAN
-│          │◄──▶ Fleet Server   │          │ ╳   All other traffic
-└──────────┘                    └──────────┘
-```
+**Normal State**: Endpoint has full network access (Internet, LAN, Fleet Server, everything).
+
+**Isolated State**: Endpoint can ONLY communicate with the Fleet Server. All other traffic (Internet, LAN, other hosts) is blocked at the kernel level by WFP filters.
 
 When isolation is activated:
 

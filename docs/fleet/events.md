@@ -4,25 +4,13 @@ The Events page provides a SIEM-style interface for searching, filtering, and in
 
 ## Events Page Layout
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Fibratus QL Query Bar    [Time Range ▼]   [🔍 Search]  [Live]│
-├─────────────────────────────────────────────────────────────────┤
-│  Filter Pills: [evt.type = CreateProcess ×] [ps.name ~ cmd ×]  │
-├─────────┬───────────────────────────────────────────────────────┤
-│ Dynamic │  Event Table                                          │
-│ Fields  │  ┌─────┬──────────┬──────────┬──────────┬──────────┐│
-│ Sidebar │  │Time │ Type     │ Process  │ Preview  │ Agent    ││
-│         │  ├─────┼──────────┼──────────┼──────────┼──────────┤│
-│ evt.*   │  │12:01│CreateProc│cmd.exe   │pid=1234  │host-01   ││
-│ ps.*    │  │12:01│Connect   │chrome.exe│10.0.0.1  │host-02   ││
-│ file.*  │  │12:02│SetValue  │reg.exe   │Run\auto  │host-01   ││
-│ net.*   │  │     │          │          │          │          ││
-│ reg.*   │  └─────┴──────────┴──────────┴──────────┴──────────┘│
-│ dns.*   │                                                       │
-│         │  [◀ Prev]  Page 1 of 50  [Next ▶]                   │
-└─────────┴───────────────────────────────────────────────────────┘
-```
+The Events page has three main sections:
+
+- **Top bar**: Fibratus QL query input, time range selector, search button, and Live mode toggle
+- **Filter pills**: Active filters shown as removable badges below the query bar
+- **Left sidebar**: Dynamic fields browser organized by category (evt.*, ps.*, file.*, net.*, reg.*, dns.*)
+- **Main area**: Event table with columns for Timestamp, Type, Category, Process, Preview, and Agent
+- **Pagination**: Page navigation at the bottom
 
 ## Fibratus QL Query Bar
 

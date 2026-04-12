@@ -16,26 +16,12 @@ Process trees can be accessed from:
 
 ## Tree Layout
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ explorer.exe │────▶│  cmd.exe    │────▶│ whoami.exe  │
-│  PID: 1234   │     │  PID: 5678  │     │  PID: 9012  │
-│  SYSTEM      │     │  admin      │     │  admin      │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │powershell.exe│
-                    │  PID: 3456  │
-                    │  admin      │
-                    │             │
-                    │ ┌─────────┐ │
-                    │ │ Events: │ │
-                    │ │ 🔵 Net 3│ │
-                    │ │ 📁 File 7│ │
-                    │ │ 🔑 Reg 2│ │
-                    │ └─────────┘ │
-                    └─────────────┘
-```
+The process tree renders as an interactive graph with nodes connected by edges:
+
+- **Parent nodes** connect to **child nodes** via directional edges (left-to-right layout)
+- Each node shows: process name, PID, username, command line
+- Clicking a node reveals **event category cards** showing counts by type (e.g., Network: 3, File: 7, Registry: 2)
+- Child processes appear as branches below their parent
 
 ## Process Nodes
 

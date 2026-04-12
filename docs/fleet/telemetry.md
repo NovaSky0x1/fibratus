@@ -4,22 +4,17 @@ The telemetry pipeline streams security-relevant kernel events from agents to Cl
 
 ## Architecture
 
-```
-Agent                                Server
-┌─────────────────────┐    ┌─────────────────────────────┐
-│ ETW Kernel Trace     │    │                             │
-│       │              │    │  gRPC/NATS Telemetry Handler│
-│  Event Processors    │    │         │                   │
-│       │              │    │  UTF-8 Sanitization         │
-│  Aggregator          │    │         │                   │
-│       │              │    │  Per-Org Table Routing       │
-│  Fleet Telemetry     │───▶│         │                   │
-│  Output              │    │  Buffered Bulk Insert       │
-│                      │    │         │                   │
-│  (security-relevant  │    │  ClickHouse                 │
-│   events only)       │    │  (columnar storage)         │
-└─────────────────────┘    └─────────────────────────────┘
-```
+**Agent Pipeline:**
+1. ETW Kernel Trace captures raw events
+2. Event Processors enrich events (process state, hashes, callstacks)
+3. Aggregator batches events
+4. Fleet Telemetry Output filters to security-relevant events and streams via gRPC
+
+**Server Pipeline:**
+1. gRPC/NATS Telemetry Handler receives event batches
+2. UTF-8 sanitization cleans event data
+3. Per-org table routing directs events to the correct ClickHouse table
+4. Buffered bulk insert writes events to ClickHouse (columnar storage with compression)
 
 ## Event Coverage
 

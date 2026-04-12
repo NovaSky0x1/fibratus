@@ -8,19 +8,9 @@ The Fleet Server exposes a gRPC service on port 8444 (proxied through Nginx on p
 
 ## Transport Architecture
 
-```
-Agent (Windows)                    Server (Linux)
-┌─────────────┐                   ┌─────────────┐
-│ gRPC Client │──── TLS :443 ────▶│   Nginx     │
-│             │                   │   (gRPC     │
-│ Protobuf    │                   │   proxy)    │
-│ serialization│                  │      │      │
-└─────────────┘                   │      ▼      │
-                                  │  Go gRPC    │
-                                  │  Server     │
-                                  │  (:8444)    │
-                                  └─────────────┘
-```
+**Agent (Windows)**: gRPC client with Protobuf serialization connects to port 443 (TLS).
+
+**Server (Linux)**: Nginx receives gRPC on port 443, proxies to the Go gRPC server on port 8444 (localhost). The gRPC location match is based on the `/fleet.` path prefix in the protobuf package.
 
 ### Why gRPC?
 

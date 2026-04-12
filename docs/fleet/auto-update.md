@@ -8,24 +8,15 @@ The auto-update system detects new releases on GitHub, notifies agents through t
 
 ## Update Flow
 
-```
-1. Server detects new release on GitHub Releases
-2. Admin triggers update (per-agent or account-wide)
-                    │
-3. Server sets auto-update flag in heartbeat response
-                    │
-4. Agent receives update signal on next heartbeat (30s)
-                    │
-5. Agent downloads new MSI from GitHub Releases
-                    │
-6. Agent force-kills itself
-                    │
-7. MSI installer runs silently, installs new version
-                    │
-8. Windows Service auto-restarts with new binary
-                    │
-9. Agent heartbeats with new version number
-```
+1. **Server detects** new release on GitHub Releases (automatic)
+2. **Admin triggers update** — per-agent or account-wide from the dashboard
+3. **Server sets auto-update flag** in the next heartbeat response
+4. **Agent receives update signal** on next heartbeat (within 30 seconds)
+5. **Agent downloads new MSI** from GitHub Releases
+6. **Agent force-kills itself** to release file locks
+7. **MSI installer runs silently**, installs the new version
+8. **Windows Service auto-restarts** with the new binary
+9. **Agent heartbeats** with the new version number
 
 ## Triggering Updates
 

@@ -4,48 +4,20 @@ Fibratus Fleet Server is a centralized EDR (Endpoint Detection and Response) fle
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        Fleet Server (Linux)                          │
-│                                                                      │
-│   ┌──────────┐    ┌──────────────┐    ┌────────────┐                │
-│   │  Nginx   │───▶│  Go Backend  │───▶│ PostgreSQL │                │
-│   │  (:443)  │    │  (:8443 HTTP)│    │ (fleet     │                │
-│   │  TLS +   │    │  (:8444 gRPC)│    │  state)    │                │
-│   │  static  │    └──────────────┘    └────────────┘                │
-│   │  files   │           │                                           │
-│   └──────────┘           │            ┌────────────┐                │
-│                          └───────────▶│ ClickHouse │                │
-│                                       │ (telemetry)│                │
-│                                       └────────────┘                │
-└──────────────────────────────────────────────────────────────────────┘
-        ▲              ▲
-        │ HTTPS        │ gRPC (protobuf)
-        │              │
-┌───────┴──────────────┴───────┐
-│    Fibratus Agent (Windows)   │
-│                               │
-│  ETW Kernel Trace             │
-│  ├─ Process / Thread          │
-│  ├─ File I/O                  │
-│  ├─ Registry                  │
-│  ├─ Network / DNS             │
-│  ├─ Image / Module loading    │
-│  ├─ Handle / Memory           │
-│  └─ Windows Event Log         │
-│                               │
-│  Detection Engine             │
-│  ├─ YAML rules (server-synced)│
-│  ├─ YARA memory scanning      │
-│  └─ Evasion detection         │
-│                               │
-│  Fleet Client                 │
-│  ├─ Heartbeat (30s)           │
-│  ├─ Rule sync (5m, ETag)      │
-│  ├─ Command polling (5s)      │
-│  └─ Telemetry streaming       │
-└───────────────────────────────┘
-```
+**Server Side (Linux)**
+
+- **Nginx** (:443) — TLS termination (Let's Encrypt), serves dashboard static files, proxies API and gRPC
+- **Go Backend** (:8443 HTTP, :8444 gRPC) — business logic, auth, API
+- **PostgreSQL** — fleet state (accounts, orgs, users, agents, rules, detections, commands)
+- **ClickHouse** — high-volume telemetry event storage (per-org tables, columnar compression)
+
+**Agent Side (Windows)**
+
+- **ETW Kernel Trace** — Process, Thread, File I/O, Registry, Network, DNS, Image/Module loading, Handle, Memory, Windows Event Log
+- **Detection Engine** — YAML rules (server-synced), YARA memory scanning, evasion detection (direct/indirect syscall)
+- **Fleet Client** — Heartbeat (30s), Rule sync (5m, ETag), Command polling (5s), Telemetry streaming
+
+**Communication**: Agent connects to server via HTTPS (port 443) and gRPC (port 443, Nginx-proxied). All traffic TLS-encrypted.
 
 ## Core Components
 
@@ -114,33 +86,27 @@ Fibratus Fleet Server is a centralized EDR (Endpoint Detection and Response) fle
 
 ### Telemetry Pipeline
 
-```
-Agent: ETW Kernel Trace → Event Processors → Aggregator → Fleet Telemetry Output
-                                                              │
-Server: gRPC/NATS → Telemetry Handler → ClickHouse (per-org table)
-                                              │
-Dashboard: Events Page → Fibratus QL → SQL WHERE → ClickHouse Query
-```
+**Agent**: ETW Kernel Trace > Event Processors > Aggregator > Fleet Telemetry Output (gRPC stream)
+
+**Server**: gRPC/NATS Telemetry Handler > ClickHouse (per-org table)
+
+**Dashboard**: Events Page > Fibratus QL query > translated to SQL WHERE > ClickHouse query
 
 ### Detection Pipeline
 
-```
-Agent: ETW Events → Filter Engine → Rules Engine → Detection Match
-                                                        │
-Agent: Alert Sender → Fleet Server → Detection Handler → PostgreSQL
-                                                              │
-Dashboard: Detections Page → Severity/Rule Filtering → Detail Panel
-```
+**Agent**: ETW Events > Rule Engine > Match > Fleet Alert Sender (async queue)
+
+**Server**: Detection Handler > Rate Limiter > PostgreSQL
+
+**Dashboard**: Detections Page > Filtering by severity/rule > Detail Panel with process tree
 
 ### Command Pipeline
 
-```
-Dashboard: User Action → API → Command Record (PostgreSQL)
-                                     │
-Agent: Command Poll (5s) → Execute → Result → API → PostgreSQL
-                                                         │
-Dashboard: Command History / Live Result Display
-```
+**Dashboard**: User action > REST API > Command Record in PostgreSQL (status: pending)
+
+**Agent**: Command poll (5s) > Execute > Result > API > Update record (status: completed)
+
+**Dashboard**: Command History with live result display
 
 ## Technology Stack
 

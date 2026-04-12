@@ -212,22 +212,10 @@ Root user actions are excluded from the audit log display to keep it clean.
 
 ## Account Hierarchy
 
-```
-Account (Company)
-├── Organization 1 (Department/Site)
-│   ├── Agents
-│   ├── Rules
-│   ├── Detections
-│   └── Telemetry (ClickHouse table)
-├── Organization 2
-│   ├── Agents
-│   ├── Rules
-│   ├── Detections
-│   └── Telemetry (ClickHouse table)
-└── Users (account-wide)
-    ├── Admin users (all orgs)
-    └── Restricted users (specific orgs)
-```
+- **Account** (Company level)
+  - **Organization 1** (Department/Site) — has its own Agents, Rules, Detections, and ClickHouse telemetry table
+  - **Organization 2** — same isolated set of resources
+  - **Users** (account-wide) — Admin users can access all orgs; restricted users see only specific orgs
 
 ### Cross-Organization Access
 

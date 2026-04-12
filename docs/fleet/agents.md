@@ -4,13 +4,13 @@ The Agents page provides real-time visibility into all enrolled endpoints, their
 
 ## Agent Lifecycle
 
-```
-Enrollment → Registration → Online (heartbeating) → Offline (missed heartbeats)
-                                  │
-                                  ├── Isolated (network isolation active)
-                                  ├── Updating (self-update in progress)
-                                  └── Uninstalled (remote uninstall)
-```
+**Enrollment** > **Registration** > **Online** (heartbeating every 30s)
+
+From the Online state, an agent can transition to:
+- **Offline** — missed heartbeats (no heartbeat for >60 seconds)
+- **Isolated** — network isolation active via WFP
+- **Updating** — self-update in progress
+- **Uninstalled** — remote uninstall executed
 
 ## Agent Status
 

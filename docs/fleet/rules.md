@@ -4,15 +4,14 @@ The Fleet Server provides centralized rule management — rules are authored, va
 
 ## Rule Lifecycle
 
-```
-Author Rule → Upload/GitHub Sync → Server-Side Validation → Store in DB
-                                                                │
-                                          Agent Rule Sync (5min, ETag) ──▶ In-Memory Compilation
-                                                                              │
-                                                                    Rule Engine Evaluation
-                                                                              │
-                                                                    Detection → Server
-```
+1. **Author rule** — write YAML rule with Fibratus QL condition
+2. **Upload or sync** — upload via dashboard, or sync from GitHub repository
+3. **Server-side validation** — QL parser validates condition syntax and macro expansion
+4. **Store in DB** — rule saved in PostgreSQL with validation status
+5. **Agent rule sync** — agents poll every 5 minutes (ETag caching), receive updated rules
+6. **In-memory compilation** — agent compiles rules in DPAPI-encrypted memory (never written to disk)
+7. **Rule engine evaluation** — compiled rules evaluate against live ETW events
+8. **Detection** — matches are forwarded to the server as detection alerts
 
 ## Rule Storage
 

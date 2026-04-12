@@ -4,29 +4,12 @@ Enrollment is the process by which a Fibratus agent on a Windows endpoint regist
 
 ## Enrollment Flow
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Enrollment Flow                           │
-│                                                                  │
-│  1. Admin creates enrollment token in dashboard                  │
-│     Dashboard → Settings → Enrollment Tokens → Create            │
-│                         │                                        │
-│  2. Run enrollment command on endpoint                           │
-│     fibratus enroll --token <TOKEN> --server https://server      │
-│                         │                                        │
-│  3. Agent generates RSA key pair + CSR                           │
-│     Private key stays on endpoint, CSR sent to server            │
-│                         │                                        │
-│  4. Server validates token, signs CSR with org CA                │
-│     Returns: signed cert, agent-id, org-id, server URL           │
-│                         │                                        │
-│  5. Agent stores enrollment data in DPAPI-encrypted registry     │
-│     HKLM\SOFTWARE\Fibratus\Fleet (encrypted with DPAPI)         │
-│                         │                                        │
-│  6. On next service start, agent auto-detects enrollment         │
-│     Zero config needed — reads from registry, connects to server │
-└─────────────────────────────────────────────────────────────────┘
-```
+1. **Admin creates enrollment token** in the dashboard (Management > Enrollment > Create Token)
+2. **Run enrollment command** on the endpoint: `fibratus enroll --token <TOKEN> --server https://server`
+3. **Agent generates RSA key pair + CSR** — private key stays on endpoint, CSR sent to server
+4. **Server validates token, signs CSR** with the organization's CA — returns signed cert, agent-id, org-id, server URL
+5. **Agent stores enrollment data** in DPAPI-encrypted Windows registry (`HKLM\SOFTWARE\Fibratus\Enrollment`)
+6. **On next service start**, agent auto-detects enrollment — zero config needed, reads from registry, connects to server
 
 ## Creating Enrollment Tokens
 

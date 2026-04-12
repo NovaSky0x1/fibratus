@@ -8,15 +8,12 @@ Live captures record kernel events directly on the agent and stream them to the 
 
 ## Capture Flow
 
-```
-Dashboard: Start Capture → API → Command to Agent
-                                      │
-Agent: Start ETW Capture → Filter Events → Buffer
-                                      │
-Dashboard: Poll Events → Display → Stop Capture
-                                      │
-Export: JSON / CSV / .kcap download
-```
+1. **Dashboard**: User starts capture (selects duration, filters, event types)
+2. **API**: Sends `start_capture` command to the agent
+3. **Agent**: Starts ETW capture, applies filters, buffers events, writes local .kcap file
+4. **Dashboard**: Polls for captured events, displays in real-time terminal-style view
+5. **Stop**: User stops capture (or duration expires)
+6. **Export**: Download as JSON, CSV, or .kcap file
 
 ## Starting a Capture
 

@@ -4,13 +4,11 @@ The detection pipeline provides centralized visibility into all rule matches acr
 
 ## Detection Flow
 
-```
-Agent: ETW Event → Rule Engine → Match → Alert Sender (Fleet)
-                                              │
-Server: Detection Handler → Rate Limiter → PostgreSQL
-                                              │
-Dashboard: Detections Page → Filtering → Detail Panel → Process Tree
-```
+1. **Agent** processes ETW kernel events through the rule engine
+2. **Rule match** triggers the fleet alert sender (non-blocking queue)
+3. **Server** receives the detection, applies rate limiting (20/min per agent)
+4. **PostgreSQL** stores the detection record with full event context
+5. **Dashboard** displays the detection on the Detections page with severity, alert text, and process tree
 
 ## Detection Data
 

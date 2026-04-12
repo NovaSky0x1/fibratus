@@ -4,15 +4,12 @@ The Fleet Server supports remote command execution on enrolled agents for incide
 
 ## Command Flow
 
-```
-Dashboard User Action → REST API → Command Record (PostgreSQL, status: pending)
-                                          │
-Agent Command Poll (5s) ─────────────────▶│
-                                          │
-Agent: Receive Command → Execute → Result ──▶ API → Update Record (status: completed)
-                                                          │
-Dashboard: Command History → Result Display
-```
+1. **User issues command** in the dashboard (e.g., clicks "Isolate")
+2. **REST API** creates a command record in PostgreSQL (status: `pending`)
+3. **Agent polls** for pending commands every 5 seconds via gRPC `CommandChannel`
+4. **Agent executes** the command using the appropriate handler
+5. **Agent reports result** back to the server (status: `completed` or `failed`)
+6. **Dashboard updates** — result visible in Command History
 
 ## Available Commands
 
