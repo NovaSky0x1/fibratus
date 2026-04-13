@@ -250,7 +250,10 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 			// releases events without holding the mutex to prevent deadlock
 			// when the event channel is full (fleet mode high throughput).
 			cfg.EventSource.StackEnrichment = true
-			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks, stack enrichment enabled)")
+			// Disable threadpool events — high volume, low detection value,
+			// causes unnecessary CPU/network overhead in fleet mode.
+			cfg.EventSource.EnableThreadpoolEvents = false
+			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks, stack enrichment enabled, threadpool disabled)")
 		}
 	} else {
 		log.Info("rule engine is disabled")

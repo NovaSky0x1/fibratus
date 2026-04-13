@@ -128,7 +128,9 @@ func New(config Config, dataDir string) (*Client, error) {
 		),
 	}
 
-	conn, err := grpc.NewClient(serverAddr, opts...)
+	// Use passthrough resolver to skip gRPC's default DNS resolver which
+	// does periodic reverse DNS lookups (unnecessary CPU/network overhead).
+	conn, err := grpc.NewClient("passthrough:///"+serverAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: dial %s: %w", serverAddr, err)
 	}
