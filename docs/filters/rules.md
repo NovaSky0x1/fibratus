@@ -249,8 +249,13 @@ action:
 
 #### Isolating endpoints
 
-`isolate` action isolates the host by installing **Windows Filtering Platform** (WFP) rules. To revert the effects of the `isolate` action, simply restart the Fibratus service. The action can be combined with other actions. For example, the following snippet will kill the process and isolate the endpoint.
+`isolate` action isolates the host by installing **Windows Filtering Platform** (WFP) kernel-level filters that block all inbound and outbound network traffic.
 
+**Standalone mode**: To revert isolation, restart the Fibratus service.
+
+**Fleet mode**: Isolation is managed through the Fleet Server dashboard. The agent remains connected to the server (WFP allows fleet server traffic) and can receive commands while isolated. To revert, use the **Unisolate** button in the Agent Detail page or send an `unisolate` command — do NOT restart the service, as the isolation state persists across restarts. See [Fleet Active Response](/fleet/active-response) for details.
+
+The action can be combined with other actions. For example, the following snippet will kill the process and isolate the endpoint:
 
 ```yaml
 action:

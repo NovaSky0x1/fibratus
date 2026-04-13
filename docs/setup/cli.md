@@ -125,3 +125,28 @@ Returns the runtime metrics that are exposed through the [expvar](https://golang
 ### version
 
 Displays the Fibratus version along with the commit hash and the Go compiler version.
+
+### enroll
+
+Enrolls the agent with a Fleet Server. This is a one-time operation that generates an RSA key pair, sends a certificate signing request to the server, and stores the enrollment credentials in the DPAPI-encrypted Windows registry. After enrollment, the agent automatically connects to the server on every service start — no YAML configuration changes needed.
+
+```
+$ fibratus enroll --token <ENROLLMENT_TOKEN> --server https://edr.example.com
+```
+
+Options:
+- `--token` — enrollment token created by an administrator in the Fleet Server dashboard
+- `--server` — the Fleet Server URL
+- `--insecure` — skip TLS certificate verification (for self-signed certificates)
+
+See [Fleet Enrollment](/fleet/enrollment) for the complete enrollment workflow.
+
+### setup
+
+Performs a complete agent setup: enrollment, directory lockdown, integrity seal, service installation, and service start. This is the recommended way to set up a new fleet agent.
+
+```
+$ fibratus setup --token <ENROLLMENT_TOKEN> --server https://edr.example.com
+```
+
+Requires Administrator privileges. Combines `enroll` with service registration and tamper protection initialization.

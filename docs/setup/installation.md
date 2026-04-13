@@ -45,6 +45,27 @@ Fibratus service is running
 
 If you're able to see the output like in the snippet above, congratulations! You have successfully installed Fibratus. Jump to [quick start](/setup/quick-start).
 
+### Fleet Mode Installation {docsify-ignore}
+
+To deploy Fibratus as a managed fleet agent with centralized rule management, telemetry, and active response:
+
+1. Create an enrollment token in the [Fleet Server dashboard](/fleet/enrollment)
+2. Run the one-liner install command on the target endpoint (elevated PowerShell):
+
+```powershell
+irm https://your-fleet-server/install/<ENROLLMENT_TOKEN_ID> | iex
+```
+
+This downloads the MSI, installs the agent, enrolls it with the fleet server, and starts the service. No YAML configuration needed — the agent auto-detects enrollment data and connects to the server on every start.
+
+The MSI also supports silent deployment with enrollment parameters:
+
+```powershell
+msiexec /i fibratus-3.0.0-slim-amd64.msi /qn ENROLLMENT_TOKEN=<TOKEN> SERVER_URL=https://your-fleet-server
+```
+
+See [Fleet Enrollment](/fleet/enrollment) for the complete enrollment workflow and [Fleet Overview](/fleet/overview) for the full fleet architecture.
+
 ### Uninstall {docsify-ignore}
 
 To remove Fibratus from your system, head to the **Control Panel > Programs and Features** and start the uninstall process. The uninstaller will make sure to stop/remove the Windows Service and get rid of all installation data.
