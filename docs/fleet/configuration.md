@@ -93,9 +93,10 @@ The agent automatically:
 - Enables the fleet telemetry output
 - Enables the fleet alert sender
 - Starts the fleet client (heartbeat, commands, rule sync)
-- Enables all ETW event types for comprehensive coverage
-- Disables stack enrichment for performance
+- Enables all ETW event types for comprehensive coverage (no drop masks)
+- Enables stack enrichment for callstack-dependent detection rules and evasion detection
 - Enables `enqueueAlways` so all events reach the telemetry output
+- Zeroes compile-only rule fields after compilation to reduce memory (~40% RAM savings)
 
 ### Enrollment Data (DPAPI-Encrypted Registry)
 

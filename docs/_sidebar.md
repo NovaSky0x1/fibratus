@@ -92,3 +92,4 @@
   * [Dashboard](fleet/dashboard.md)
   * [gRPC Protocol](fleet/grpc.md)
   * [API Reference](fleet/api.md)
+  * [Troubleshooting](fleet/troubleshooting.md)

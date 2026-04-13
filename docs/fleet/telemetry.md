@@ -167,6 +167,16 @@ If a Fibratus QL query fails to parse, the system falls back to ClickHouse ILIKE
 In fleet mode, the agent automatically configures telemetry:
 
 - **enqueueAlways**: All events are passed to the aggregator (not just rule matches)
-- **Stack enrichment**: Disabled in fleet mode for full event coverage without performance impact
+- **Stack enrichment**: Enabled — callstack data is collected for eligible events (CreateProcess, LoadImage, CreateThread, registry ops, etc.). The StackwalkDecorator uses a 2-phase flush to prevent deadlocks under high throughput. Events wait up to 10 seconds for matching StackWalk events; if none arrive, they are flushed without callstack data. This enables 40% of detection rules that depend on `thread.callstack.*` fields and all evasion detection (direct/indirect syscall analysis).
 - **Console output**: Fleet telemetry output auto-enables even when console output is configured
 - **Event type enablement**: All ETW event types enabled for comprehensive coverage
+- **Drop masks disabled**: Rule compile result is set to nil so the ETW source collects all event types, even before rules are synced from the server
+
+## Memory Optimization
+
+After rules are compiled, the engine releases compile-only fields from memory to reduce the agent's RAM footprint:
+
+- **Fields zeroed after compilation**: `Condition` (source expression string), `References` (URL lists), `Notes`, `Authors`, `MinEngineVersion`, `Version`
+- **Fields retained for runtime**: `Name`, `ID`, `Description`, `Output` (alert template), `Severity`, `Labels`, `Tags`, `Action`
+- **Impact**: ~40% reduction in working set memory (e.g., 400 MB down to ~250 MB with 2,100 compiled rules)
+- **How it works**: The compiled filter ASTs are all the runtime needs — the source YAML text that produced them is no longer referenced after compilation and is eligible for garbage collection

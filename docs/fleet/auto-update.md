@@ -4,95 +4,121 @@ The Fleet Server supports automatic agent updates, allowing administrators to de
 
 ## Overview
 
-The auto-update system detects new releases on GitHub, notifies agents through the heartbeat protocol, and agents perform a self-update by downloading and installing the new MSI package.
+The auto-update system detects new releases on GitHub, notifies agents through the heartbeat protocol, and agents perform a self-update by downloading and installing the new MSI package. The system handles tamper protection automatically — temporarily disabling it for the update, then re-enabling on restart.
 
 ## Update Flow
 
-1. **Server detects** new release on GitHub Releases (automatic)
-2. **Admin triggers update** — per-agent or account-wide from the dashboard
-3. **Server sets auto-update flag** in the next heartbeat response
-4. **Agent receives update signal** on next heartbeat (within 30 seconds)
-5. **Agent downloads new MSI** from GitHub Releases
-6. **Agent force-kills itself** to release file locks
-7. **MSI installer runs silently**, installs the new version
-8. **Windows Service auto-restarts** with the new binary
-9. **Agent heartbeats** with the new version number
+1. **Release checker** polls GitHub `/releases/latest` every 15 minutes, detects new version
+2. **Account updated** — `latest_agent_version` and `latest_agent_msi_url` stored per account
+3. **Heartbeat triggers check** — on each agent heartbeat, server compares agent version vs latest
+4. **Dedup guard** — atomic SQL query checks for existing pending/running/recently-completed update commands (prevents duplicate commands)
+5. **Update command queued** — single `update_agent` command created in PostgreSQL
+6. **Agent receives command** via gRPC command channel stream
+7. **Tamper protection disabled** — if tamper is active, agent disables all 8 protection layers
+8. **MSI downloaded** from GitHub Releases to temp directory
+9. **Update script spawned** via WMI `Win32_Process.Create` (fully independent process that survives service death)
+10. **Script stops service** — `sc.exe stop fibratus`, then force-kill if still running
+11. **MSI installed silently** — `msiexec /i ... /quiet /norestart`, with fallback to binary extraction if MSI upgrade fails
+12. **Service restarted** — `sc.exe start fibratus`
+13. **Agent heartbeats** with new version number, tamper protection re-enables from persisted state
 
 ## Triggering Updates
 
-### Per-Agent Update
+### Automatic (Recommended)
+
+Enable auto-update in Management > Account settings:
+- Toggle **Auto-Update Agents** to ON
+- Set the GitHub repository (default: `NovaSky0x1/fibratus`)
+- The release checker runs every 15 minutes
+- When a new release is detected, all agents update on their next heartbeat
+
+### Per-Agent Manual
 
 From the Agent Detail page:
 1. The overview section shows the current agent version
 2. If a newer version is available, an update badge appears
 3. Click the **Update** button
-4. Agent receives the update command on next heartbeat
+4. Agent receives the update command within seconds
 
-### Account-Wide Update
+### Account-Wide Manual
 
-From the Super Admin panel:
-1. Navigate to account settings
-2. Click **Update All Agents**
-3. All agents in the account receive the update signal
-4. Updates roll out as each agent heartbeats (within 30 seconds)
+From the Management > Account settings:
+1. Click **Update All Agents**
+2. All agents in the account receive update commands
+3. Updates roll out as each agent heartbeats (within 30 seconds)
 
-## Version Detection
+## Release Detection
 
-The server automatically detects the latest release:
-- Queries the GitHub Releases API for the repository
-- Compares with each agent's reported version
-- No manual version fields needed — fully automatic
+The server's release checker:
+- Polls `https://api.github.com/repos/{repo}/releases/latest` every 15 minutes
+- Extracts version from the release tag (strips leading `v`)
+- Finds the `.msi` asset and captures its download URL
+- Updates all accounts that use that repository
+- Only updates if the version actually changed
 
-## Self-Update Process
+The MSI download endpoint (`/api/v1/agent/msi`) dynamically resolves the URL from the account's latest release — no hardcoded URLs.
 
-The agent self-update happens in the background:
+## Command Deduplication
 
-1. **Download**: Agent downloads the new MSI from GitHub Releases
-2. **Background context**: Update runs in a separate goroutine to not block the main agent
-3. **Force kill**: Agent terminates its own process forcefully
-4. **MSI install**: The MSI installer runs silently (`msiexec /i ... /qn`)
-5. **Service restart**: Windows Service Manager auto-restarts the service
-6. **Re-registration**: Agent heartbeats with the new version number
+The server prevents duplicate update commands using an atomic SQL check:
 
-### Deduplication
+- Before queuing an update, checks: is there a `pending` or `running` update command for this agent?
+- Also checks: was an update `completed` within the last hour?
+- If any of these are true, the update is skipped
+- Uses `context.Background()` for the async goroutine (not the HTTP request context, which would be cancelled after the response)
+- Single SQL `COUNT` query — no race condition between concurrent heartbeat goroutines
 
-The server prevents duplicate auto-update commands:
-- Only one update command is pushed per agent per heartbeat
-- Prevents repeated update attempts if the agent restarts before completing
+## Tamper Protection Interaction
+
+When tamper protection is active, the update executor:
+
+1. Checks `protector.IsEnabled()` before starting the update
+2. If tamper is on, calls `protector.DisableProtection()` — this removes all 8 protection layers (service DACL, process DACL, install dir lockdown, ARP hiding, registry protection, watchdog, integrity monitor)
+3. Records `tamper_was_enabled: true` in the command result for audit
+4. Proceeds with the update
+5. After the new version starts, tamper protection re-enables automatically from persisted state (the tamper enabled/disabled flag survives across service restarts)
+
+This is safe because the update command is server-initiated (authenticated via gRPC) — the agent never disables tamper protection on its own initiative.
+
+## Update Script Details
+
+The update script is spawned via **WMI `Win32_Process.Create`** to create a fully independent process:
+- Survives the death of the fibratus service (unlike child processes which may be killed with the parent)
+- Falls back to direct `exec.Command` if WMI is unavailable
+- Writes progress to `Logs/update.log` for debugging
+- Cleans up the downloaded MSI and the script itself after completion
+
+If the MSI upgrade fails (e.g., product code mismatch from a non-MSI install), the script falls back to:
+1. Administrative install (`msiexec /a`) to extract the binary from the MSI
+2. Direct file copy of the extracted binary to the install directory
 
 ## Dashboard Integration
 
+### Enrollment Tab
+
+Shows the current agent download version with a status banner:
+- **Green banner** (Auto-Update ON): "New installs and existing agents will use the latest release automatically"
+- **Amber banner** (Auto-Update OFF): "Enable auto-update in Account settings to keep agents current"
+
 ### Agent Overview
 
-The agent detail page shows:
-- **Current version** — agent's reported version
-- **Version badge** — visual indicator if outdated
-- **Update button** — click to trigger update
-
-### Agent List
-
-The agents list page can show version information:
-- Version column shows each agent's version
-- Easy to identify outdated agents
-
-## Update Safety
-
-### Resilience
-
-- If the update fails, the existing version continues running
-- Windows Service Manager's restart policy handles crashes
-- Agent re-enrolls automatically after update (enrollment data persists in registry)
-
-### Rollback
-
-If an update causes issues:
-- The previous MSI can be manually installed on the endpoint
-- Service restart with the previous binary restores functionality
-- Enrollment data is preserved across updates (DPAPI-encrypted registry)
+- **Current version** — agent's reported version from heartbeat
+- **Version badge** — visual indicator if outdated compared to latest release
+- **Update button** — trigger update for individual agent
 
 ## Configuration
 
-No special configuration is needed:
-- Auto-update capability is built into the agent
-- Server detects latest release from GitHub automatically
-- Update commands flow through the existing heartbeat/command infrastructure
+| Setting | Location | Description |
+|---------|----------|-------------|
+| **Auto-Update Agents** | Management > Account | Toggle automatic updates on/off |
+| **GitHub Repository** | Management > Account | Source repo for release detection (default: `NovaSky0x1/fibratus`) |
+| **Release Check Interval** | Server config | 15 minutes (hardcoded) |
+| **Dedup Cooldown** | Server code | 1 hour after last completed update |
+
+## Resilience
+
+- If the MSI install fails, the script falls back to binary extraction
+- If the binary extraction fails, the old binary is still in place and the service restarts with it
+- Windows Service Manager's recovery policy (restart on failure) ensures the agent comes back
+- Enrollment data is preserved across updates (DPAPI-encrypted registry, not affected by MSI)
+- Tamper protection re-enables automatically from persisted state after restart
