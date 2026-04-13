@@ -58,6 +58,13 @@ func NewEventSourceControl(
 	}
 }
 
+// UpdateDropMasks recalculates event drop masks from a new compile result.
+func (s *EventSourceControl) UpdateDropMasks(rs *config.RulesCompileResult, cfg *config.Config) {
+	if etwSrc, ok := s.evs.(*etw.EventSource); ok {
+		etwSrc.UpdateDropMasks(rs, cfg)
+	}
+}
+
 func (s *EventSourceControl) Open(config *config.Config) error {
 	if err := s.evs.Open(config); err != nil {
 		return err

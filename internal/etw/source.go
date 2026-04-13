@@ -342,6 +342,37 @@ func (e *EventSource) Events() <-chan *event.Event {
 	return e.evts
 }
 
+// UpdateDropMasks recalculates event drop masks from a new compile result.
+// Called after fleet rule sync recompiles the rule engine. Events not
+// referenced by any rule are dropped at the consumer level immediately.
+func (e *EventSource) UpdateDropMasks(rs *config.RulesCompileResult, cfg *config.Config) {
+	if rs == nil {
+		return
+	}
+	// Clear existing drop masks
+	cfg.EventSource.ClearDropMasks()
+	// Reapply based on new compile result
+	cfg.EventSource.EnableThreadEvents = cfg.EventSource.EnableThreadEvents && rs.HasThreadEvents
+	cfg.EventSource.EnableImageEvents = cfg.EventSource.EnableImageEvents && rs.HasImageEvents
+	cfg.EventSource.EnableNetEvents = cfg.EventSource.EnableNetEvents && rs.HasNetworkEvents
+	cfg.EventSource.EnableRegistryEvents = cfg.EventSource.EnableRegistryEvents && rs.HasRegistryEvents
+	cfg.EventSource.EnableFileIOEvents = cfg.EventSource.EnableFileIOEvents && rs.HasFileEvents
+	cfg.EventSource.EnableMemEvents = cfg.EventSource.EnableMemEvents && rs.HasMemEvents
+	cfg.EventSource.EnableDNSEvents = cfg.EventSource.EnableDNSEvents && rs.HasDNSEvents
+	cfg.EventSource.EnableAuditAPIEvents = cfg.EventSource.EnableAuditAPIEvents && rs.HasAuditAPIEvents
+	cfg.EventSource.EnableThreadpoolEvents = cfg.EventSource.EnableThreadpoolEvents && rs.HasThreadpoolEvents
+	for _, typ := range event.All() {
+		if typ == event.CreateProcess || typ == event.TerminateProcess ||
+			typ == event.LoadImage || typ == event.UnloadImage {
+			continue
+		}
+		if !rs.ContainsEvent(typ) {
+			cfg.EventSource.SetDropMask(typ)
+		}
+	}
+	log.Infof("fleet: updated drop masks from %d rules", rs.NumberRules)
+}
+
 // SetFilter assigns the filter to each consumer. The filter is applied
 // to every event captured by the consumer. If the filter expression
 // matches, then the consumer enqueues the event to the output queue.

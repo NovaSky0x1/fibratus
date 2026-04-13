@@ -242,10 +242,15 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 		// evaluate against any event type. Without this, the ETW trace is
 		// configured to only collect events for rules known at startup (0 rules).
 		if cfg.Fleet.Enabled {
-			// Set rs to nil so the ETW source skips ALL drop mask logic.
-			// Rules arrive asynchronously after ETW trace starts, so we
-			// must collect ALL event types for late-compiled rules.
-			rs = nil
+			// Use the compile result from initial rules (if any) to set
+			// drop masks. The rule compiler determines which event types
+			// are referenced by rules — events not in the set are dropped
+			// at the consumer level before any processing. This is critical
+			// for CPU: without drop masks, EVERY event type floods the
+			// rule engine even when no rule evaluates it.
+			// When fleet rules sync later, Engine.Compile() updates rs and
+			// the drop masks are refreshed dynamically.
+			//
 			// Stack enrichment enabled — the StackwalkDecorator flusher
 			// releases events without holding the mutex to prevent deadlock
 			// when the event channel is full (fleet mode high throughput).
@@ -253,7 +258,7 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 			// Disable threadpool events — high volume, low detection value,
 			// causes unnecessary CPU/network overhead in fleet mode.
 			cfg.EventSource.EnableThreadpoolEvents = false
-			log.Info("fleet mode: ETW trace will collect ALL event types (no drop masks, stack enrichment enabled, threadpool disabled)")
+			log.Info("fleet mode: ETW trace uses rule-driven drop masks, stack enrichment enabled, threadpool disabled")
 		}
 	} else {
 		log.Info("rule engine is disabled")
@@ -675,6 +680,9 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 			log.Errorf("fleet: rule compile error: %v", err)
 			return err
 		}
+		// Update drop masks so the ETW consumer only processes
+		// event types referenced by the compiled rules.
+		f.evs.UpdateDropMasks(result, cfg)
 		log.Infof("fleet: rules compiled from encrypted memory — %d rules active", result.NumberRules)
 
 		return nil

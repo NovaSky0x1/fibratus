@@ -176,6 +176,11 @@ func (c *EventSourceConfig) Init() {
 	}
 }
 
+// ClearDropMasks resets all event drop masks.
+func (c *EventSourceConfig) ClearDropMasks() {
+	c.dropMasks.ClearAll()
+}
+
 // SetDropMask inserts the event mask in the bitset to
 // instruct the given event type should be dropped from
 // the event stream.
