@@ -415,41 +415,90 @@ func convertWildcardValue(field, value, defaultOp string) (string, error) {
 	return fmt.Sprintf("%s imatches '%s'", field, escaped), nil
 }
 
-// convertListValues converts a list of SIGMA values into OR/AND combined Fibratus expressions.
+// convertListValues converts a list of SIGMA values into a coalesced Fibratus
+// expression. Instead of generating N separate "field op 'value'" expressions
+// joined with OR (which creates a massive AST), this coalesces all string values
+// into a single list operator: field imatches ('pat1', 'pat2', ...).
+//
+// This is critical for performance — a rule with 20 values goes from 20 AST
+// nodes with 20 field extractions to 1 AST node with 1 field extraction.
 func convertListValues(field string, values []interface{}, op string, useAll bool, modifiers []string) (string, error) {
-	var parts []string
+	// Determine the coalesced operator and pattern transform based on modifiers
+	hasContains := hasModifier(modifiers, "contains")
+	hasStartsWith := hasModifier(modifiers, "startswith")
+	hasEndsWith := hasModifier(modifiers, "endswith")
+
+	// Collect string values that can be coalesced into imatches
+	var patterns []string
+	var nonStringParts []string
+
 	for _, val := range values {
-		var expr string
-		var err error
 		switch v := val.(type) {
 		case string:
-			expr, err = convertSingleValue(field, v, op, modifiers)
+			escaped := escapeQL(v)
+			if hasContains {
+				// contains → *value*
+				patterns = append(patterns, "*"+escaped+"*")
+			} else if hasStartsWith {
+				// startswith → value*
+				patterns = append(patterns, escaped+"*")
+			} else if hasEndsWith {
+				// endswith → *value
+				patterns = append(patterns, "*"+escaped)
+			} else if strings.Contains(v, "*") || strings.Contains(v, "?") {
+				// Already has wildcards — use as-is for imatches
+				patterns = append(patterns, escaped)
+			} else {
+				// Exact match — wrap for imatches
+				patterns = append(patterns, escaped)
+			}
 		case int, int64, float64:
-			expr = fmt.Sprintf("%s = %v", field, v)
+			nonStringParts = append(nonStringParts, fmt.Sprintf("%s = %v", field, v))
 		case nil:
-			expr = fmt.Sprintf("%s = ''", field)
+			nonStringParts = append(nonStringParts, fmt.Sprintf("%s = ''", field))
 		default:
-			expr = fmt.Sprintf("%s = '%v'", field, v)
-		}
-		if err != nil {
-			return "", err
-		}
-		if expr != "" {
-			parts = append(parts, expr)
+			nonStringParts = append(nonStringParts, fmt.Sprintf("%s = '%v'", field, v))
 		}
 	}
-	if len(parts) == 0 {
+
+	var allParts []string
+
+	// Coalesce string patterns into a single imatches expression
+	if len(patterns) == 1 {
+		// Single pattern — use the most specific operator
+		if hasContains {
+			allParts = append(allParts, fmt.Sprintf("%s icontains '%s'", field, strings.TrimSuffix(strings.TrimPrefix(patterns[0], "*"), "*")))
+		} else if hasStartsWith {
+			allParts = append(allParts, fmt.Sprintf("%s istartswith '%s'", field, strings.TrimSuffix(patterns[0], "*")))
+		} else if hasEndsWith {
+			allParts = append(allParts, fmt.Sprintf("%s iendswith '%s'", field, strings.TrimPrefix(patterns[0], "*")))
+		} else {
+			allParts = append(allParts, fmt.Sprintf("%s imatches '%s'", field, patterns[0]))
+		}
+	} else if len(patterns) > 1 {
+		// Multiple patterns — coalesce into single imatches with list
+		quoted := make([]string, len(patterns))
+		for i, p := range patterns {
+			quoted[i] = "'" + p + "'"
+		}
+		allParts = append(allParts, fmt.Sprintf("%s imatches (%s)", field, strings.Join(quoted, ", ")))
+	}
+
+	// Add non-string parts
+	allParts = append(allParts, nonStringParts...)
+
+	if len(allParts) == 0 {
 		return "", nil
 	}
-	if len(parts) == 1 {
-		return parts[0], nil
+	if len(allParts) == 1 {
+		return allParts[0], nil
 	}
 
 	joiner := " or "
 	if useAll {
 		joiner = " and "
 	}
-	return "(" + strings.Join(parts, joiner) + ")", nil
+	return "(" + strings.Join(allParts, joiner) + ")", nil
 }
 
 // convertCIDR converts a CIDR value to a cidr_contains() function call.
