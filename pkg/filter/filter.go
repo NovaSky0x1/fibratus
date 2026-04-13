@@ -492,9 +492,22 @@ var valuerPool = sync.Pool{
 // accessors and extract the field values that are
 // supplied to the valuer. The valuer feeds the
 // expression with correct values.
+//
+// Uses the per-event field cache to avoid re-extracting the same
+// field across multiple rules evaluating against the same event.
 func (f *filter) mapValuer(evt *event.Event) map[string]any {
 	valuer := valuerPool.Get().(map[string]any)
+	// lazily initialize per-event field cache
+	if evt.FieldCache == nil {
+		evt.FieldCache = make(map[string]any, len(f.fields))
+	}
 	for _, field := range f.fields {
+		key := field.String()
+		// check per-event cache first
+		if cached, ok := evt.FieldCache[key]; ok {
+			valuer[key] = cached
+			continue
+		}
 		for _, accessor := range f.accessors {
 			if !accessor.IsFieldAccessible(evt) {
 				continue
@@ -502,15 +515,20 @@ func (f *filter) mapValuer(evt *event.Event) map[string]any {
 			v, err := accessor.Get(field, evt)
 			if v == nil || err != nil {
 				if v == nil {
-					valuer[field.String()] = defaultAccessorValue(field)
+					val := defaultAccessorValue(field)
+					valuer[key] = val
+					evt.FieldCache[key] = val
 				}
 				if err != nil && !errs.IsParamNotFound(err) {
-					valuer[field.String()] = defaultAccessorValue(field)
+					val := defaultAccessorValue(field)
+					valuer[key] = val
+					evt.FieldCache[key] = val
 					accessorErrors.Add(err.Error(), 1)
 				}
 				continue
 			}
-			valuer[field.String()] = v
+			valuer[key] = v
+			evt.FieldCache[key] = v
 			break
 		}
 	}

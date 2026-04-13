@@ -21,6 +21,10 @@ package rules
 import (
 	"expvar"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/rabbitstack/fibratus/pkg/config"
 	"github.com/rabbitstack/fibratus/pkg/event"
 	"github.com/rabbitstack/fibratus/pkg/filter"
@@ -28,8 +32,6 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/ps"
 	"github.com/rabbitstack/fibratus/pkg/rules/action"
 	log "github.com/sirupsen/logrus"
-	"sync"
-	"time"
 )
 
 // RuleMatchFunc is rule match function definition. It accepts
@@ -70,6 +72,12 @@ type Engine struct {
 	// of rule match. Rules still evaluate for detection alerts, but
 	// the enqueue decision is always true for fleet telemetry.
 	fleetMode bool
+
+	// needsCallstack tracks event types that have at least one rule
+	// referencing thread.callstack.* fields. The symbolizer uses this
+	// to skip expensive symbol resolution for event types where no
+	// rule would read the callstack data.
+	needsCallstack map[event.Type]bool
 }
 
 type ruleMatch struct {
@@ -228,11 +236,42 @@ func (e *Engine) Compile() (*config.RulesCompileResult, error) {
 		c.Version = ""
 	}
 
+	// Build the set of event types that have rules using callstack fields.
+	// The symbolizer checks this to skip expensive symbol resolution for
+	// event types where no rule reads thread.callstack.* data.
+	e.needsCallstack = make(map[event.Type]bool)
+	for typ, fltrs := range e.filters.types {
+		for _, f := range fltrs {
+			for _, field := range f.filter.GetFields() {
+				name := string(field.Name)
+				if strings.HasPrefix(name, "thread.callstack.") || strings.HasPrefix(name, "thread._callstack") {
+					e.needsCallstack[typ] = true
+					break
+				}
+			}
+			if e.needsCallstack[typ] {
+				break
+			}
+		}
+	}
+
 	return rs, nil
 }
 
 func (e *Engine) RegisterMatchFunc(fn RuleMatchFunc) {
 	e.matchFunc = fn
+}
+
+// NeedsCallstack returns true if any rule for the given event type
+// references thread.callstack.* fields. The symbolizer uses this to
+// skip expensive symbol resolution (dbghelp.dll syscalls) for event
+// types where no rule would read the resolved data. Module names are
+// still populated (cheap) for telemetry.
+func (e *Engine) NeedsCallstack(typ event.Type) bool {
+	if e.needsCallstack == nil {
+		return true // conservative: resolve if map not built yet
+	}
+	return e.needsCallstack[typ]
 }
 
 // SetFleetMode enables fleet telemetry mode: all events are enqueued

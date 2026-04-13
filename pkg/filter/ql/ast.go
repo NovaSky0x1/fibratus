@@ -854,12 +854,13 @@ func (v *ValuerEval) evalBinaryExpr(expr *BinaryExpr) interface{} {
 				return false
 			}
 		case IContains:
+			lhsLower := strings.ToLower(lhs)
 			switch rhs := rhs.(type) {
 			case string:
-				return strings.Contains(strings.ToLower(lhs), strings.ToLower(rhs))
+				return strings.Contains(lhsLower, strings.ToLower(rhs))
 			case []string:
 				for _, s := range rhs {
-					if strings.Contains(strings.ToLower(lhs), strings.ToLower(s)) {
+					if strings.Contains(lhsLower, strings.ToLower(s)) {
 						return true
 					}
 				}
@@ -960,12 +961,13 @@ func (v *ValuerEval) evalBinaryExpr(expr *BinaryExpr) interface{} {
 				return false
 			}
 		case IMatches:
+			lhsLower := strings.ToLower(lhs)
 			switch rhs := rhs.(type) {
 			case string:
-				return wildcard.Match(strings.ToLower(rhs), strings.ToLower(lhs))
+				return wildcard.Match(strings.ToLower(rhs), lhsLower)
 			case []string:
 				for _, pat := range rhs {
-					if wildcard.Match(strings.ToLower(pat), strings.ToLower(lhs)) {
+					if wildcard.Match(strings.ToLower(pat), lhsLower) {
 						return true
 					}
 				}

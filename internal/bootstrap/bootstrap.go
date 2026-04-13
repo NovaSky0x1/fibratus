@@ -335,6 +335,12 @@ func (f *App) Run(args []string) error {
 		// register stack symbolizer
 		if cfg.EventSource.StackEnrichment {
 			f.symbolizer = symbolize.NewSymbolizer(symbolize.NewDebugHelpResolver(cfg), f.psnap, cfg, false)
+			// Wire the rule engine's callstack field map into the symbolizer.
+			// This lets the symbolizer skip expensive Debug Help API calls for
+			// event types where no rule uses thread.callstack.* fields.
+			if f.engine != nil {
+				f.symbolizer.NeedsFullSymbolization = f.engine.NeedsCallstack
+			}
 			f.evs.RegisterEventListener(f.symbolizer)
 		}
 		// register evasion scanner

@@ -141,6 +141,12 @@ type Symbolizer struct {
 	quit chan struct{}
 
 	enqueue bool
+
+	// NeedsFullSymbolization is set by the rule engine after compilation.
+	// Returns true if any rule for the given event type uses callstack fields.
+	// When false, the symbolizer populates module names (cheap) but skips
+	// function symbol resolution via Debug Help API (expensive syscalls).
+	NeedsFullSymbolization func(event.Type) bool
 }
 
 // NewSymbolizer builds a new instance of address symbolizer.
@@ -419,11 +425,16 @@ func (s *Symbolizer) pushFrames(addrs []va.Address, e *event.Event) {
 // PE export directory entries. If either the
 // symbol or module are not resolved, then we
 // fall back to Debug API.
+//
+// When NeedsFullSymbolization returns false for this event type,
+// only module names are populated (cheap memory reads) and the
+// expensive Debug Help API fallback is skipped entirely.
 func (s *Symbolizer) produceFrame(addr va.Address, e *event.Event) callstack.Frame {
+	needsFull := s.NeedsFullSymbolization == nil || s.NeedsFullSymbolization(e.Type)
 	pid := e.StackPID()
 	frame := callstack.Frame{PID: pid, Addr: addr}
 	if addr.InSystemRange() {
-		if s.config.SymbolizeKernelAddresses {
+		if s.config.SymbolizeKernelAddresses && needsFull {
 			frame.Module = s.r.GetModuleName(windows.CurrentProcess(), addr)
 			frame.Symbol, frame.Offset = s.r.GetSymbolNameAndOffset(windows.CurrentProcess(), addr)
 		}
@@ -506,6 +517,17 @@ func (s *Symbolizer) produceFrame(addr va.Address, e *event.Event) callstack.Fra
 			s.cacheSymbol(pid, addr, &frame)
 			return frame
 		}
+	}
+
+	// Skip expensive Debug Help API fallback when no rules need
+	// full callstack symbolization for this event type. Module names
+	// from PE export data (above) are already populated. Only the
+	// function-level symbol names require Debug Help API syscalls.
+	if !needsFull {
+		if frame.Module != "" {
+			s.cacheSymbol(pid, addr, &frame)
+		}
+		return frame
 	}
 
 	debugHelpFallbacks.Add(1)

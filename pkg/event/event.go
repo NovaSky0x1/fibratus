@@ -107,6 +107,10 @@ type Event struct {
 	// Callstack represents the call stack for the thread that generated the event.
 	Callstack callstack.Callstack `json:"callstack"`
 
+	// FieldCache stores extracted field values for reuse across multiple rule
+	// evaluations on the same event. Populated lazily by filter.mapValuer().
+	FieldCache map[string]any `json:"-"`
+
 	// mmux guards the metadata map
 	mmux sync.RWMutex
 }
