@@ -251,7 +251,16 @@ func (w *worker) wait() (uint32, error) {
 	return windows.WaitForSingleObject(w.out, w.jitter.timeout())
 }
 
+// FleetMode can be set to true before the first QueryWorkingSet call
+// to reduce the thread pool size. In fleet mode, working set queries
+// are less frequent (only triggered by rules that read allocation_sizes
+// or protections fields), so fewer workers are needed.
+var FleetMode bool
+
 func poolSize() int {
+	if FleetMode {
+		return 1
+	}
 	n := runtime.NumCPU() / 2
 	if n < 2 {
 		return 2

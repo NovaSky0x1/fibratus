@@ -48,6 +48,7 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/sys"
 	"github.com/rabbitstack/fibratus/pkg/util/multierror"
 	"github.com/rabbitstack/fibratus/pkg/util/signals"
+	"github.com/rabbitstack/fibratus/pkg/util/va"
 	"github.com/rabbitstack/fibratus/pkg/util/version"
 	"github.com/rabbitstack/fibratus/pkg/yara"
 	log "github.com/sirupsen/logrus"
@@ -242,23 +243,17 @@ func NewApp(cfg *config.Config, options ...Option) (*App, error) {
 		// evaluate against any event type. Without this, the ETW trace is
 		// configured to only collect events for rules known at startup (0 rules).
 		if cfg.Fleet.Enabled {
-			// Use the compile result from initial rules (if any) to set
-			// drop masks. The rule compiler determines which event types
-			// are referenced by rules — events not in the set are dropped
-			// at the consumer level before any processing. This is critical
-			// for CPU: without drop masks, EVERY event type floods the
-			// rule engine even when no rule evaluates it.
-			// When fleet rules sync later, Engine.Compile() updates rs and
-			// the drop masks are refreshed dynamically.
-			//
+			// Reduce working set thread pool to 1 worker in fleet mode.
+			// The pool creates native threads that sit in WaitForMultipleObjects
+			// which Windows counts as CPU time. 8 threads = ~12% phantom CPU.
+			va.FleetMode = true
 			// Stack enrichment enabled — the StackwalkDecorator flusher
 			// releases events without holding the mutex to prevent deadlock
 			// when the event channel is full (fleet mode high throughput).
 			cfg.EventSource.StackEnrichment = true
-			// Disable threadpool events — high volume, low detection value,
-			// causes unnecessary CPU/network overhead in fleet mode.
+			// Disable threadpool events — high volume, low detection value.
 			cfg.EventSource.EnableThreadpoolEvents = false
-			log.Info("fleet mode: ETW trace uses rule-driven drop masks, stack enrichment enabled, threadpool disabled")
+			log.Info("fleet mode: ETW trace uses rule-driven drop masks, stack enrichment enabled, threadpool disabled, ws pool=1")
 		}
 	} else {
 		log.Info("rule engine is disabled")
