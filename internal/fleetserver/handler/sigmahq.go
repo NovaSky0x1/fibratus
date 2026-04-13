@@ -393,6 +393,10 @@ func (h *SigmaHQHandler) StartBackgroundUpdater(ctx context.Context) {
 			}
 		}
 
+		// Run an initial sync if SigmaHQ is enabled for any account
+		// and no SIGMA rules exist (e.g., after a reconversion purge).
+		h.resyncIfEmpty(ctx)
+
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
 
@@ -417,6 +421,21 @@ func (h *SigmaHQHandler) StartBackgroundUpdater(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// resyncIfEmpty checks if any SIGMA rules exist and triggers a full resync if not.
+// This handles the case where rules were purged for reconversion.
+func (h *SigmaHQHandler) resyncIfEmpty(ctx context.Context) {
+	if githubSyncDB == nil || !h.isRepoAvailable() {
+		return
+	}
+	var count int
+	err := githubSyncDB.QueryRowContext(ctx, `SELECT count(*) FROM rules WHERE source = 'sigmahq' LIMIT 1`).Scan(&count)
+	if err != nil || count > 0 {
+		return
+	}
+	log.Info("fleet: no SigmaHQ rules found, running initial sync with optimized converter...")
+	h.resyncAllEnabledAccounts(ctx)
 }
 
 // resyncAllEnabledAccounts re-syncs SigmaHQ rules for all accounts that have it enabled.
