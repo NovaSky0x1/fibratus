@@ -415,20 +415,53 @@ func convertWildcardValue(field, value, defaultOp string) (string, error) {
 	return fmt.Sprintf("%s imatches '%s'", field, escaped), nil
 }
 
-// convertListValues converts a list of SIGMA values into a coalesced Fibratus
-// expression. Instead of generating N separate "field op 'value'" expressions
-// joined with OR (which creates a massive AST), this coalesces all string values
-// into a single list operator: field imatches ('pat1', 'pat2', ...).
+// convertListValues converts a list of SIGMA values into Fibratus expressions.
 //
-// This is critical for performance — a rule with 20 values goes from 20 AST
-// nodes with 20 field extractions to 1 AST node with 1 field extraction.
+// For OR lists (useAll=false): coalesces string values into a single
+// imatches('pat1','pat2',...) for performance — 1 AST node, 1 field extraction.
+//
+// For AND lists (useAll=true): keeps individual expressions joined with AND.
+// Cannot coalesce because imatches is OR-semantics (match any pattern),
+// but AND requires ALL patterns to match simultaneously.
 func convertListValues(field string, values []interface{}, op string, useAll bool, modifiers []string) (string, error) {
-	// Determine the coalesced operator and pattern transform based on modifiers
+	// AND lists: generate individual expressions, join with AND.
+	// Each value must match independently — cannot coalesce into imatches.
+	if useAll {
+		var parts []string
+		for _, val := range values {
+			var expr string
+			var err error
+			switch v := val.(type) {
+			case string:
+				expr, err = convertSingleValue(field, v, op, modifiers)
+			case int, int64, float64:
+				expr = fmt.Sprintf("%s = %v", field, v)
+			case nil:
+				expr = fmt.Sprintf("%s = ''", field)
+			default:
+				expr = fmt.Sprintf("%s = '%v'", field, v)
+			}
+			if err != nil {
+				return "", err
+			}
+			if expr != "" {
+				parts = append(parts, expr)
+			}
+		}
+		if len(parts) == 0 {
+			return "", nil
+		}
+		if len(parts) == 1 {
+			return parts[0], nil
+		}
+		return "(" + strings.Join(parts, " and ") + ")", nil
+	}
+
+	// OR lists: coalesce string values into single imatches for performance.
 	hasContains := hasModifier(modifiers, "contains")
 	hasStartsWith := hasModifier(modifiers, "startswith")
 	hasEndsWith := hasModifier(modifiers, "endswith")
 
-	// Collect string values that can be coalesced into imatches
 	var patterns []string
 	var nonStringParts []string
 
@@ -437,19 +470,14 @@ func convertListValues(field string, values []interface{}, op string, useAll boo
 		case string:
 			escaped := escapeQL(v)
 			if hasContains {
-				// contains → *value*
 				patterns = append(patterns, "*"+escaped+"*")
 			} else if hasStartsWith {
-				// startswith → value*
 				patterns = append(patterns, escaped+"*")
 			} else if hasEndsWith {
-				// endswith → *value
 				patterns = append(patterns, "*"+escaped)
 			} else if strings.Contains(v, "*") || strings.Contains(v, "?") {
-				// Already has wildcards — use as-is for imatches
 				patterns = append(patterns, escaped)
 			} else {
-				// Exact match — wrap for imatches
 				patterns = append(patterns, escaped)
 			}
 		case int, int64, float64:
@@ -463,9 +491,7 @@ func convertListValues(field string, values []interface{}, op string, useAll boo
 
 	var allParts []string
 
-	// Coalesce string patterns into a single imatches expression
 	if len(patterns) == 1 {
-		// Single pattern — use the most specific operator
 		if hasContains {
 			allParts = append(allParts, fmt.Sprintf("%s icontains '%s'", field, strings.TrimSuffix(strings.TrimPrefix(patterns[0], "*"), "*")))
 		} else if hasStartsWith {
@@ -476,7 +502,6 @@ func convertListValues(field string, values []interface{}, op string, useAll boo
 			allParts = append(allParts, fmt.Sprintf("%s imatches '%s'", field, patterns[0]))
 		}
 	} else if len(patterns) > 1 {
-		// Multiple patterns — coalesce into single imatches with list
 		quoted := make([]string, len(patterns))
 		for i, p := range patterns {
 			quoted[i] = "'" + p + "'"
@@ -484,7 +509,6 @@ func convertListValues(field string, values []interface{}, op string, useAll boo
 		allParts = append(allParts, fmt.Sprintf("%s imatches (%s)", field, strings.Join(quoted, ", ")))
 	}
 
-	// Add non-string parts
 	allParts = append(allParts, nonStringParts...)
 
 	if len(allParts) == 0 {
@@ -493,12 +517,7 @@ func convertListValues(field string, values []interface{}, op string, useAll boo
 	if len(allParts) == 1 {
 		return allParts[0], nil
 	}
-
-	joiner := " or "
-	if useAll {
-		joiner = " and "
-	}
-	return "(" + strings.Join(allParts, joiner) + ")", nil
+	return "(" + strings.Join(allParts, " or ") + ")", nil
 }
 
 // convertCIDR converts a CIDR value to a cidr_contains() function call.
