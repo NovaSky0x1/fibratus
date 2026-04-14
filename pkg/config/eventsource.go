@@ -178,7 +178,7 @@ func (c *EventSourceConfig) Init() {
 
 // ClearDropMasks resets all event drop masks.
 func (c *EventSourceConfig) ClearDropMasks() {
-	c.dropMasks.ClearAll()
+	c.dropMasks = bitmask.New()
 }
 
 // SetDropMask inserts the event mask in the bitset to
