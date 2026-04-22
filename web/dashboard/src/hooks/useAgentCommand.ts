@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { api, Command } from '../lib/api'
+import { api } from '../lib/api'
 
 interface UseAgentCommandOptions {
   autoExecute?: boolean  // fire on mount
@@ -64,11 +64,12 @@ export function useAgentCommand<T>(
         setIsLoading(false)
       }, timeout)
 
-      // Poll for result
+      // Poll for result by command ID — bypasses the command history filter
+      // that hides root user commands from getAgentCommands.
       pollRef.current = setInterval(async () => {
         try {
-          const cmdsResp = await api.getAgentCommands(agentId)
-          const cmd = (cmdsResp.data || []).find((c: Command) => c.id === cmdId)
+          const cmdResp = await api.getCommand(cmdId)
+          const cmd = cmdResp.data
           if (!cmd) return
 
           if (cmd.status === 'completed') {
