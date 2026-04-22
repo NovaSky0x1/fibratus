@@ -17,7 +17,7 @@ function fmtDate(s: string) {
 }
 
 async function waitForCommand(_agentId: string, cmdId: string, signal: AbortSignal): Promise<Record<string, unknown>> {
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 150; i++) {
     if (signal.aborted) throw new Error('cancelled')
     await new Promise(r => setTimeout(r, 400))
     const res = await api.getCommand(cmdId)
