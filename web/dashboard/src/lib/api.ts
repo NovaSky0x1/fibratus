@@ -291,6 +291,16 @@ export interface User {
   created_at: string
 }
 
+export interface PendingUser {
+  id: string
+  email: string
+  name: string
+  account_id: string
+  role: string
+  status: string
+  created_at: string
+}
+
 export interface AuthResponse {
   token: string
   totp_required?: boolean
@@ -620,6 +630,13 @@ export const api = {
     fetchApi<{ status: string }>(`/admin/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
   adminDisableTOTP: (id: string) =>
     fetchApi<{ status: string }>(`/admin/users/${id}/disable-totp`, { method: 'POST' }),
+
+  // Pending user approvals (root only)
+  adminListPendingUsers: () => fetchApi<PendingUser[]>('/admin/pending-users'),
+  adminApprovePendingUser: (id: string) =>
+    fetchApi<{ status: string }>(`/admin/pending-users/${id}/approve`, { method: 'POST' }),
+  adminRejectPendingUser: (id: string) =>
+    fetchApi<{ status: string }>(`/admin/pending-users/${id}/reject`, { method: 'POST' }),
 
   // Enrollment Tokens
   getEnrollmentTokens: () => fetchApi<EnrollmentToken[]>(orgPath('/enrollment-tokens')),

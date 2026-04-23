@@ -594,6 +594,39 @@ Get-Process fibratus -ErrorAction SilentlyContinue | ForEach-Object {
 }
 Start-Sleep -Seconds 3
 
+# Reset tamper-protection artifacts that would block MSI file/registry
+# replacement. DisableForUpdate() already lifted the runtime protections,
+# but stale DACLs on disk can survive a crashed/killed agent and prevent
+# msiexec from overwriting the Bin directory or the HKLM registry keys.
+"$(Get-Date) Resetting install-dir ownership and ACLs..." | Out-File $logFile -Append
+takeown /F "$installDir" /R /D Y 2>&1 | Out-Null
+icacls "$installDir" /reset /T /C 2>&1 | Out-Null
+
+"$(Get-Date) Resetting HKLM:\SOFTWARE\Fibratus ACLs..." | Out-File $logFile -Append
+# Grant administrators full control on the registry key tree so the MSI
+# can read/write DPAPI enrollment values. Uses psexec-style SYSTEM elevation
+# via a scheduled task only if the direct reset fails (most hosts won't need this).
+$regReset = @'
+$k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("SOFTWARE\Fibratus", [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, [System.Security.AccessControl.RegistryRights]::ChangePermissions)
+if ($k) {
+    $acl = $k.GetAccessControl()
+    $rule = New-Object System.Security.AccessControl.RegistryAccessRule("BUILTIN\Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+    $acl.SetAccessRule($rule)
+    $k.SetAccessControl($acl)
+    $k.Close()
+}
+'@
+try { Invoke-Expression $regReset } catch {
+    "$(Get-Date) Direct reg ACL reset failed: $_. Trying scheduled-task SYSTEM fallback..." | Out-File $logFile -Append
+    $taskScript = Join-Path $env:TEMP "fibratus-reg-reset.ps1"
+    Set-Content -Path $taskScript -Value $regReset -Force
+    schtasks /Create /TN "FibratusRegResetOneShot" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File `"$taskScript`"" /SC ONCE /ST 00:00 /RU SYSTEM /RL HIGHEST /F 2>&1 | Out-Null
+    schtasks /Run /TN "FibratusRegResetOneShot" 2>&1 | Out-Null
+    Start-Sleep -Seconds 3
+    schtasks /Delete /TN "FibratusRegResetOneShot" /F 2>&1 | Out-Null
+    Remove-Item $taskScript -Force -ErrorAction SilentlyContinue
+}
+
 # Try MSI upgrade first
 "$(Get-Date) Attempting MSI install..." | Out-File $logFile -Append
 $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i ""$msiPath"" /quiet /norestart REINSTALLMODE=vomus REINSTALL=ALL" -Wait -PassThru

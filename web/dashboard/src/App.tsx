@@ -12,6 +12,7 @@ import Events from './pages/Events'
 import AuditLog from './pages/AuditLog'
 import Management from './pages/Management'
 import Admin from './pages/Admin'
+import PendingUsers from './pages/PendingUsers'
 import ProcessTreePage from './pages/ProcessTreePage'
 import AgentDetailPage from './pages/AgentDetailPage'
 import Profile from './pages/Profile'
@@ -43,6 +44,7 @@ export default function App() {
                 <Route path="/events" element={<Events />} />
                 <Route path="/management" element={<Management />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/admin/pending-users" element={<PendingUsers />} />
                 <Route path="/settings" element={<Navigate to="/management#account" replace />} />
                 <Route path="/audit-log" element={<AuditLog />} />
                 <Route path="/profile" element={<Profile />} />
