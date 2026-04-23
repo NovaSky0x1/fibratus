@@ -723,6 +723,9 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 		executor.SetYaraScanner(func(target any) (any, error) {
 			return scanner.ScanTarget(target)
 		})
+		log.Info("fleet: on-demand YARA scanner wired to active-response executor")
+	} else {
+		log.Warn("fleet: no YARA scanner available for active-response yara_scan command (yara.enabled=false or build without yara tag)")
 	}
 	// Register event log reconfigure callback so server policy changes
 	// dynamically update the collector without agent restart
