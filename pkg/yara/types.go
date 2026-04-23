@@ -38,6 +38,11 @@ type Scanner interface {
 	// JSON-marshal the result directly (go-yara MatchRules is JSON-friendly).
 	// Intended for the fleet active-response "YARA Scan" command.
 	ScanTarget(target any) (any, error)
+	// ScanTargetInline compiles the given rule content on the fly and scans
+	// target with it, bypassing the rules loaded at scanner construction.
+	// Used by the fleet yara_scan command to apply server-managed rules
+	// that the agent doesn't have on disk.
+	ScanTargetInline(target any, rulesContent string) (any, error)
 	// Close disposes any resources allocated by the scanner.
 	Close()
 }

@@ -12,6 +12,7 @@ const navigation = [
   { name: 'Detections', href: '/detections', perm: 'page:detections' },
   { name: 'Events', href: '/events', perm: 'page:events' },
   { name: 'Rules', href: '/rules', perm: 'page:rules' },
+  { name: 'YARA Rules', href: '/yara-rules', perm: 'page:rules' },
   { name: 'Macros', href: '/macros', perm: 'page:macros' },
   { name: 'Audit Log', href: '/audit-log', perm: 'page:audit' },
   { name: 'Documentation', href: '/docs/', perm: 'page:overview', external: true },

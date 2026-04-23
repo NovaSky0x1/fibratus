@@ -153,6 +153,26 @@ CREATE TABLE IF NOT EXISTS rules (
 
 CREATE INDEX IF NOT EXISTS idx_rules_org ON rules(org_id);
 
+-- YARA rules managed on the server. Account-scoped: a single rule set
+-- applies across every org the account owns, matching the policy "rules are
+-- shared at the account level, not per-org". Used by the fleet yara_scan
+-- active-response command — the enabled rule set is embedded inline in the
+-- command payload at creation time.
+CREATE TABLE IF NOT EXISTS yara_rules (
+    id                 TEXT PRIMARY KEY,
+    account_id         TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name               TEXT NOT NULL,
+    description        TEXT DEFAULT '',
+    content            TEXT NOT NULL,
+    enabled            BOOLEAN NOT NULL DEFAULT true,
+    validation_status  TEXT NOT NULL DEFAULT 'valid',
+    validation_errors  TEXT DEFAULT '',
+    created_at         TIMESTAMPTZ DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_yara_rules_account ON yara_rules(account_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_yara_rules_account_name ON yara_rules(account_id, name);
+
 CREATE TABLE IF NOT EXISTS rule_assignments (
     group_id    TEXT REFERENCES agent_groups(id) ON DELETE CASCADE,
     rule_id     TEXT REFERENCES rules(id) ON DELETE CASCADE,

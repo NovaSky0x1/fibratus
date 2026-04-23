@@ -117,6 +117,19 @@ type RuleStore interface {
 	ListDeletedSyncIDs(ctx context.Context, orgID, source string) (map[string]bool, error)
 }
 
+// YARARuleStore manages server-side YARA rule persistence. Account-scoped:
+// a single rule set is shared across every org the account owns. Used by
+// the fleet yara_scan active-response command — the currently enabled rule
+// set is embedded inline in its payload at command-creation time.
+type YARARuleStore interface {
+	Create(ctx context.Context, rule *fleet.YARARule) error
+	Get(ctx context.Context, accountID, id string) (*fleet.YARARule, error)
+	List(ctx context.Context, accountID string) ([]*fleet.YARARule, error)
+	ListEnabled(ctx context.Context, accountID string) ([]*fleet.YARARule, error)
+	Update(ctx context.Context, rule *fleet.YARARule) error
+	Delete(ctx context.Context, accountID, id string) error
+}
+
 // GroupStore manages agent group persistence. All operations are org-scoped.
 type GroupStore interface {
 	Create(ctx context.Context, group *fleet.AgentGroup) error

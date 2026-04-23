@@ -260,6 +260,24 @@ type Rule struct {
 	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
+// YARARule represents a server-managed YARA rule. Rules are authored in the
+// dashboard, stored account-scoped (shared across every org the account
+// owns), and embedded into fleet yara_scan command payloads so the agent
+// compiles and applies them at scan time. Long-running inline detection
+// sync is not yet wired.
+type YARARule struct {
+	ID               string    `json:"id"`
+	AccountID        string    `json:"account_id,omitempty"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description,omitempty"`
+	Content          string    `json:"content"`
+	Enabled          bool      `json:"enabled"`
+	ValidationStatus string    `json:"validation_status"`
+	ValidationErrors string    `json:"validation_errors,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 // AgentGroup represents a logical grouping of agents for rule assignment.
 type AgentGroup struct {
 	ID          string    `json:"id"`

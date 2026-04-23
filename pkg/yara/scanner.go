@@ -365,6 +365,53 @@ func (s scanner) Scan(e *event.Event) (bool, error) {
 // interface stays build-tag independent.
 func (s scanner) ScanTarget(target any) (any, error) { return s.scan(target) }
 
+// ScanTargetInline compiles rulesContent with a fresh go-yara compiler,
+// scans target once against those rules, and discards the compiler.
+// Used for server-managed YARA rules shipped in a yara_scan command
+// payload — the agent's own loaded rules are not consulted. The scan
+// still honors ShouldSkipProcess for PID targets.
+func (s scanner) ScanTargetInline(target any, rulesContent string) (any, error) {
+	if strings.TrimSpace(rulesContent) == "" {
+		return nil, fmt.Errorf("inline yara rules are empty")
+	}
+	c, err := yara.NewCompiler()
+	if err != nil {
+		return nil, fmt.Errorf("yara inline: new compiler: %v", err)
+	}
+	if err := c.AddString(rulesContent, "inline"); err != nil {
+		return nil, fmt.Errorf("yara inline: add rules: %v", err)
+	}
+	if len(c.Errors) > 0 {
+		return nil, parseCompilerErrors(c.Errors)
+	}
+	rules, err := c.GetRules()
+	if err != nil {
+		return nil, fmt.Errorf("yara inline: compile: %v", err)
+	}
+	sn, err := yara.NewScanner(rules)
+	if err != nil {
+		return nil, fmt.Errorf("yara inline: new scanner: %v", err)
+	}
+	var matches yara.MatchRules
+	switch n := target.(type) {
+	case uint32:
+		if ok, proc := s.psnap.Find(n); ok && s.config.ShouldSkipProcess(proc.Exe) {
+			return matches, nil
+		}
+		err = sn.SetCallback(&matches).ScanProc(int(n))
+	case string:
+		err = sn.SetCallback(&matches).ScanFile(n)
+	case []byte:
+		err = sn.SetCallback(&matches).ScanMem(n)
+	default:
+		return nil, fmt.Errorf("yara inline: unsupported target type %T", target)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return matches, nil
+}
+
 func (s scanner) scan(target any) (yara.MatchRules, error) {
 	var matches yara.MatchRules
 	sn, err := s.newInternalScanner()

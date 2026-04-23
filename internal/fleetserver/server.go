@@ -99,6 +99,7 @@ func (s *Server) Run(ctx context.Context) error {
 	agentStore := postgres.NewAgentStore(db)
 	detStore := postgres.NewDetectionStore(db)
 	ruleStore := postgres.NewRuleStore(db)
+	yaraRuleStore := postgres.NewYARARuleStore(db)
 	commandStore := postgres.NewCommandStore(db)
 	enrollStore := postgres.NewEnrollmentTokenStore(db)
 
@@ -160,8 +161,10 @@ func (s *Server) Run(ctx context.Context) error {
 	agentHandler := handler.NewAgentHandler(agentStore, accountStore, orgStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
 	commandHandler.SetAccountStore(accountStore)
+	commandHandler.SetYARARuleStore(yaraRuleStore)
 	detHandler := handler.NewDetectionHandler(detStore, agentStore, telemetryStore)
 	ruleHandler := handler.NewRuleHandler(ruleStore, agentStore, macroStore, auditStore, userStore)
+	yaraRuleHandler := handler.NewYARARuleHandler(yaraRuleStore)
 	enrollHandler := handler.NewEnrollHandler(enrollStore, agentStore, caManager)
 	telemetryHandler := handler.NewTelemetryHandler(telemetryStore, agentStore)
 	telemetryHandler.SetOrgStore(orgStore)
@@ -647,6 +650,32 @@ func (s *Server) Run(ctx context.Context) error {
 		if r.Method == http.MethodGet {
 			enrollTokenHandler.List(w, r)
 		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	// YARA rules (account-scoped — shared across every org in the account).
+	// Embedded inline in yara_scan command payloads at creation time.
+	dashMux.HandleFunc("/api/v1/account/yara-rules", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			yaraRuleHandler.List(w, r)
+		case http.MethodPost:
+			requirePermission(fleetauth.PermManageRules, yaraRuleHandler.Create)(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/account/yara-rules/", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/account/yara-rules/validate" && r.Method == http.MethodPost:
+			yaraRuleHandler.Validate(w, r)
+		case r.Method == http.MethodGet:
+			yaraRuleHandler.Get(w, r)
+		case r.Method == http.MethodPut:
+			requirePermission(fleetauth.PermManageRules, yaraRuleHandler.Update)(w, r)
+		case r.Method == http.MethodDelete:
+			requirePermission(fleetauth.PermManageRules, yaraRuleHandler.Delete)(w, r)
+		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})

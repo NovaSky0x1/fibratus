@@ -7,6 +7,7 @@ import Overview from './pages/Overview'
 import Agents from './pages/Agents'
 import Detections from './pages/Detections'
 import Rules from './pages/Rules'
+import YaraRules from './pages/YaraRules'
 import Macros from './pages/Macros'
 import Events from './pages/Events'
 import AuditLog from './pages/AuditLog'
@@ -40,6 +41,7 @@ export default function App() {
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/detections" element={<Detections />} />
                 <Route path="/rules" element={<Rules />} />
+                <Route path="/yara-rules" element={<YaraRules />} />
                 <Route path="/macros" element={<Macros />} />
                 <Route path="/events" element={<Events />} />
                 <Route path="/management" element={<Management />} />

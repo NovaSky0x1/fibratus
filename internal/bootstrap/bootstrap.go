@@ -720,7 +720,10 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	// through pkg/config).
 	if f.yaraScanner != nil {
 		scanner := f.yaraScanner
-		executor.SetYaraScanner(func(target any) (any, error) {
+		executor.SetYaraScanner(func(target any, inlineRules string) (any, error) {
+			if inlineRules != "" {
+				return scanner.ScanTargetInline(target, inlineRules)
+			}
 			return scanner.ScanTarget(target)
 		})
 		log.Info("fleet: on-demand YARA scanner wired to active-response executor")

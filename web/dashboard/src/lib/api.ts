@@ -643,6 +643,30 @@ export const api = {
   createEnrollmentToken: (data: { name: string; max_uses: number; expires_in: number }) =>
     fetchApi<EnrollmentToken>(orgPath('/enrollment-tokens'), { method: 'POST', body: JSON.stringify(data) }),
   deleteEnrollmentToken: (id: string) => fetchApi<void>(orgPath(`/enrollment-tokens/${id}`), { method: 'DELETE' }),
+
+  // YARA rules — account-scoped (shared across every org in the account)
+  listYaraRules: () => fetchApi<YaraRule[]>('/account/yara-rules'),
+  createYaraRule: (data: { name: string; description?: string; content: string; enabled?: boolean }) =>
+    fetchApi<YaraRule>('/account/yara-rules', { method: 'POST', body: JSON.stringify(data) }),
+  getYaraRule: (id: string) => fetchApi<YaraRule>(`/account/yara-rules/${id}`),
+  updateYaraRule: (id: string, data: { name?: string; description?: string; content?: string; enabled?: boolean }) =>
+    fetchApi<YaraRule>(`/account/yara-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteYaraRule: (id: string) => fetchApi<void>(`/account/yara-rules/${id}`, { method: 'DELETE' }),
+  validateYaraRule: (content: string) =>
+    fetchApi<{ status: string; errors: string }>('/account/yara-rules/validate', { method: 'POST', body: JSON.stringify({ content }) }),
+}
+
+export interface YaraRule {
+  id: string
+  account_id: string
+  name: string
+  description?: string
+  content: string
+  enabled: boolean
+  validation_status: string
+  validation_errors?: string
+  created_at: string
+  updated_at: string
 }
 
 // ═════════════════════════════════════════════════

@@ -73,6 +73,7 @@ type CommandHandler struct {
 	accounts     store.AccountStore
 	audit        store.AuditStore
 	users        store.UserStore
+	yaraRules    store.YARARuleStore
 	onCmdCreated CommandPushCallback
 }
 
@@ -80,6 +81,11 @@ type CommandHandler struct {
 func NewCommandHandler(commands store.CommandStore, agents store.AgentStore, audit store.AuditStore, users store.UserStore) *CommandHandler {
 	return &CommandHandler{commands: commands, agents: agents, audit: audit, users: users}
 }
+
+// SetYARARuleStore wires the server-managed YARA rule store so that
+// yara_scan commands get the org's enabled rules embedded inline at
+// command-creation time.
+func (h *CommandHandler) SetYARARuleStore(s store.YARARuleStore) { h.yaraRules = s }
 
 func (h *CommandHandler) isRootUser(ctx context.Context, userID string) bool {
 	if h.users == nil || userID == "" {
@@ -174,12 +180,65 @@ func (h *CommandHandler) CreateCommand(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// For yara_scan, enrich the payload with the org's enabled YARA rules.
+	// Optional request field "rule_ids" restricts the embedded set to
+	// specific rules; empty/omitted means "all enabled rules".
+	payload := req.Payload
+	if req.Type == fleet.CmdYaraScan && h.yaraRules != nil {
+		var base struct {
+			PID     int      `json:"pid,omitempty"`
+			Path    string   `json:"path,omitempty"`
+			RuleIDs []string `json:"rule_ids,omitempty"`
+		}
+		_ = json.Unmarshal(req.Payload, &base)
+		accountID := ctxutil.AccountIDFromContext(r.Context())
+		rules, err := h.yaraRules.ListEnabled(r.Context(), accountID)
+		if err != nil {
+			log.Warnf("yara_scan: failed to load server-managed rules for account %s: %v", accountID, err)
+		}
+		// If rule_ids provided, narrow to those (keeping only enabled/valid).
+		if len(base.RuleIDs) > 0 {
+			want := map[string]bool{}
+			for _, id := range base.RuleIDs {
+				want[id] = true
+			}
+			filtered := rules[:0]
+			for _, r := range rules {
+				if want[r.ID] {
+					filtered = append(filtered, r)
+				}
+			}
+			rules = filtered
+		}
+		// Concatenate rule content into a single .yar blob with a separator
+		// comment per rule so the agent can report which rule triggered
+		// (go-yara tracks this via the rule's name, which is already in the
+		// content, so no extra metadata needed).
+		var buf strings.Builder
+		for _, r := range rules {
+			buf.WriteString("// --- rule: ")
+			buf.WriteString(r.Name)
+			buf.WriteString(" ---\n")
+			buf.WriteString(r.Content)
+			buf.WriteString("\n")
+		}
+		enriched := map[string]any{
+			"pid":        base.PID,
+			"path":       base.Path,
+			"rules_yara": buf.String(),
+			"rule_count": len(rules),
+		}
+		if b, err := json.Marshal(enriched); err == nil {
+			payload = b
+		}
+	}
+
 	cmd := &fleet.Command{
 		ID:             GenerateID(),
 		OrgID:          orgID,
 		AgentID:        agentID,
 		Type:           req.Type,
-		Payload:        req.Payload,
+		Payload:        payload,
 		Status:         fleet.CmdStatusPending,
 		CreatedBy:      userID,
 		CreatedByEmail: userEmail,

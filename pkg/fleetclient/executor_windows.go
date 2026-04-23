@@ -44,7 +44,11 @@ import (
 // importing pkg/yara) so this package does not pull in yara → ps → config,
 // which would close the import cycle back through pkg/config → pkg/fleetclient.
 // Bootstrap adapts its yara.Scanner to this signature via a small closure.
-type YaraScanFunc func(target any) (any, error)
+// inlineRules is optional: non-empty content means "compile these rules on
+// the fly and scan with only those"; empty means "use the agent's preloaded
+// rule set". Inline rules come from server-managed YARA rules embedded in
+// the yara_scan command payload.
+type YaraScanFunc func(target any, inlineRules string) (any, error)
 
 // EventLogReconfigureCallback is called when the server pushes a new event log
 // collection policy. The raw JSON payload is passed to the bootstrap layer which
@@ -1001,8 +1005,10 @@ func (e *WindowsExecutor) stopCapture(cmd *fleet.Command) (json.RawMessage, erro
 //     "match_count": N, "scanned_at": "<RFC3339>" }
 func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) {
 	var payload struct {
-		PID  int    `json:"pid"`
-		Path string `json:"path"`
+		PID       int    `json:"pid"`
+		Path      string `json:"path"`
+		RulesYara string `json:"rules_yara,omitempty"`
+		RuleCount int    `json:"rule_count,omitempty"`
 	}
 	json.Unmarshal(cmd.Payload, &payload)
 
@@ -1029,7 +1035,7 @@ func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) 
 	}
 	done := make(chan scanResult, 1)
 	go func() {
-		m, err := e.yaraScanFn(target)
+		m, err := e.yaraScanFn(target, payload.RulesYara)
 		done <- scanResult{matches: m, err: err}
 	}()
 
