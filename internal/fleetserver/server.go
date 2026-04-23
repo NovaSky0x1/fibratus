@@ -197,6 +197,7 @@ func (s *Server) Run(ctx context.Context) error {
 	authHandler.SetRuleStore(ruleStore)
 	handler.SetGitHubSyncDB(db)
 	githubSyncHandler := handler.NewGitHubSyncHandler(ruleStore, macroStore, auditStore, userStore)
+	githubSyncHandler.SetYARARuleStore(yaraRuleStore)
 	githubSyncHandler.StartPeriodicSync(ctx)
 	releaseChecker := handler.NewReleaseChecker(accountStore, 15*time.Minute)
 	releaseChecker.Start(ctx)

@@ -273,6 +273,9 @@ type YARARule struct {
 	Description      string    `json:"description,omitempty"`
 	Content          string    `json:"content"`
 	Enabled          bool      `json:"enabled"`
+	Source           string    `json:"source,omitempty"`         // "manual" or "github:<repo>"
+	UserModified     bool      `json:"user_modified,omitempty"`
+	UserDisabled     bool      `json:"user_disabled,omitempty"`
 	ValidationStatus string    `json:"validation_status"`
 	ValidationErrors string    `json:"validation_errors,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`

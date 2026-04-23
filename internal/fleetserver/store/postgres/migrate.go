@@ -173,6 +173,15 @@ CREATE TABLE IF NOT EXISTS yara_rules (
 CREATE INDEX IF NOT EXISTS idx_yara_rules_account ON yara_rules(account_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_yara_rules_account_name ON yara_rules(account_id, name);
 
+-- Source tracking: "manual" = user-created via dashboard; "github:<repo>" =
+-- synced from a github_sync_configs entry. user_modified flips to true when
+-- an operator edits a github-sourced rule, so subsequent syncs preserve
+-- their change. user_disabled is analogous to the detection-rule flag.
+ALTER TABLE yara_rules ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE yara_rules ADD COLUMN IF NOT EXISTS user_modified BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE yara_rules ADD COLUMN IF NOT EXISTS user_disabled BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_yara_rules_source ON yara_rules(account_id, source);
+
 CREATE TABLE IF NOT EXISTS rule_assignments (
     group_id    TEXT REFERENCES agent_groups(id) ON DELETE CASCADE,
     rule_id     TEXT REFERENCES rules(id) ON DELETE CASCADE,

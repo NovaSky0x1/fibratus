@@ -199,9 +199,11 @@ func (h *YARARuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		existing.Name = in.Name
 	}
 	existing.Description = in.Description
-	if strings.TrimSpace(in.Content) != "" {
+	contentChanged := false
+	if strings.TrimSpace(in.Content) != "" && in.Content != existing.Content {
 		existing.Content = in.Content
 		existing.ValidationStatus, existing.ValidationErrors = validateYARASyntax(in.Content)
+		contentChanged = true
 	}
 	if in.Enabled != nil {
 		existing.Enabled = *in.Enabled && existing.ValidationStatus == "valid"
@@ -209,6 +211,11 @@ func (h *YARARuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		// Content edit flipped a previously-valid rule to invalid — force-disable
 		// so the broken rule can't reach a scan payload.
 		existing.Enabled = false
+	}
+	// Any dashboard edit on a github-sourced rule marks it user-modified so
+	// subsequent GitHub syncs don't stomp the local change.
+	if (contentChanged || in.Enabled != nil) && strings.HasPrefix(existing.Source, "github:") {
+		existing.UserModified = true
 	}
 	if err := h.rules.Update(r.Context(), existing); err != nil {
 		log.Errorf("yara-rules: update: %v", err)

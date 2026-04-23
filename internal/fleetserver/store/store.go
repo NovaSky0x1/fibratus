@@ -128,6 +128,14 @@ type YARARuleStore interface {
 	ListEnabled(ctx context.Context, accountID string) ([]*fleet.YARARule, error)
 	Update(ctx context.Context, rule *fleet.YARARule) error
 	Delete(ctx context.Context, accountID, id string) error
+	// Upsert creates-or-updates by (account_id, name). Used by GitHub sync so
+	// the same rule re-pulled on a later sync overwrites the existing row.
+	// Skips the overwrite if user_modified=true on the existing row.
+	Upsert(ctx context.Context, rule *fleet.YARARule) (action string, err error)
+	// DeleteBySourceExcept drops rules for the given source whose names are
+	// NOT in keepNames. Lets GitHub sync remove rules that vanished from the
+	// upstream repo.
+	DeleteBySourceExcept(ctx context.Context, accountID, source string, keepNames []string) (int, error)
 }
 
 // GroupStore manages agent group persistence. All operations are org-scoped.

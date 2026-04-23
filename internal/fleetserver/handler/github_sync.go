@@ -54,11 +54,12 @@ type GitHubSyncConfig struct {
 
 // GitHubSyncHandler manages GitHub-based detection rule synchronization.
 type GitHubSyncHandler struct {
-	rules  store.RuleStore
-	macros store.MacroStore
-	audit  store.AuditStore
-	users  store.UserStore
-	client *http.Client
+	rules     store.RuleStore
+	macros    store.MacroStore
+	audit     store.AuditStore
+	users     store.UserStore
+	yaraRules store.YARARuleStore
+	client    *http.Client
 }
 
 // NewGitHubSyncHandler creates a new GitHub sync handler.
@@ -71,6 +72,11 @@ func NewGitHubSyncHandler(rules store.RuleStore, macros store.MacroStore, audit 
 		client: &http.Client{Timeout: 30 * time.Second},
 	}
 }
+
+// SetYARARuleStore opts this sync handler into pulling .yar/.yara files from
+// configured repos into yara_rules. Safe to leave unset — sync then only
+// handles detection .yml/.yaml files.
+func (h *GitHubSyncHandler) SetYARARuleStore(s store.YARARuleStore) { h.yaraRules = s }
 
 // loadMacros loads org macros and converts them for the QL parser.
 func (h *GitHubSyncHandler) loadMacros(ctx context.Context, orgID string) map[string]*qlparser.Macro {
@@ -433,6 +439,16 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 		}
 	}
 
+	// YARA files from the same repo — pulled into yara_rules (account-scoped)
+	// so the same sync config can host both detection rules and YARA rules.
+	if h.yaraRules != nil && cfg.AccountID != "" {
+		yaraCreated, yaraUpdated, yaraSkipped, yaraDeleted := h.syncYaraFromFiles(ctx, cfg, files, source)
+		result.Created += yaraCreated
+		result.Updated += yaraUpdated
+		result.Skipped += yaraSkipped
+		result.Deleted += yaraDeleted
+	}
+
 	result.Duration = time.Since(start).String()
 	scope := cfg.Scope
 	if scope == "" {
@@ -442,6 +458,69 @@ func (h *GitHubSyncHandler) syncFromGitHub(ctx context.Context, orgID string, cf
 		scope, len(targetOrgIDs), result.Created, result.Updated, result.Skipped, result.Invalid, len(result.Errors))
 
 	return result, nil
+}
+
+// syncYaraFromFiles walks the repo's .yar/.yara files, splits each into
+// individual rule declarations, and upserts them into yara_rules under the
+// sync config's account. Rules removed from the repo are deleted (unless a
+// user has edited them via the dashboard, in which case user_modified=true
+// and the row is preserved). Returns (created, updated, skipped, deleted).
+func (h *GitHubSyncHandler) syncYaraFromFiles(ctx context.Context, cfg *GitHubSyncConfig, files []githubFile, source string) (int, int, int, int) {
+	var created, updated, skipped int
+	seenNames := make([]string, 0)
+	for _, file := range files {
+		if !strings.HasSuffix(strings.ToLower(file.Name), ".yar") &&
+			!strings.HasSuffix(strings.ToLower(file.Name), ".yara") {
+			continue
+		}
+		body, err := h.fetchGitHubFile(file.DownloadURL, cfg.Token)
+		if err != nil {
+			log.Warnf("fleet: yara sync: fetch %s: %v", file.Name, err)
+			continue
+		}
+		// Multi-rule file — split by `rule NAME` declarations.
+		parts := splitBaseline(string(body))
+		for _, p := range parts {
+			status, errs := validateYARASyntax(p.Content)
+			rule := &fleet.YARARule{
+				ID:               GenerateID(),
+				AccountID:        cfg.AccountID,
+				Name:             p.Name,
+				Description:      fmt.Sprintf("Synced from %s (%s)", cfg.RepoURL, file.Path),
+				Content:          p.Content,
+				Enabled:          status == "valid",
+				ValidationStatus: status,
+				ValidationErrors: errs,
+				Source:           source,
+			}
+			action, err := h.yaraRules.Upsert(ctx, rule)
+			if err != nil {
+				log.Warnf("fleet: yara sync: upsert %s from %s: %v", p.Name, file.Path, err)
+				continue
+			}
+			seenNames = append(seenNames, p.Name)
+			switch action {
+			case "created":
+				created++
+			case "updated":
+				updated++
+			case "skipped-user-modified":
+				skipped++
+			}
+		}
+	}
+
+	// Prune YARA rules that vanished from the repo.
+	deleted, err := h.yaraRules.DeleteBySourceExcept(ctx, cfg.AccountID, source, seenNames)
+	if err != nil {
+		log.Warnf("fleet: yara sync: prune deleted rules for source %s: %v", source, err)
+	} else if deleted > 0 {
+		log.Infof("fleet: yara sync: removed %d stale YARA rules for source %s", deleted, source)
+	}
+
+	log.Infof("fleet: yara sync for %s: %d created, %d updated, %d skipped (user-modified), %d deleted",
+		cfg.RepoURL, created, updated, skipped, deleted)
+	return created, updated, skipped, deleted
 }
 
 type githubFile struct {
