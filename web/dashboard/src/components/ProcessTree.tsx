@@ -100,12 +100,16 @@ export default function ProcessTree({ agentId }: { agentId: string }) {
       }
     }
 
-    // Layout: simple tree layout with BFS
+    // Layout: simple tree layout with BFS. Spacing is tuned so the process
+    // cards (min-w-180px, ~80-110px tall, plus optional activity badges)
+    // never overlap — LEVEL_HEIGHT gives vertical room for the card + badge
+    // row, NODE_WIDTH gives horizontal room for two siblings side-by-side.
     const roots = Array.from(byPid.keys()).filter(pid => !hasParent.has(pid))
     const positions = new Map<number, { x: number; y: number }>()
     let xOffset = 0
-    const LEVEL_HEIGHT = 100
-    const NODE_WIDTH = 220
+    const LEVEL_HEIGHT = 170
+    const NODE_WIDTH = 300
+    const SUBTREE_GAP = 80
 
     function layoutTree(pid: number, depth: number, xStart: number): number {
       const kids = Array.from(children.get(pid) || [])
@@ -124,7 +128,7 @@ export default function ProcessTree({ agentId }: { agentId: string }) {
 
     for (const root of roots) {
       xOffset = layoutTree(root, 0, xOffset)
-      xOffset += NODE_WIDTH / 2
+      xOffset += SUBTREE_GAP
     }
 
     // Build ReactFlow nodes and edges

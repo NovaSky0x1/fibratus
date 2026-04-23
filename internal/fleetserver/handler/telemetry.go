@@ -281,51 +281,80 @@ func (h *TelemetryHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	wideFrom := ts.Add(-24 * time.Hour)
 	to := ts.Add(1 * time.Minute)
 
-	// Walk the ancestry chain by ParentPID, up to 10 levels. PID 0/4 (System,
-	// System Idle) are terminal and not queried.
-	visited := map[int]bool{}
+	// Walk the ancestry chain by ParentPID up to 10 levels. Each telemetry
+	// row carries both ParentPID and ParentName for the process that emitted
+	// it, so even when an ancestor has no events of its own (typical for
+	// long-running system processes like services.exe or wininit.exe that
+	// started before the agent and don't generate events of watched types)
+	// we can still synthesize a tree node for it from the child's row.
+	// Without this, the walker bottomed out at the first event-less ancestor
+	// and the UI couldn't render the path up to the root.
+	visited := map[int]bool{focusPID: true}
 	chain := []int{focusPID}
-	visited[focusPID] = true
-	current := focusPID
-	for depth := 0; depth < 10 && current > 4; depth++ {
-		ev, _, qErr := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID: agentID, PID: current, EventName: "CreateProcess",
-			From: wideFrom, To: to, Limit: 1,
+	var events []store.TelemetryEvent
+
+	// Fetch events for the focus PID first — CreateProcess preferred, any
+	// row acceptable — to seed the walk.
+	focusEvents, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+		AgentID: agentID, PID: focusPID, EventName: "CreateProcess",
+		From: wideFrom, To: to, Limit: 5,
+	})
+	if len(focusEvents) == 0 {
+		focusEvents, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: agentID, PID: focusPID, From: wideFrom, To: to, Limit: 1,
 		})
-		if qErr != nil || len(ev) == 0 {
-			// No CreateProcess row — try any event to learn ParentPID.
-			ev, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-				AgentID: agentID, PID: current, From: wideFrom, To: to, Limit: 1,
-			})
-			if len(ev) == 0 {
-				break
-			}
-		}
-		parent := ev[0].ParentPID
+	}
+	events = append(events, focusEvents...)
+
+	// The last-observed row for the current PID — ParentPID/ParentName
+	// on this row describe the *next* ancestor.
+	var seed store.TelemetryEvent
+	if len(focusEvents) > 0 {
+		seed = focusEvents[0]
+	}
+
+	current := focusPID
+	for depth := 0; depth < 10 && current > 4 && seed.ParentPID > 0; depth++ {
+		parent := seed.ParentPID
+		parentName := seed.ParentName
 		if parent <= 4 || visited[parent] {
 			break
 		}
 		visited[parent] = true
 		chain = append(chain, parent)
-		current = parent
-	}
 
-	// Collect CreateProcess events for every PID in the ancestry chain so the
-	// tree UI has metadata (name, exe, cmdline) for each node.
-	var events []store.TelemetryEvent
-	for _, pid := range chain {
+		// Try to find real events for the parent (for cmdline / exe metadata).
 		ev, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-			AgentID: agentID, PID: pid, EventName: "CreateProcess",
+			AgentID: agentID, PID: parent, EventName: "CreateProcess",
 			From: wideFrom, To: to, Limit: 5,
 		})
 		if len(ev) == 0 {
-			// Process created before agent start-up — one event of any kind is
-			// enough for the tree UI to render the node.
 			ev, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-				AgentID: agentID, PID: pid, From: wideFrom, To: to, Limit: 1,
+				AgentID: agentID, PID: parent, From: wideFrom, To: to, Limit: 1,
 			})
 		}
-		events = append(events, ev...)
+
+		if len(ev) > 0 {
+			events = append(events, ev...)
+			seed = ev[0]
+			current = parent
+			continue
+		}
+
+		// No events for this ancestor — synthesize a minimal row from the
+		// child's parent_pid/parent_name so the tree has a node for it.
+		// EventName "ProcessRollup" is synthetic; the dashboard's tree
+		// renderer treats any row with pid+process_name as a tree node.
+		events = append(events, store.TelemetryEvent{
+			AgentID:       agentID,
+			Timestamp:     ts,
+			EventName:     "ProcessRollup",
+			EventCategory: "process",
+			PID:           parent,
+			ProcessName:   parentName,
+		})
+		// Cannot walk further without this ancestor's own events.
+		break
 	}
 
 	// Direct children of the focus PID (ParentPID = focus).
