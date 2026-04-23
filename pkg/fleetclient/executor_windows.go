@@ -37,9 +37,14 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	fleetserver "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
-	"github.com/rabbitstack/fibratus/pkg/yara"
 	log "github.com/sirupsen/logrus"
 )
+
+// YaraScanFunc runs an on-demand YARA scan. Declared here (rather than
+// importing pkg/yara) so this package does not pull in yara → ps → config,
+// which would close the import cycle back through pkg/config → pkg/fleetclient.
+// Bootstrap adapts its yara.Scanner to this signature via a small closure.
+type YaraScanFunc func(target any) (any, error)
 
 // EventLogReconfigureCallback is called when the server pushes a new event log
 // collection policy. The raw JSON payload is passed to the bootstrap layer which
@@ -51,7 +56,7 @@ type WindowsExecutor struct {
 	serverURL          string
 	wfp                *tamper.WFPIsolator
 	protector          *tamper.Protector
-	yaraScanner        yara.Scanner
+	yaraScan           YaraScanFunc
 	eventlogReconfigure EventLogReconfigureCallback
 }
 
@@ -68,7 +73,9 @@ func (e *WindowsExecutor) SetEventLogReconfigureCallback(cb EventLogReconfigureC
 // SetYaraScanner wires the in-process YARA scanner so the yara_scan
 // active-response command can run without spawning a subprocess. Called by
 // the bootstrap layer once the scanner has been built from agent config.
-func (e *WindowsExecutor) SetYaraScanner(s yara.Scanner) { e.yaraScanner = s }
+// A nil fn is treated as "YARA disabled" and the handler returns a clear
+// config-hint error.
+func (e *WindowsExecutor) SetYaraScanner(fn YaraScanFunc) { e.yaraScan = fn }
 
 // Execute dispatches and runs a command based on its type.
 func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
@@ -1003,7 +1010,7 @@ func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) 
 		return nil, fmt.Errorf("pid or path required for yara scan")
 	}
 
-	if e.yaraScanner == nil {
+	if e.yaraScan == nil {
 		return nil, fmt.Errorf("YARA scanner not initialized — ensure `yara.enabled: true` is set in fibratus.yml and at least one rule source is configured under yara.rule.paths / yara.rule.strings, then restart the service")
 	}
 
@@ -1022,7 +1029,7 @@ func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) 
 	}
 	done := make(chan scanResult, 1)
 	go func() {
-		m, err := e.yaraScanner.ScanTarget(target)
+		m, err := e.yaraScan(target)
 		done <- scanResult{matches: m, err: err}
 	}()
 

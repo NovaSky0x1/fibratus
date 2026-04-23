@@ -714,10 +714,15 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 
 	executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL, wfpIsolator, protector)
 	// Wire the YARA scanner created during Run() so the yara_scan
-	// active-response command can execute in-process. Nil-safe: when YARA is
-	// disabled in config, the executor returns a clear error to the caller.
+	// active-response command can execute in-process. Adapt the Scanner
+	// interface to the executor's function-typed hook to avoid importing
+	// pkg/yara from pkg/fleetclient (which would close an import cycle
+	// through pkg/config).
 	if f.yaraScanner != nil {
-		executor.SetYaraScanner(f.yaraScanner)
+		scanner := f.yaraScanner
+		executor.SetYaraScanner(func(target any) (any, error) {
+			return scanner.ScanTarget(target)
+		})
 	}
 	// Register event log reconfigure callback so server policy changes
 	// dynamically update the collector without agent restart
