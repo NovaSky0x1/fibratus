@@ -12,6 +12,7 @@ export default function Signup() {
     password: '',
   })
   const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,7 +26,13 @@ export default function Signup() {
         setError(res.error.message)
         return
       }
-      const data = res.data as AuthResponse
+      const data = res.data as AuthResponse & { pending_approval?: boolean }
+      // Signup now requires admin approval — server returns pending_approval=true
+      // and no token. Show a confirmation screen instead of routing into the app.
+      if (data.pending_approval) {
+        setPending(true)
+        return
+      }
       if (data.token) {
         // Set session, then redirect to login for mandatory 2FA setup
         if (data.mfa_setup_required) {
@@ -43,6 +50,30 @@ export default function Signup() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (pending) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-fibratus-900 to-fibratus-600 py-12">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-white">
+              <span className="text-fibratus-300">Fibratus</span> Fleet
+            </h1>
+          </div>
+          <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 shadow-sm dark:shadow-slate-900/50 text-center">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-slate-100">Signup received</h2>
+            <p className="mt-3 text-sm text-gray-600 dark:text-slate-400">
+              Your account request is pending administrator approval. You'll be able to sign in once a root
+              admin approves it. No action is needed on your end.
+            </p>
+            <div className="mt-6">
+              <Link to="/login" className="text-fibratus-600 hover:underline text-sm">Back to login</Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const update = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
