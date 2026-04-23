@@ -304,7 +304,8 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	// Seed default macros and official rules for the new org
 	go h.seedOrgDefaults(context.Background(), orgID)
 
-	// Create user (role=member — permissions come from groups)
+	// Create user in 'pending' state — signup requires root admin approval
+	// before the user can log in. No JWT is minted until approval.
 	userID := GenerateID()
 	user := &fleet.User{
 		ID:        userID,
@@ -313,6 +314,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		Password:  hashedPassword,
 		AccountID: accountID,
 		Role:      fleetauth.RoleMember,
+		Status:    fleet.UserStatusPending,
 		CreatedAt: now,
 	}
 	if err := h.users.Create(r.Context(), user); err != nil {
@@ -329,6 +331,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Seed default groups for the new account and add user to Administrators
+	// (permissions take effect once a root admin approves the signup).
 	if h.groups != nil {
 		adminGroupID := h.seedDefaultGroupsForSignup(r.Context(), accountID)
 		if adminGroupID != "" {
@@ -337,22 +340,16 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Generate JWT
-	token, err := fleetauth.GenerateJWT(h.jwtSecret, userID, accountID, fleetauth.RoleMember)
-	if err != nil {
-		log.Errorf("fleet: signup generate token error: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
+	log.Infof("fleet: pending signup: %s (%s) — awaiting root admin approval", account.Name, accountID)
 
-	log.Infof("fleet: account created: %s (%s)", account.Name, accountID)
-
+	// Intentionally DO NOT mint a JWT. The user cannot log in until a root
+	// admin transitions the row to 'approved' via /api/v1/admin/pending-users.
 	resp := fleet.SignupResponse{
 		AccountID:        accountID,
 		OrgID:            orgID,
 		UserID:           userID,
-		Token:            token,
-		MFASetupRequired: true, // 2FA is mandatory — user must set up during first login
+		PendingApproval:  true,
+		MFASetupRequired: false,
 	}
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: resp})
 }
@@ -378,6 +375,22 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if user == nil {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	// Signup approval gate: block non-approved users before credential check
+	// so password timing does not leak account status.
+	switch user.Status {
+	case fleet.UserStatusPending, "":
+		if user.Status == fleet.UserStatusPending {
+			writeError(w, http.StatusForbidden, "your account is awaiting administrator approval")
+			return
+		}
+	case fleet.UserStatusRejected:
+		writeError(w, http.StatusForbidden, "your account was rejected")
+		return
+	case fleet.UserStatusSuspended:
+		writeError(w, http.StatusForbidden, "your account is suspended")
 		return
 	}
 

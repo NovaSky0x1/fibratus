@@ -735,3 +735,63 @@ func (h *AdminHandler) SwitchAccount(w http.ResponseWriter, r *http.Request) {
 		"account_name": account.Name,
 	}})
 }
+
+// ListPendingUsers handles GET /api/v1/admin/pending-users — root-only.
+// Returns users awaiting signup approval, newest first.
+func (h *AdminHandler) ListPendingUsers(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+	users, err := h.users.ListPendingUsers(r.Context())
+	if err != nil {
+		log.Errorf("fleet: list pending users: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: users})
+}
+
+// ApprovePendingUser handles POST /api/v1/admin/pending-users/{id}/approve.
+// Transitions the user to 'approved' so they can log in.
+func (h *AdminHandler) ApprovePendingUser(w http.ResponseWriter, r *http.Request) {
+	h.setPendingUserStatus(w, r, fleet.UserStatusApproved, "approved")
+}
+
+// RejectPendingUser handles POST /api/v1/admin/pending-users/{id}/reject.
+// Transitions the user to 'rejected'. Login stays blocked.
+func (h *AdminHandler) RejectPendingUser(w http.ResponseWriter, r *http.Request) {
+	h.setPendingUserStatus(w, r, fleet.UserStatusRejected, "rejected")
+}
+
+func (h *AdminHandler) setPendingUserStatus(w http.ResponseWriter, r *http.Request, status, action string) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+	// Path: /api/v1/admin/pending-users/{id}/approve|reject
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 6 {
+		writeError(w, http.StatusBadRequest, "user id required")
+		return
+	}
+	userID := parts[4]
+	user, err := h.users.Get(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if user.Status != fleet.UserStatusPending {
+		writeError(w, http.StatusConflict, "user is not pending approval")
+		return
+	}
+	if err := h.users.SetStatus(r.Context(), userID, status); err != nil {
+		log.Errorf("fleet: set status: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	log.Infof("fleet: pending user %s (%s) %s by root", user.Email, userID, action)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{"status": status}})
+}

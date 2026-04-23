@@ -895,6 +895,20 @@ func (s *Server) Run(ctx context.Context) error {
 	})
 	dashMux.HandleFunc("/api/v1/admin/switch-account", methodGuard(http.MethodPost, adminHandler.SwitchAccount))
 
+	// Signup approval routes (root only): GET lists pending users,
+	// POST /:id/approve flips status to approved, POST /:id/reject to rejected.
+	dashMux.HandleFunc("/api/v1/admin/pending-users", methodGuard(http.MethodGet, adminHandler.ListPendingUsers))
+	dashMux.HandleFunc("/api/v1/admin/pending-users/", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/approve") && r.Method == http.MethodPost:
+			adminHandler.ApprovePendingUser(w, r)
+		case strings.HasSuffix(r.URL.Path, "/reject") && r.Method == http.MethodPost:
+			adminHandler.RejectPendingUser(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
 	// DB Admin routes (root only)
 	dashMux.HandleFunc("/api/v1/admin/db/postgres/query", methodGuard(http.MethodPost, dbAdminHandler.QueryPG))
 	dashMux.HandleFunc("/api/v1/admin/db/postgres/tables", methodGuard(http.MethodGet, dbAdminHandler.TablesPG))

@@ -317,6 +317,13 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_codes TEXT DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS org_restrictions TEXT DEFAULT '';
 
+-- Signup approval gating: new signups are created in 'pending' state and
+-- require a root admin to approve before they can log in. Pre-existing
+-- rows are backfilled to 'approved' so current deployments do not break.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'approved';
+UPDATE users SET status = 'approved' WHERE status IS NULL OR status = '';
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+
 CREATE TABLE IF NOT EXISTS user_groups (
     id              TEXT PRIMARY KEY,
     account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

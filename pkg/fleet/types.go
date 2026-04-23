@@ -73,6 +73,9 @@ type User struct {
 	Password  string    `json:"-"` // never serialized
 	AccountID string    `json:"account_id"`
 	Role      string    `json:"role"`
+	// Status gates access. "approved" = active, "pending" = awaiting root
+	// approval (no JWT minted, login blocked), "rejected"/"suspended" = denied.
+	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 
 	OrgRestrictions string `json:"org_restrictions,omitempty"` // JSON array of org IDs, empty = all
@@ -85,6 +88,14 @@ type User struct {
 	TOTPEnabled   bool      `json:"totp_enabled"`
 	RecoveryCodes string    `json:"-"`
 }
+
+// User status values.
+const (
+	UserStatusPending   = "pending"
+	UserStatusApproved  = "approved"
+	UserStatusRejected  = "rejected"
+	UserStatusSuspended = "suspended"
+)
 
 // UserGroup defines a permission group with optional org restrictions.
 type UserGroup struct {

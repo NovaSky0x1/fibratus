@@ -57,12 +57,15 @@ type SignupRequest struct {
 }
 
 // SignupResponse is returned after successful account creation.
+// When PendingApproval is true, Token is intentionally empty — the user
+// cannot log in until a root admin approves the account.
 type SignupResponse struct {
 	AccountID        string `json:"account_id"`
 	OrgID            string `json:"org_id"`
 	UserID           string `json:"user_id"`
-	Token            string `json:"token"` // JWT
+	Token            string `json:"token,omitempty"` // JWT; empty when PendingApproval
 	MFASetupRequired bool   `json:"mfa_setup_required,omitempty"`
+	PendingApproval  bool   `json:"pending_approval,omitempty"`
 }
 
 // LoginRequest authenticates a dashboard user.

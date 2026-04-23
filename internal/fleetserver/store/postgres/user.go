@@ -37,23 +37,27 @@ func NewUserStore(db *sql.DB) *UserStore {
 }
 
 func (s *UserStore) Create(ctx context.Context, user *fleet.User) error {
+	status := user.Status
+	if status == "" {
+		status = fleet.UserStatusApproved
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, name, password, account_id, role, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		user.ID, user.Email, user.Name, user.Password, user.AccountID, user.Role, user.CreatedAt,
+		`INSERT INTO users (id, email, name, password, account_id, role, status, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		user.ID, user.Email, user.Name, user.Password, user.AccountID, user.Role, status, user.CreatedAt,
 	)
 	return err
 }
 
 func (s *UserStore) GetByEmail(ctx context.Context, email string) (*fleet.User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password, account_id, role, created_at,
+		`SELECT id, email, name, password, account_id, role, COALESCE(status, 'approved'), created_at,
 		        login_attempts, COALESCE(locked_until, '1970-01-01'::timestamptz),
 		        totp_secret, totp_enabled, recovery_codes
 		 FROM users WHERE email = $1`, email)
 
 	u := &fleet.User{}
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt,
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.Status, &u.CreatedAt,
 		&u.LoginAttempts, &u.LockedUntil, &u.TOTPSecret, &u.TOTPEnabled, &u.RecoveryCodes)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -66,13 +70,13 @@ func (s *UserStore) GetByEmail(ctx context.Context, email string) (*fleet.User, 
 
 func (s *UserStore) Get(ctx context.Context, id string) (*fleet.User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password, account_id, role, created_at,
+		`SELECT id, email, name, password, account_id, role, COALESCE(status, 'approved'), created_at,
 		        login_attempts, COALESCE(locked_until, '1970-01-01'::timestamptz),
 		        totp_secret, totp_enabled, recovery_codes
 		 FROM users WHERE id = $1`, id)
 
 	u := &fleet.User{}
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.CreatedAt,
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.AccountID, &u.Role, &u.Status, &u.CreatedAt,
 		&u.LoginAttempts, &u.LockedUntil, &u.TOTPSecret, &u.TOTPEnabled, &u.RecoveryCodes)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -81,6 +85,34 @@ func (s *UserStore) Get(ctx context.Context, id string) (*fleet.User, error) {
 		return nil, err
 	}
 	return u, nil
+}
+
+// ListPendingUsers returns users awaiting root approval. Used by the admin UI.
+func (s *UserStore) ListPendingUsers(ctx context.Context) ([]*fleet.User, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, email, name, account_id, role, COALESCE(status, 'approved'), created_at
+		 FROM users WHERE status = 'pending' ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]*fleet.User, 0)
+	for rows.Next() {
+		u := &fleet.User{}
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AccountID, &u.Role, &u.Status, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// SetStatus updates a user's approval status. Values: pending, approved, rejected, suspended.
+func (s *UserStore) SetStatus(ctx context.Context, userID, status string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET status = $2 WHERE id = $1`, userID, status)
+	return err
 }
 
 func (s *UserStore) AddOrgAccess(ctx context.Context, userID, orgID, role string) error {
