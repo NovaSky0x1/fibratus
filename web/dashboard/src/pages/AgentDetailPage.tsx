@@ -16,7 +16,7 @@ import AgentUsers from '../components/agent/AgentUsers'
 import AgentFileBrowser from '../components/agent/AgentFileBrowser'
 import AgentRegistry from '../components/agent/AgentRegistry'
 import AgentTerminal from '../components/agent/AgentTerminal'
-import AgentResponse from '../components/agent/AgentResponse'
+import AgentYaraScan from '../components/agent/AgentYaraScan'
 import AgentCommandHistory from '../components/agent/AgentCommandHistory'
 import AgentCaptures from '../components/agent/AgentCaptures'
 import AgentEventViewer from '../components/agent/AgentEventViewer'
@@ -94,7 +94,7 @@ export default function AgentDetailPage() {
           {activeSection === 'terminal' && <AgentTerminal agentId={agent.id} hostname={agent.hostname} />}
           {activeSection === 'captures' && <AgentCaptures agentId={agent.id} />}
           {activeSection === 'eventviewer' && <AgentEventViewer agentId={agent.id} />}
-          {activeSection === 'response' && <AgentResponse agentId={agent.id} agent={agent} />}
+          {activeSection === 'yara_scan' && <AgentYaraScan agentId={agent.id} agent={agent} />}
           {activeSection === 'history' && <AgentCommandHistory agentId={agent.id} />}
         </div>
       </div>
@@ -119,7 +119,7 @@ function sectionDescription(section: string): string {
     registry: 'Windows registry browser',
     terminal: 'Interactive remote shell',
     captures: 'Kernel event captures (.kcap) for deep investigations',
-    response: 'Active response actions',
+    yara_scan: 'On-demand YARA scan of a process or file path',
     history: 'Command execution history',
   }
   return descriptions[section] || ''

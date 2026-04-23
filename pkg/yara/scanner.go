@@ -358,6 +358,13 @@ func (s scanner) Scan(e *event.Event) (bool, error) {
 	return len(matches) > 0, s.emit(matches, e)
 }
 
+// ScanTarget exposes the internal scan path for on-demand scans (e.g. the
+// fleet yara_scan active-response command). It bypasses the ETW event
+// pipeline: no alert senders are invoked and no scan-tracking metadata
+// is recorded. Returns go-yara v4 MatchRules boxed in any so the Scanner
+// interface stays build-tag independent.
+func (s scanner) ScanTarget(target any) (any, error) { return s.scan(target) }
+
 func (s scanner) scan(target any) (yara.MatchRules, error) {
 	var matches yara.MatchRules
 	sn, err := s.newInternalScanner()

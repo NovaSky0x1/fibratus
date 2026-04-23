@@ -76,6 +76,7 @@ type App struct {
 	writer      cap.Writer
 	reader      cap.Reader
 	fleetClient *fleetclient.Client
+	yaraScanner yara.Scanner
 	signals     chan struct{}
 }
 
@@ -361,6 +362,8 @@ func (f *App) Run(args []string) error {
 				return err
 			}
 			f.evs.RegisterEventListener(scanner)
+			// Stash for the fleet executor's on-demand yara_scan command.
+			f.yaraScanner = scanner
 		}
 		err = f.evs.Open(cfg)
 		if err != nil {
@@ -710,6 +713,12 @@ func (f *App) initFleetClient(cfg *config.Config) error {
 	}
 
 	executor := fleetclient.NewWindowsExecutor(cfg.Fleet.ServerURL, wfpIsolator, protector)
+	// Wire the YARA scanner created during Run() so the yara_scan
+	// active-response command can execute in-process. Nil-safe: when YARA is
+	// disabled in config, the executor returns a clear error to the caller.
+	if f.yaraScanner != nil {
+		executor.SetYaraScanner(f.yaraScanner)
+	}
 	// Register event log reconfigure callback so server policy changes
 	// dynamically update the collector without agent restart
 	executor.SetEventLogReconfigureCallback(func(policyJSON json.RawMessage) {

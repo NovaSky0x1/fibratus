@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -241,7 +242,13 @@ func (h *TelemetryHandler) GetLiveEvents(w http.ResponseWriter, r *http.Request)
 }
 
 // ProcessTree handles GET /api/v1/orgs/{org_id}/telemetry/process-tree?agent_id=X&pid=Y&timestamp=Z
-// Returns process events around a specific PID for process tree visualization.
+// Returns telemetry events scoped to a specific process chain — the focus
+// process, its ancestors (walked by ParentPID), and its direct children.
+//
+// Previously this returned every event for the agent in a ±1h window (up to
+// 5000 rows), which surfaced as "massive orphaned processes and unrelated
+// trees" in the dashboard's tree view. Mirrors the scoping strategy used by
+// DetectionHandler.ProcessTree (detection.go:260-386).
 func (h *TelemetryHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 	orgID := ctxutil.OrgIDFromContext(r.Context())
 	agentID := r.URL.Query().Get("agent_id")
@@ -252,35 +259,85 @@ func (h *TelemetryHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "agent_id and pid required")
 		return
 	}
+	focusPID, err := strconv.Atoi(pidStr)
+	if err != nil || focusPID <= 0 {
+		writeError(w, http.StatusBadRequest, "pid must be a positive integer")
+		return
+	}
 
-	// Parse timestamp or use now
 	var ts time.Time
 	if tsStr != "" {
-		var err error
-		ts, err = time.Parse(time.RFC3339Nano, tsStr)
-		if err != nil {
+		if t, err := time.Parse(time.RFC3339Nano, tsStr); err == nil {
+			ts = t
+		} else {
 			ts = time.Now().UTC()
 		}
 	} else {
 		ts = time.Now().UTC()
 	}
 
-	from := ts.Add(-1 * time.Hour)
-	to := ts.Add(1 * time.Hour)
+	// Wide window for historical ancestors (PIDs created well before the event
+	// focus time), narrower window for children / downstream activity.
+	wideFrom := ts.Add(-24 * time.Hour)
+	to := ts.Add(1 * time.Minute)
 
-	events, _, err := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
-		AgentID: agentID,
-		From:    from,
-		To:      to,
-		Limit:   5000,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to query telemetry")
-		return
+	// Walk the ancestry chain by ParentPID, up to 10 levels. PID 0/4 (System,
+	// System Idle) are terminal and not queried.
+	visited := map[int]bool{}
+	chain := []int{focusPID}
+	visited[focusPID] = true
+	current := focusPID
+	for depth := 0; depth < 10 && current > 4; depth++ {
+		ev, _, qErr := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: agentID, PID: current, EventName: "CreateProcess",
+			From: wideFrom, To: to, Limit: 1,
+		})
+		if qErr != nil || len(ev) == 0 {
+			// No CreateProcess row — try any event to learn ParentPID.
+			ev, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+				AgentID: agentID, PID: current, From: wideFrom, To: to, Limit: 1,
+			})
+			if len(ev) == 0 {
+				break
+			}
+		}
+		parent := ev[0].ParentPID
+		if parent <= 4 || visited[parent] {
+			break
+		}
+		visited[parent] = true
+		chain = append(chain, parent)
+		current = parent
 	}
+
+	// Collect CreateProcess events for every PID in the ancestry chain so the
+	// tree UI has metadata (name, exe, cmdline) for each node.
+	var events []store.TelemetryEvent
+	for _, pid := range chain {
+		ev, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+			AgentID: agentID, PID: pid, EventName: "CreateProcess",
+			From: wideFrom, To: to, Limit: 5,
+		})
+		if len(ev) == 0 {
+			// Process created before agent start-up — one event of any kind is
+			// enough for the tree UI to render the node.
+			ev, _, _ = h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+				AgentID: agentID, PID: pid, From: wideFrom, To: to, Limit: 1,
+			})
+		}
+		events = append(events, ev...)
+	}
+
+	// Direct children of the focus PID (ParentPID = focus).
+	children, _, _ := h.telemetry.Search(r.Context(), orgID, store.TelemetrySearchOpts{
+		AgentID: agentID, ParentPID: focusPID, EventName: "CreateProcess",
+		From: ts.Add(-1 * time.Hour), To: to, Limit: 100,
+	})
+	events = append(events, children...)
 
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"events":    events,
 		"focus_pid": pidStr,
+		"chain":     chain,
 	}})
 }

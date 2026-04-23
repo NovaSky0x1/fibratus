@@ -18,7 +18,9 @@
 
 package yara
 
-import "github.com/rabbitstack/fibratus/pkg/event"
+import (
+	"github.com/rabbitstack/fibratus/pkg/event"
+)
 
 // Scanner watches for certain events such as process creation or image loading and
 // triggers the scanning either on the process memory or on-disk file. If matches occur,
@@ -29,6 +31,13 @@ type Scanner interface {
 	// can be the creation of a new process, image loading, writing the PE
 	// file or ADS to the file system, or a suspicious memory allocation.
 	Scan(*event.Event) (bool, error)
+	// ScanTarget runs an on-demand scan without going through the ETW event
+	// pipeline. target must be a uint32 (process PID), string (file path on
+	// disk), or []byte (raw memory buffer). The concrete return type is
+	// go-yara v4 MatchRules under the `yara` build tag; callers should
+	// JSON-marshal the result directly (go-yara MatchRules is JSON-friendly).
+	// Intended for the fleet active-response "YARA Scan" command.
+	ScanTarget(target any) (any, error)
 	// Close disposes any resources allocated by the scanner.
 	Close()
 }

@@ -15,7 +15,7 @@ import {
   FolderOpen,
   Database,
   Terminal,
-  Zap,
+  ScanSearch,
   Clock,
   ScrollText,
 } from 'lucide-react'
@@ -42,7 +42,7 @@ export const sectionGroups: SectionGroup[] = [
   {
     label: 'RESPOND',
     items: [
-      { id: 'response', label: 'Response', icon: Zap },
+      { id: 'yara_scan', label: 'YARA Scan', icon: ScanSearch },
       { id: 'terminal', label: 'Terminal', icon: Terminal },
       { id: 'captures', label: 'Captures', icon: HardDrive },
       { id: 'history', label: 'History', icon: Clock },

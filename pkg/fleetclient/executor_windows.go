@@ -37,6 +37,7 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/fleet"
 	"github.com/rabbitstack/fibratus/pkg/fleet/tamper"
 	fleetserver "github.com/rabbitstack/fibratus/pkg/outputs/fleetserver"
+	"github.com/rabbitstack/fibratus/pkg/yara"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -50,6 +51,7 @@ type WindowsExecutor struct {
 	serverURL          string
 	wfp                *tamper.WFPIsolator
 	protector          *tamper.Protector
+	yaraScanner        yara.Scanner
 	eventlogReconfigure EventLogReconfigureCallback
 }
 
@@ -62,6 +64,11 @@ func NewWindowsExecutor(serverURL string, wfp *tamper.WFPIsolator, protector *ta
 func (e *WindowsExecutor) SetEventLogReconfigureCallback(cb EventLogReconfigureCallback) {
 	e.eventlogReconfigure = cb
 }
+
+// SetYaraScanner wires the in-process YARA scanner so the yara_scan
+// active-response command can run without spawning a subprocess. Called by
+// the bootstrap layer once the scanner has been built from agent config.
+func (e *WindowsExecutor) SetYaraScanner(s yara.Scanner) { e.yaraScanner = s }
 
 // Execute dispatches and runs a command based on its type.
 func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
@@ -744,23 +751,42 @@ func (e *WindowsExecutor) getDrivers(cmd *fleet.Command) (json.RawMessage, error
 }
 
 // getAutoruns returns persistence mechanisms (Run keys, scheduled tasks, startup folder, auto-start services).
+//
+// Scheduled tasks are enumerated via the CIM PS_ScheduledTask class with a
+// Get-ScheduledTask fallback. PS_ScheduledTask is 5-10× faster than the
+// cmdlet path and was the dominant reason the tab blank-ed on enterprise
+// hosts: Get-ScheduledTask alone commonly exceeds 15s when thousands of
+// tasks are installed, and its failure was silently ignored.
 func (e *WindowsExecutor) getAutoruns(cmd *fleet.Command) (json.RawMessage, error) {
 	// Registry Run keys
 	runKeysCmd := `$keys = @(); foreach ($path in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce')) { try { $props = Get-ItemProperty $path -ErrorAction SilentlyContinue; if ($props) { $props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object { $keys += @{name=$_.Name;value=$_.Value;location=$path} } } } catch {} }; $keys | ConvertTo-Json -Depth 3 -Compress`
-	runKeys, _ := runPowerShellLong(runKeysCmd, 15)
+	runKeys, runKeysErr := runPowerShellLong(runKeysCmd, 30)
 
-	// Scheduled tasks
-	tasksCmd := `@(Get-ScheduledTask -EA 0|?{$_.State -eq 'Ready' -and $_.TaskPath -notlike '\Microsoft\*'}|Select TaskName,TaskPath,State,@{N='action';E={($_.Actions|Select -First 1).Execute}})|ConvertTo-Json -Depth 2 -Compress`
-	tasks, _ := runPowerShellLong(tasksCmd, 15)
+	// Scheduled tasks — CIM first (fast), fall back to Get-ScheduledTask.
+	tasksCmd := `try{@(Get-CimInstance -Namespace 'Root\Microsoft\Windows\TaskScheduler' -ClassName 'MSFT_ScheduledTask' -EA Stop|?{$_.State -eq 3 -and $_.TaskPath -notlike '\Microsoft\*'}|Select @{N='TaskName';E={$_.TaskName}},@{N='TaskPath';E={$_.TaskPath}},@{N='State';E={'Ready'}},@{N='action';E={($_.Actions|Select -First 1).Execute}})|ConvertTo-Json -Depth 2 -Compress}catch{@(Get-ScheduledTask -EA 0|?{$_.State -eq 'Ready' -and $_.TaskPath -notlike '\Microsoft\*'}|Select TaskName,TaskPath,@{N='State';E={[string]$_.State}},@{N='action';E={($_.Actions|Select -First 1).Execute}})|ConvertTo-Json -Depth 2 -Compress}`
+	tasks, tasksErr := runPowerShellLong(tasksCmd, 45)
 
 	// Startup folder
 	startupCmd := `$items = @(); foreach ($dir in @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp","$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup")) { Get-ChildItem $dir -ErrorAction SilentlyContinue | ForEach-Object { $items += @{name=$_.Name;path=$_.FullName;location=$dir} } }; $items | ConvertTo-Json -Depth 3 -Compress`
-	startup, _ := runPowerShellLong(startupCmd, 10)
+	startup, startupErr := runPowerShellLong(startupCmd, 15)
+
+	// Propagate partial-failure info rather than silently returning empty lists.
+	errs := map[string]string{}
+	if runKeysErr != nil {
+		errs["run_keys"] = runKeysErr.Error()
+	}
+	if tasksErr != nil {
+		errs["scheduled_tasks"] = tasksErr.Error()
+	}
+	if startupErr != nil {
+		errs["startup_folder"] = startupErr.Error()
+	}
 
 	result, _ := json.Marshal(map[string]interface{}{
-		"run_keys":       safeJSON(runKeys),
+		"run_keys":        safeJSON(runKeys),
 		"scheduled_tasks": safeJSON(tasks),
-		"startup_folder": safeJSON(startup),
+		"startup_folder":  safeJSON(startup),
+		"errors":          errs,
 	})
 	return result, nil
 }
@@ -952,7 +978,20 @@ func (e *WindowsExecutor) stopCapture(cmd *fleet.Command) (json.RawMessage, erro
 	return result, nil
 }
 
-// yaraScan runs a YARA scan on a process or file.
+// yaraScan runs an on-demand YARA scan on a process (by PID) or file (by
+// path). Uses the in-process scanner wired by bootstrap, which shares the
+// same rules as the agent's inline detection path — so rule additions made
+// via fibratus.yml take effect immediately without restarting the service.
+//
+// Payload:
+//   {"pid": <number>} or {"path": "<file or dir>"}
+//
+// Response:
+//   { "pid": N, "path": "...", "matches": [
+//         { "rule": "...", "namespace": "...", "tags": [...],
+//           "meta": {...}, "strings": [{ "name": "$s1", "offset": 42, "data": "..." }] },
+//         ... ],
+//     "match_count": N, "scanned_at": "<RFC3339>" }
 func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) {
 	var payload struct {
 		PID  int    `json:"pid"`
@@ -964,28 +1003,57 @@ func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) 
 		return nil, fmt.Errorf("pid or path required for yara scan")
 	}
 
-	exe, _ := os.Executable()
-	var args []string
-	if payload.PID > 0 {
-		args = []string{"yara", "--pid", fmt.Sprintf("%d", payload.PID)}
-	} else {
-		args = []string{"yara", "--path", payload.Path}
+	if e.yaraScanner == nil {
+		return nil, fmt.Errorf("YARA scanner not initialized — ensure `yara.enabled: true` is set in fibratus.yml and at least one rule source is configured under yara.rule.paths / yara.rule.strings, then restart the service")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
+	var target any
+	if payload.PID > 0 {
+		target = uint32(payload.PID)
+	} else {
+		target = payload.Path
+	}
 
-	c := exec.CommandContext(ctx, exe, args...)
-	out, err := c.CombinedOutput()
+	// libyara can block for a while on large process memory or big files.
+	// Run the scan in a goroutine so we can enforce a wall-clock ceiling.
+	type scanResult struct {
+		matches any
+		err     error
+	}
+	done := make(chan scanResult, 1)
+	go func() {
+		m, err := e.yaraScanner.ScanTarget(target)
+		done <- scanResult{matches: m, err: err}
+	}()
 
-	result, _ := json.Marshal(map[string]interface{}{
-		"pid":     payload.PID,
-		"path":    payload.Path,
-		"output":  string(out),
-		"error":   errStr(err),
-		"success": err == nil,
-	})
-	return result, nil
+	select {
+	case r := <-done:
+		if r.err != nil {
+			return nil, fmt.Errorf("yara scan failed: %w", r.err)
+		}
+		// r.matches is go-yara v4 MatchRules — slice of MatchRule structs that
+		// JSON-marshal cleanly. We let json.Marshal reach into it directly.
+		matchCount := 0
+		if r.matches != nil {
+			// MatchRules is a slice type; reflect via json to get length cheaply.
+			if b, _ := json.Marshal(r.matches); b != nil && len(b) > 2 && b[0] == '[' {
+				// naive element count via raw decode
+				var arr []json.RawMessage
+				_ = json.Unmarshal(b, &arr)
+				matchCount = len(arr)
+			}
+		}
+		result, _ := json.Marshal(map[string]interface{}{
+			"pid":         payload.PID,
+			"path":        payload.Path,
+			"matches":     r.matches,
+			"match_count": matchCount,
+			"scanned_at":  time.Now().UTC().Format(time.RFC3339),
+		})
+		return result, nil
+	case <-time.After(120 * time.Second):
+		return nil, fmt.Errorf("yara scan timed out after 120s")
+	}
 }
 
 // runPowerShell runs a PowerShell command with default timeout.
