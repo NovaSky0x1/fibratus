@@ -153,6 +153,16 @@ func (p *Protector) IsEnabled() bool {
 
 // LoadPersistedState reads the tamper state from disk and re-applies if needed.
 func (p *Protector) LoadPersistedState() {
+	// Post-update re-enable: if the update path wrote a marker indicating
+	// protection should be re-enabled, honor that and clear the marker.
+	reenableMarker := filepath.Join(p.dataDir, "tamper-reenable-after-update")
+	if _, err := os.Stat(reenableMarker); err == nil {
+		log.Info("tamper: post-update re-enable marker present — re-applying protections")
+		p.EnableProtection()
+		os.Remove(reenableMarker)
+		return
+	}
+
 	data, err := os.ReadFile(filepath.Join(p.dataDir, "tamper-state"))
 	if err != nil {
 		return
@@ -161,6 +171,22 @@ func (p *Protector) LoadPersistedState() {
 		log.Info("tamper: persisted state is enabled — re-applying protections")
 		p.EnableProtection()
 	}
+}
+
+// DisableForUpdate is like DisableProtection but preserves the pre-update
+// state so LoadPersistedState can re-enable after the service restarts.
+// The caller (self-update path) is responsible for placing the re-enable
+// marker before launching the update script.
+func (p *Protector) DisableForUpdate() error {
+	wasEnabled := p.IsEnabled()
+	if err := p.DisableProtection(); err != nil {
+		return err
+	}
+	if wasEnabled {
+		// Write re-enable marker so the post-update agent restores protection.
+		_ = os.WriteFile(filepath.Join(p.dataDir, "tamper-reenable-after-update"), []byte("1"), 0o600)
+	}
+	return nil
 }
 
 func (p *Protector) persistState(enabled bool) {

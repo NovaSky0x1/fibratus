@@ -26,6 +26,7 @@ type Protector struct{}
 func NewProtector(installDir, dataDir, serviceName string) *Protector { return &Protector{} }
 func (p *Protector) EnableProtection() error                         { return nil }
 func (p *Protector) DisableProtection() error                        { return nil }
+func (p *Protector) DisableForUpdate() error                         { return nil }
 func (p *Protector) IsEnabled() bool                                 { return false }
 func (p *Protector) LoadPersistedState()                             {}
 

@@ -546,12 +546,14 @@ func (e *WindowsExecutor) updateAgent(cmd *fleet.Command) (json.RawMessage, erro
 	// Temporarily disable tamper protection so the update can proceed.
 	// This is safe because the command was issued by the fleet server
 	// (authenticated via gRPC) — not initiated locally.
+	// DisableForUpdate places a re-enable marker in the data dir so the
+	// post-update agent restores protection on the next service start.
 	tamperWasEnabled := false
 	if e.protector != nil {
 		tamperWasEnabled = e.protector.IsEnabled()
 		if tamperWasEnabled {
 			log.Info("fleet: temporarily disabling tamper protection for self-update")
-			if err := e.protector.DisableProtection(); err != nil {
+			if err := e.protector.DisableForUpdate(); err != nil {
 				log.Warnf("fleet: failed to disable tamper protection for update: %v", err)
 			}
 		}
@@ -577,11 +579,19 @@ $logFile = Join-Path $installDir "Logs\update.log"
 # Wait for the agent to finish reporting the command result
 Start-Sleep -Seconds 5
 
-# Stop the service
+# Stop the service. Poll up to 30s for graceful stop; force-kill if still
+# running (the legacy ETW consumer sometimes hangs in StopPending indefinitely).
 "$(Get-Date) Stopping service..." | Out-File $logFile -Append
 sc.exe stop fibratus 2>$null
-Start-Sleep -Seconds 5
-Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
+    $proc = Get-Process fibratus -ErrorAction SilentlyContinue
+    if (-not $proc) { break }
+}
+Get-Process fibratus -ErrorAction SilentlyContinue | ForEach-Object {
+    "$(Get-Date) Service did not stop gracefully after 30s, force-killing PID $($_.Id)" | Out-File $logFile -Append
+    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+}
 Start-Sleep -Seconds 3
 
 # Try MSI upgrade first

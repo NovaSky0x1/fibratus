@@ -36,9 +36,10 @@ curl -X POST https://server/api/v1/orgs/{orgId}/enrollment-tokens \
 The recommended method is the PowerShell one-liner displayed in the dashboard:
 
 ```powershell
-# Downloads MSI from GitHub Releases, installs, and enrolls
-Invoke-WebRequest -Uri "https://server/api/v1/install.ps1" -OutFile install.ps1
-.\install.ps1 -Token "<TOKEN>" -Server "https://server"
+# Run in an elevated PowerShell window.
+# Downloads the install script from the server, which in turn
+# downloads the MSI from GitHub Releases, installs, and enrolls.
+irm https://server/install/<ENROLLMENT_TOKEN> | iex
 ```
 
 ### Manual Enrollment
