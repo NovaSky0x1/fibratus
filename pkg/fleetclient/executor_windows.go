@@ -56,7 +56,7 @@ type WindowsExecutor struct {
 	serverURL          string
 	wfp                *tamper.WFPIsolator
 	protector          *tamper.Protector
-	yaraScan           YaraScanFunc
+	yaraScanFn         YaraScanFunc
 	eventlogReconfigure EventLogReconfigureCallback
 }
 
@@ -75,7 +75,7 @@ func (e *WindowsExecutor) SetEventLogReconfigureCallback(cb EventLogReconfigureC
 // the bootstrap layer once the scanner has been built from agent config.
 // A nil fn is treated as "YARA disabled" and the handler returns a clear
 // config-hint error.
-func (e *WindowsExecutor) SetYaraScanner(fn YaraScanFunc) { e.yaraScan = fn }
+func (e *WindowsExecutor) SetYaraScanner(fn YaraScanFunc) { e.yaraScanFn = fn }
 
 // Execute dispatches and runs a command based on its type.
 func (e *WindowsExecutor) Execute(cmd *fleet.Command) (json.RawMessage, error) {
@@ -1010,7 +1010,7 @@ func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) 
 		return nil, fmt.Errorf("pid or path required for yara scan")
 	}
 
-	if e.yaraScan == nil {
+	if e.yaraScanFn == nil {
 		return nil, fmt.Errorf("YARA scanner not initialized — ensure `yara.enabled: true` is set in fibratus.yml and at least one rule source is configured under yara.rule.paths / yara.rule.strings, then restart the service")
 	}
 
@@ -1029,7 +1029,7 @@ func (e *WindowsExecutor) yaraScan(cmd *fleet.Command) (json.RawMessage, error) 
 	}
 	done := make(chan scanResult, 1)
 	go func() {
-		m, err := e.yaraScan(target)
+		m, err := e.yaraScanFn(target)
 		done <- scanResult{matches: m, err: err}
 	}()
 
