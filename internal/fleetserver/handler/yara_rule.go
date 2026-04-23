@@ -142,6 +142,10 @@ func (h *YARARuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
+	// Rules that fail the structural check are auto-disabled so they never
+	// land in a command payload — prevents a syntax error in one rule from
+	// failing the compile of the whole inline rule batch at scan time.
+	// Dashboard surfaces the validation status so the user can fix + re-enable.
 	status, errs := validateYARASyntax(in.Content)
 	rule := &fleet.YARARule{
 		ID:               GenerateID(),
@@ -201,6 +205,10 @@ func (h *YARARuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Enabled != nil {
 		existing.Enabled = *in.Enabled && existing.ValidationStatus == "valid"
+	} else if existing.ValidationStatus != "valid" {
+		// Content edit flipped a previously-valid rule to invalid — force-disable
+		// so the broken rule can't reach a scan payload.
+		existing.Enabled = false
 	}
 	if err := h.rules.Update(r.Context(), existing); err != nil {
 		log.Errorf("yara-rules: update: %v", err)

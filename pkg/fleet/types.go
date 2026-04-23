@@ -240,6 +240,7 @@ type Detection struct {
 type Rule struct {
 	ID               string            `json:"id"`
 	OrgID            string            `json:"org_id,omitempty"`
+	AccountID        string            `json:"account_id,omitempty"`
 	Name             string            `json:"name"`
 	Version          string            `json:"version"`
 	Description      string            `json:"description,omitempty"`

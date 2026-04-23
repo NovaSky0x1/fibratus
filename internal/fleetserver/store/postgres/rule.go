@@ -52,12 +52,21 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 	if rule.Source == "" {
 		rule.Source = "manual"
 	}
+	// Resolve account_id from org if the caller didn't set it explicitly
+	// (keeps the older org-scoped callers working while new account-scoped
+	// management sets AccountID directly).
+	accountID := rule.AccountID
+	if accountID == "" {
+		_ = s.db.QueryRowContext(ctx,
+			`SELECT account_id FROM organizations WHERE id = $1`, rule.OrgID,
+		).Scan(&accountID)
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO rules (id, org_id, name, version, description, condition, output_template,
+		`INSERT INTO rules (id, org_id, account_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled, source, validation_status, validation_errors,
 			user_modified, user_disabled, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())`,
-		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())`,
+		rule.ID, rule.OrgID, accountID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
 		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
 		rule.Source, rule.ValidationStatus, validationErrors,
@@ -67,20 +76,29 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 }
 
 func (s *RuleStore) Get(ctx context.Context, orgID, id string) (*fleet.Rule, error) {
+	// Account-scoped: return the rule if the caller's org is in the
+	// same account as the rule. Keeps the existing (orgID, id) signature
+	// so callers that already resolved an org continue to work.
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
 			COALESCE(source, 'manual'), created_at, updated_at,
 			user_modified, user_disabled
-		 FROM rules WHERE id = $1 AND org_id = $2`, id, orgID)
+		 FROM rules
+		 WHERE id = $1 AND account_id = (SELECT account_id FROM organizations WHERE id = $2)`,
+		id, orgID)
 	return scanRule(row)
 }
 
 func (s *RuleStore) List(ctx context.Context, orgID string, opts fleet.ListOptions) ([]*fleet.Rule, int, error) {
+	// Account-scoped listing — every org in an account sees the same
+	// rule set. Without this, rules created from one org were invisible
+	// to agents and users in sibling orgs under the same account.
 	var total int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM rules WHERE org_id = $1`, orgID,
+		`SELECT COUNT(*) FROM rules
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id = $1)`, orgID,
 	).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -101,7 +119,8 @@ func (s *RuleStore) List(ctx context.Context, orgID string, opts fleet.ListOptio
 			COALESCE(validation_status, 'pending'), COALESCE(validation_errors, '[]'),
 			COALESCE(source, 'manual'), created_at, updated_at,
 			user_modified, user_disabled
-		 FROM rules WHERE org_id = $1
+		 FROM rules
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id = $1)
 		 ORDER BY name ASC
 		 LIMIT $2 OFFSET $3`,
 		orgID, perPage, offset,
@@ -134,12 +153,15 @@ func (s *RuleStore) Update(ctx context.Context, rule *fleet.Rule) error {
 	if rule.Source == "" {
 		rule.Source = "manual"
 	}
+	// Match by id alone and verify the caller's org belongs to the rule's
+	// account. Rules are account-scoped now — any org in the same account
+	// can edit any rule; a cross-account edit is rejected.
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE rules SET name=$3, version=$4, description=$5, condition=$6,
 			output_template=$7, severity=$8, labels=$9, tags=$10, "references"=$11,
 			raw_yaml=$12, enabled=$13, source=$14, validation_status=$15, validation_errors=$16,
 			user_modified=$17, user_disabled=$18, updated_at=NOW()
-		 WHERE id=$1 AND org_id=$2`,
+		 WHERE id=$1 AND account_id = (SELECT account_id FROM organizations WHERE id=$2)`,
 		rule.ID, rule.OrgID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
 		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
@@ -150,7 +172,10 @@ func (s *RuleStore) Update(ctx context.Context, rule *fleet.Rule) error {
 }
 
 func (s *RuleStore) Delete(ctx context.Context, orgID, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM rules WHERE id=$1 AND org_id=$2`, id, orgID)
+	// Account-scoped delete: any org in the account may delete the rule.
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM rules WHERE id=$1 AND account_id = (SELECT account_id FROM organizations WHERE id=$2)`,
+		id, orgID)
 	return err
 }
 
@@ -235,6 +260,11 @@ func (s *RuleStore) CountBySource(ctx context.Context, orgID, source string) (in
 // computes an ETag based on rule IDs and versions. The ETag allows agents
 // to skip downloading rules that haven't changed.
 func (s *RuleStore) GetForAgent(ctx context.Context, orgID, agentID string) ([]*fleet.Rule, string, error) {
+	// Rules are account-scoped: fetch every enabled/valid rule for the
+	// account that owns this agent's org so account-wide rule edits reach
+	// every agent regardless of which org it's registered in. account_id
+	// is resolved from organizations at query time to keep this method's
+	// existing (orgID, agentID) signature and avoid churning every caller.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, org_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled,
@@ -242,7 +272,8 @@ func (s *RuleStore) GetForAgent(ctx context.Context, orgID, agentID string) ([]*
 			COALESCE(source, 'manual'), created_at, updated_at,
 			user_modified, user_disabled
 		 FROM rules
-		 WHERE org_id = $1 AND enabled = true AND COALESCE(validation_status, 'pending') = 'valid'
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id = $1)
+		   AND enabled = true AND COALESCE(validation_status, 'pending') = 'valid'
 		 ORDER BY name ASC`,
 		orgID,
 	)

@@ -337,6 +337,15 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_codes TEXT DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS org_restrictions TEXT DEFAULT '';
 
+-- Detection rules: move from org-scoped to account-scoped. A rule set is
+-- shared across every org an account owns. org_id stays populated for
+-- back-compat with existing reads but account_id is authoritative for
+-- management and for the agent rule-sync path.
+ALTER TABLE rules ADD COLUMN IF NOT EXISTS account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE;
+UPDATE rules r SET account_id = o.account_id
+    FROM organizations o WHERE o.id = r.org_id AND r.account_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_rules_account ON rules(account_id);
+
 -- Signup approval gating: new signups are created in 'pending' state and
 -- require a root admin to approve before they can log in. Pre-existing
 -- rows are backfilled to 'approved' so current deployments do not break.

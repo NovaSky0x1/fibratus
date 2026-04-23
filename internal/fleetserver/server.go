@@ -201,6 +201,10 @@ func (s *Server) Run(ctx context.Context) error {
 	releaseChecker := handler.NewReleaseChecker(accountStore, 15*time.Minute)
 	releaseChecker.Start(ctx)
 	_ = releaseChecker
+
+	// Seed baseline YARA rules into accounts that have none. One-shot at
+	// startup; idempotent (skips accounts that already have rules).
+	go handler.SeedBaselineYARARules(ctx, accountStore, yaraRuleStore)
 	sigmaHandler := handler.NewSigmaHandler(ruleStore, macroStore, auditStore, userStore)
 	sigmahqHandler := handler.NewSigmaHQHandler(ruleStore, macroStore, accountStore, orgStore, auditStore, userStore, "/opt/fibratus-fleet/sigmahq")
 	sigmahqHandler.StartBackgroundUpdater(ctx)

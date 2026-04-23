@@ -198,6 +198,7 @@ func (h *RuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		rule.ID = GenerateID()
 	}
 	rule.OrgID = orgID
+	rule.AccountID = ctxutil.AccountIDFromContext(r.Context())
 	if rule.Version == "" {
 		rule.Version = "1.0.0"
 	}
