@@ -648,16 +648,18 @@ transformers:
 
 # Tweaks that influence the behaviour of the YARA scanner.
 yara:
-  # Indicates if the YARA scanner is enabled. When enabled, each newly created process is scanned for pattern matches.
-  enabled: false
+  # YARA scanner enabled for inline detections (process creation, image load,
+  # PE write) and for on-demand fleet yara_scan active-response commands.
+  # Requires a libyara-linked agent build (yara + yara_static build tags).
+  enabled: true
 
   # Contains rule paths and rule definition information
   rule:
     # Represents the paths within the file system along with the YARA namespace identifier. All directories
     # inside the path are traversed recursively for YARA rule files.
     paths:
-      - path: ""
-        namespace: ""
+      - path: "C:\\Program Files\\Fibratus\\Rules\\yara"
+        namespace: "default"
 
     # Represents the string with the rule definition along with the YARA namespace identifier
     strings:
