@@ -185,6 +185,17 @@ robocopy ".\rules" "%RELEASE_DIR%\Rules" /E /S /XF *.md *.png
 :: Copy Debug Help DLL
 copy %SystemRoot%\System32\dbghelp.dll "%RELEASE_DIR%\Bin"
 
+:: Bundle MSYS2/UCRT64 runtime DLLs that libyara's modules pull in
+:: (openssl/hash, jansson/dotnet, libmagic). Only copied when they exist on
+:: the build host — opt-in via MSYS2_BIN env var; default to C:\msys64\ucrt64\bin.
+if not defined MSYS2_BIN set "MSYS2_BIN=C:\msys64\ucrt64\bin"
+if exist "%MSYS2_BIN%" (
+  for %%D in (libcrypto-3-x64.dll libssl-3-x64.dll libjansson-4.dll libmagic-1.dll libsystre-0.dll libtre-5.dll libintl-8.dll libiconv-2.dll libgcc_s_seh-1.dll libwinpthread-1.dll zlib1.dll) do (
+    if exist "%MSYS2_BIN%\%%D" copy /y "%MSYS2_BIN%\%%D" "%RELEASE_DIR%\Bin\%%D" >nul
+  )
+  echo Bundled runtime DLLs from %MSYS2_BIN%
+)
+
 echo Building MSI package...
 pushd .
 cd build/msi
