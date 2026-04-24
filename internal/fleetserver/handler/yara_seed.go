@@ -11,27 +11,17 @@ import (
 )
 
 // baselineYARARules is the conservative starter rule set shipped with the
-// fleet agent on disk (rules/yara/baseline.yar). We also seed it into any
-// account that has zero yara_rules rows so the server-managed rule set
-// isn't empty on first deployment. Users can disable or edit any of
-// these from the dashboard.
-const baselineYARARules = `rule InMemory_PE_Header
-{
-    meta:
-        description = "PE/MZ header found inside a process memory region"
-        threat_name = "Memory-resident PE loader"
-        severity = "medium"
-        score = 40
-        author = "Fibratus"
-    strings:
-        $mz = { 4D 5A }
-        $pe = { 50 45 00 00 }
-        $dos = "This program cannot be run in DOS mode"
-    condition:
-        $mz at 0 and $pe and $dos
-}
-
-rule Meterpreter_Stage_Marker
+// fleet agent on disk (rules/yara/baseline.yar) and seeded into any
+// account with zero yara_rules. Rules here must be narrow enough for
+// inline detection — anything that matches every legitimate PE image or
+// every Windows process's PEB access generates thousands of false
+// positives through the 'Memory/File Threat Detected' upstream rules.
+//
+// A previous revision shipped InMemory_PE_Header and
+// Common_Shellcode_Patterns, both of which trip on normal Windows
+// executables; they're intentionally absent here. Keep this set
+// threat-specific: Meterpreter, Cobalt Strike, Mimikatz, reflective DLL.
+const baselineYARARules = `rule Meterpreter_Stage_Marker
 {
     meta:
         description = "Meterpreter reflective loader stage markers"
@@ -98,22 +88,6 @@ rule Reflective_DLL_Loader
         $a3 = "LoadRemoteLibraryR" ascii
     condition:
         any of them
-}
-
-rule Common_Shellcode_Patterns
-{
-    meta:
-        description = "Shellcode prologues and API-hashing constructs common to injected stages"
-        threat_name = "Shellcode"
-        severity = "medium"
-        score = 55
-        author = "Fibratus"
-    strings:
-        $peb_x86 = { 64 A1 30 00 00 00 }
-        $peb_x64 = { 65 48 8B 04 25 60 00 00 00 }
-        $hash = { 33 C0 B8 ?? ?? ?? ?? }
-    condition:
-        any of ($peb_*) or 2 of them
 }
 `
 
