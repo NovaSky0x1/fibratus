@@ -9,7 +9,7 @@ Active Response provides real-time incident response capabilities on enrolled en
 | **Containment** | `isolate`, `unisolate` | Network isolation via WFP kernel filters |
 | **Remediation** | `kill_process` | Terminate malicious processes |
 | **Investigation** | `list_directory`, `get_file`, `run_command` | File browsing, evidence collection, remote shell |
-| **Forensics** | `start_capture`, `stop_capture` | Live kernel event captures with export |
+| **Forensics** | `start_capture`, `stop_capture`, `yara_scan` | Live kernel captures; on-demand YARA scans (processes/files) |
 | **Reconnaissance** | `collect_info`, `get_processes`, `get_network`, `get_services`, `get_drivers`, `get_autoruns`, `get_software`, `get_users` | Full endpoint inventory |
 | **Logging** | `set_eventlog_policy`, `list_eventlog_channels`, `query_eventlog` | Windows Event Log management |
 | **Protection** | `set_tamper_protection` | Enable/disable tamper protection |
@@ -108,6 +108,36 @@ The Agent Detail > Captures tab provides live kernel event capture:
 - **Export**: JSON, CSV, or native `.kcap` format
 
 The capture system uses a pure-Go `.kcap` writer (no CGO) compatible with `fibratus replay`.
+
+## YARA Scan
+
+The Agent Detail > **YARA Scan** tab runs on-demand YARA scanning against a running process or a file/directory on the endpoint. Rules come from the account's server-managed rule set (see [YARA Rule Management](yara-rules.md)) and travel with the command — agents do not load rules from disk and do not perform inline YARA matching on the event stream.
+
+### Triggering a scan
+
+1. Open the **YARA Scan** tab on an Agent Detail page.
+2. Pick a target:
+   - **Process (PID)** — scans live memory via libyara's `yr_scanner_scan_proc`.
+   - **File / Directory** — scans an on-disk path; directories are walked recursively.
+3. Optionally narrow the rule set using the checkbox list (empty = all enabled rules in the account).
+4. Click **Run scan**. Results appear inline within ~60 seconds.
+
+### Result display
+
+Each match card shows the rule name + namespace, any tags, rule metadata (`threat_name`, `severity`, `score`, `author`), and matched strings with hex offsets and the decoded bytes. No matches surface as a single "No matches" panel with the count of rules applied. See [Match Results](../yara/alerts.md) for the wire format.
+
+### Supported libyara modules
+
+The agent binary includes `pe`, `elf`, `hash`, `math`, `magic`, `dotnet`, and `cuckoo`. Rules that `import` an unavailable module return a compile error in the scan response.
+
+### Test paths
+
+| Purpose | Target |
+|---|---|
+| Negative control | `C:\Windows\System32\notepad.exe` |
+| Positive (marker file) | Create `C:\Users\Public\yara-test.txt` containing `ReflectiveLoader` — scan should match `Meterpreter_Stage_Marker` and `Reflective_DLL_Loader` |
+
+Scan results are visible only to the operator who initiated the scan (and in the audit log) — they do not create rows in the Detections tab.
 
 ## Windows Event Log
 

@@ -82,6 +82,37 @@ The command uses CIM/WMI with fallbacks:
 - Fallback: Direct WMI queries
 - Fallback: `ipconfig` for network info when CIM/WMI unavailable
 
+### Forensics / YARA
+
+#### `yara_scan`
+On-demand YARA scan of a process or file path on the endpoint. Rules are fetched from the account's `yara_rules` table at command-creation time and embedded inline in the payload; the agent compiles them fresh and returns structured matches.
+
+Request payload:
+
+```json
+{ "pid": 1234 }
+// or
+{ "path": "C:\\Users\\Public\\sample.exe" }
+// optionally, narrow the rule set:
+{ "pid": 1234, "rule_ids": ["abc…", "def…"] }
+```
+
+Response (abbreviated):
+
+```json
+{
+  "pid": 1234,
+  "matches": [
+    { "Rule": "Mimikatz_Markers", "Namespace": "default",
+      "Metas": [...], "Strings": [...] }
+  ],
+  "match_count": 1,
+  "scanned_at": "2026-04-24T18:00:00Z"
+}
+```
+
+See [YARA Rule Management](fleet/yara-rules.md) for authoring and [Running a Scan](/yara/scanning.md) for the dashboard flow.
+
 ### Agent Lifecycle
 
 #### `uninstall`

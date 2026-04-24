@@ -63,10 +63,10 @@
   * [Sections](/pe/sections.md)
   * [Symbols](/pe/symbols.md)
   * [Resources](/pe/resources.md)
-* <ion-icon name="bug-outline"></ion-icon> Yara
-  * [Pattern Matching Swiss Knife](/yara/introduction.md)
-  * [Scanning Processes](/yara/scanning.md)
-  * [Alerts](/yara/alerts.md)
+* <ion-icon name="bug-outline"></ion-icon> YARA
+  * [Overview (on-demand only)](/yara/introduction.md)
+  * [Running a Scan](/yara/scanning.md)
+  * [Match Results](/yara/alerts.md)
 * <ion-icon name="help-buoy-outline"></ion-icon> Troubleshooting
   * [Logs](troubleshooting/logs.md)
   * [Stats](troubleshooting/stats.md)
@@ -83,6 +83,7 @@
   * [Tamper Protection](fleet/tamper-protection.md)
   * [Detections](fleet/detections.md)
   * [Rule Management](fleet/rules.md)
+  * [YARA Rule Management](fleet/yara-rules.md)
   * [SIGMA Integration](fleet/sigma.md)
   * [Events (SIEM)](fleet/events.md)
   * [Telemetry Pipeline](fleet/telemetry.md)
