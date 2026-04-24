@@ -355,14 +355,19 @@ func (f *App) Run(args []string) error {
 		if f.engine != nil {
 			f.evs.RegisterEventListener(f.engine)
 		}
-		// register YARA scanner
+		// YARA scanner — server-managed, on-demand only. Rules live in the
+		// fleet server's yara_rules table; every yara_scan command carries
+		// the applicable rule set inline in its payload. The agent does NOT
+		// register the scanner as an event listener, so no inline matches
+		// on process creation / image load / PE write fire a detection.
+		// The scanner struct is still constructed (with zero on-disk rules
+		// most of the time) so the executor's ScanTargetInline has a
+		// process snapshotter bound for PID-target scans.
 		if cfg.Yara.Enabled {
 			scanner, err := yara.NewScanner(f.psnap, cfg.Yara)
 			if err != nil {
 				return err
 			}
-			f.evs.RegisterEventListener(scanner)
-			// Stash for the fleet executor's on-demand yara_scan command.
 			f.yaraScanner = scanner
 		}
 		err = f.evs.Open(cfg)

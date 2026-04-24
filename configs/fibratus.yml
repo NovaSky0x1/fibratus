@@ -648,23 +648,21 @@ transformers:
 
 # Tweaks that influence the behaviour of the YARA scanner.
 yara:
-  # YARA scanner enabled for inline detections (process creation, image load,
-  # PE write) and for on-demand fleet yara_scan active-response commands.
-  # Requires a libyara-linked agent build (yara + yara_static build tags).
+  # YARA support — on-demand scans only. Rules live on the fleet server
+  # (yara_rules table, managed via the dashboard) and travel with each
+  # yara_scan active-response command. The agent does NOT load rules from
+  # disk and does NOT run inline YARA matches on the event stream, so no
+  # "Memory/File Threat Detected" alerts fire automatically from YARA.
+  # This flag must stay true so the scanner object is constructed (its
+  # process snapshotter is reused for PID-target on-demand scans); clear
+  # it to disable YARA entirely on the agent.
   enabled: true
 
-  # Contains rule paths and rule definition information
+  # rule.paths and rule.strings are intentionally empty in fleet mode.
+  # The on-demand handler compiles rules inline from the command payload.
   rule:
-    # Represents the paths within the file system along with the YARA namespace identifier. All directories
-    # inside the path are traversed recursively for YARA rule files.
-    paths:
-      - path: "C:\\Program Files\\Fibratus\\Rules\\yara"
-        namespace: "default"
-
-    # Represents the string with the rule definition along with the YARA namespace identifier
-    strings:
-      - string:
-        namespace:
+    paths: []
+    strings: []
 
   # Specifies templates for the alert text in Go templating language (https://golang.org/pkg/text/template)
   #alert-template:
