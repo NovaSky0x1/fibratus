@@ -661,8 +661,12 @@ yara:
   # rule.paths and rule.strings are intentionally empty in fleet mode.
   # The on-demand handler compiles rules inline from the command payload.
   rule:
-    paths: []
-    strings: []
+    paths:
+      - path: ""
+        namespace: ""
+    strings:
+      - string:
+        namespace:
 
   # Specifies templates for the alert text in Go templating language (https://golang.org/pkg/text/template)
   #alert-template:
