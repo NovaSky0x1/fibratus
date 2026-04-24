@@ -216,10 +216,13 @@ func (s *RuleStore) DeleteAcrossAccount(ctx context.Context, accountID, ruleID s
 	return err
 }
 
-// DeleteBySource deletes all rules for an org with the given source.
+// DeleteBySource deletes all rules from the caller's account with the given
+// source. Signature keeps orgID for API compatibility; scope is account.
 func (s *RuleStore) DeleteBySource(ctx context.Context, orgID, source string) (int, error) {
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM rules WHERE org_id = $1 AND source = $2`, orgID, source)
+		`DELETE FROM rules
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id=$1)
+		   AND source = $2`, orgID, source)
 	if err != nil {
 		return 0, err
 	}
@@ -227,12 +230,15 @@ func (s *RuleStore) DeleteBySource(ctx context.Context, orgID, source string) (i
 	return int(n), nil
 }
 
-// DeleteBySourceExcept deletes all rules for an org with the given source
-// EXCEPT those whose IDs are in the keep set. Used for clean sync.
+// DeleteBySourceExcept deletes all rules in the caller's account with the
+// given source EXCEPT those whose IDs are in the keep set. Used for clean
+// sync — the sync pass keeps tracked rule IDs.
 func (s *RuleStore) DeleteBySourceExcept(ctx context.Context, orgID, source string, keepIDs []string) (int, error) {
 	if len(keepIDs) == 0 {
 		res, err := s.db.ExecContext(ctx,
-			`DELETE FROM rules WHERE org_id = $1 AND source = $2`, orgID, source)
+			`DELETE FROM rules
+			 WHERE account_id = (SELECT account_id FROM organizations WHERE id=$1)
+			   AND source = $2`, orgID, source)
 		if err != nil {
 			return 0, err
 		}
@@ -240,7 +246,9 @@ func (s *RuleStore) DeleteBySourceExcept(ctx context.Context, orgID, source stri
 		return int(n), nil
 	}
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM rules WHERE org_id = $1 AND source = $2 AND id != ALL($3)`,
+		`DELETE FROM rules
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id=$1)
+		   AND source = $2 AND id != ALL($3)`,
 		orgID, source, pq.Array(keepIDs))
 	if err != nil {
 		return 0, err
@@ -252,7 +260,9 @@ func (s *RuleStore) DeleteBySourceExcept(ctx context.Context, orgID, source stri
 func (s *RuleStore) CountBySource(ctx context.Context, orgID, source string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM rules WHERE org_id = $1 AND source = $2`, orgID, source).Scan(&count)
+		`SELECT COUNT(*) FROM rules
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id=$1)
+		   AND source = $2`, orgID, source).Scan(&count)
 	return count, err
 }
 
@@ -367,12 +377,16 @@ func scanRuleRows(rows *sql.Rows) (*fleet.Rule, error) {
 	return r, nil
 }
 
-// ListUserModifiedIDs returns the IDs of rules that have been modified or disabled by the user.
+// ListUserModifiedIDs returns the IDs of rules that have been modified or
+// disabled by the user — account-scoped (same rule set seen by any org in
+// the account).
 func (s *RuleStore) ListUserModifiedIDs(ctx context.Context, orgID, source string) (modified, disabled map[string]bool, err error) {
 	modified = make(map[string]bool)
 	disabled = make(map[string]bool)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_modified, user_disabled FROM rules WHERE org_id = $1 AND source = $2 AND (user_modified = true OR user_disabled = true)`,
+		`SELECT id, user_modified, user_disabled FROM rules
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id=$1)
+		   AND source = $2 AND (user_modified = true OR user_disabled = true)`,
 		orgID, source)
 	if err != nil {
 		return nil, nil, err
@@ -392,19 +406,31 @@ func (s *RuleStore) ListUserModifiedIDs(ctx context.Context, orgID, source strin
 	return
 }
 
-// RecordSyncDeletion records that a user deleted a synced rule so it won't be re-created on next sync.
+// RecordSyncDeletion records that a user deleted a synced rule so it won't
+// be re-created on next sync. Tombstones are written per-org in the existing
+// deleted_sync_rules table, but we insert one row for every org in the
+// account so a deletion from any org prevents resurrection across all of
+// them (account-scoped intent on an org-keyed table).
 func (s *RuleStore) RecordSyncDeletion(ctx context.Context, orgID, ruleID, source string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO deleted_sync_rules (org_id, rule_id, source) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+		`INSERT INTO deleted_sync_rules (org_id, rule_id, source)
+		 SELECT id, $2, $3 FROM organizations
+		 WHERE account_id = (SELECT account_id FROM organizations WHERE id=$1)
+		 ON CONFLICT DO NOTHING`,
 		orgID, ruleID, source)
 	return err
 }
 
-// ListDeletedSyncIDs returns the IDs of synced rules that the user has deleted.
+// ListDeletedSyncIDs returns the IDs of synced rules that any user in this
+// account has deleted. Matches RecordSyncDeletion's account-wide semantics.
 func (s *RuleStore) ListDeletedSyncIDs(ctx context.Context, orgID, source string) (map[string]bool, error) {
 	ids := make(map[string]bool)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT rule_id FROM deleted_sync_rules WHERE org_id = $1 AND source = $2`,
+		`SELECT DISTINCT rule_id FROM deleted_sync_rules
+		 WHERE org_id IN (
+		   SELECT id FROM organizations
+		   WHERE account_id = (SELECT account_id FROM organizations WHERE id=$1)
+		 ) AND source = $2`,
 		orgID, source)
 	if err != nil {
 		return nil, err

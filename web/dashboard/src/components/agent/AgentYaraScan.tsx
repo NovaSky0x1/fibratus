@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { api, type Agent } from '../../lib/api'
+import { useState, useMemo } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { api, type Agent, type YaraRule } from '../../lib/api'
 import {
   ScanSearch, Loader2, CheckCircle2, AlertTriangle, Info,
 } from 'lucide-react'
@@ -62,12 +62,30 @@ export default function AgentYaraScan({ agentId, agent: _agent }: { agentId: str
   const [path, setPath] = useState('')
   const [error, setError] = useState('')
   const [result, setResult] = useState<YaraResult | null>(null)
+  // Selected rule IDs — empty set means "use all enabled rules"
+  const [selectedRules, setSelectedRules] = useState<Set<string>>(new Set())
+  const [ruleSearch, setRuleSearch] = useState('')
+
+  const rulesQuery = useQuery({
+    queryKey: ['yara-rules'],
+    queryFn: () => api.listYaraRules(),
+    staleTime: 30_000,
+  })
+  const allRules: YaraRule[] = useMemo(
+    () => ((rulesQuery.data?.data as YaraRule[] | undefined) ?? []).filter(r => r.enabled && r.validation_status === 'valid'),
+    [rulesQuery.data]
+  )
+  const filteredRules = useMemo(() => {
+    const q = ruleSearch.toLowerCase().trim()
+    if (!q) return allRules
+    return allRules.filter(r => r.name.toLowerCase().includes(q) || (r.source || '').toLowerCase().includes(q))
+  }, [allRules, ruleSearch])
 
   const scan = useMutation({
     mutationFn: async () => {
       setError('')
       setResult(null)
-      const payload: Record<string, string | number> = {}
+      const payload: Record<string, string | number | string[]> = {}
       if (targetKind === 'pid') {
         const p = Number(pid)
         if (!p || p < 1) throw new Error('Enter a valid numeric PID')
@@ -75,6 +93,9 @@ export default function AgentYaraScan({ agentId, agent: _agent }: { agentId: str
       } else {
         if (!path.trim()) throw new Error('Enter a file or directory path')
         payload.path = path.trim()
+      }
+      if (selectedRules.size > 0) {
+        payload.rule_ids = Array.from(selectedRules)
       }
       const res = await api.createCommand(agentId, 'yara_scan', payload)
       const cmdId = (res?.data as { id?: string })?.id
@@ -85,6 +106,16 @@ export default function AgentYaraScan({ agentId, agent: _agent }: { agentId: str
     onSuccess: (data) => setResult(data),
     onError: (e: Error) => setError(e.message),
   })
+
+  const toggleRule = (id: string) => {
+    setSelectedRules(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  const selectAll = () => setSelectedRules(new Set(filteredRules.map(r => r.id)))
+  const clearAll = () => setSelectedRules(new Set())
 
   const busy = scan.isPending
 
@@ -143,6 +174,57 @@ export default function AgentYaraScan({ agentId, agent: _agent }: { agentId: str
             </p>
           </div>
         )}
+
+        {/* Rule selector — account-wide rule set, narrow with checkboxes */}
+        <div className="pt-2 border-t border-gray-200 dark:border-slate-700">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-gray-500 dark:text-slate-400">
+              Rules ({selectedRules.size === 0 ? `all ${allRules.length} enabled` : `${selectedRules.size} of ${allRules.length} selected`})
+            </label>
+            <div className="flex gap-3 text-xs">
+              <button type="button" onClick={selectAll} disabled={busy} className="text-fibratus-600 hover:underline disabled:opacity-50">Select all</button>
+              <button type="button" onClick={clearAll} disabled={busy} className="text-fibratus-600 hover:underline disabled:opacity-50">Clear</button>
+            </div>
+          </div>
+          <input
+            type="text"
+            value={ruleSearch}
+            onChange={e => setRuleSearch(e.target.value)}
+            placeholder="Filter by name or source…"
+            disabled={busy}
+            className="w-full mb-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-xs text-gray-900 dark:text-slate-100 focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none disabled:opacity-50"
+          />
+          <div className="max-h-40 overflow-y-auto rounded border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40">
+            {rulesQuery.isLoading ? (
+              <div className="p-3 text-xs text-gray-500">Loading rules…</div>
+            ) : filteredRules.length === 0 ? (
+              <div className="p-3 text-xs text-gray-500">
+                {allRules.length === 0 ? 'No enabled YARA rules. Add rules on the YARA Rules page.' : 'No rules match the filter.'}
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-100 dark:divide-slate-700">
+                {filteredRules.map(r => (
+                  <li key={r.id} className="px-3 py-1.5 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedRules.has(r.id)}
+                      onChange={() => toggleRule(r.id)}
+                      disabled={busy}
+                      className="rounded"
+                    />
+                    <span className="font-mono text-gray-900 dark:text-slate-100 flex-1 truncate">{r.name}</span>
+                    {r.source && r.source !== 'manual' && (
+                      <span className="text-[10px] rounded bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-400 px-1.5 py-0.5 font-mono">{r.source}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-500">
+            Leave empty to run with every enabled rule in the account. Selecting any rule limits the scan to just those.
+          </p>
+        </div>
 
         <div className="flex items-center gap-2">
           <button
