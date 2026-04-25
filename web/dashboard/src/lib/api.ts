@@ -694,6 +694,9 @@ export interface YaraRule {
   description?: string
   content: string
   enabled: boolean
+  source?: string
+  user_modified?: boolean
+  user_disabled?: boolean
   validation_status: string
   validation_errors?: string
   created_at: string
