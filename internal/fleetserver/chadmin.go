@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
+	log "github.com/sirupsen/logrus"
 )
 
 // getCHConfigDTO returns the current ClickHouse configuration as the DTO the
@@ -53,10 +54,11 @@ func (s *Server) getCHConfigDTO() handler.ClickHouseConfigDTO {
 	}
 }
 
-// saveCHConfig validates the candidate, mutates the in-memory config, and
-// persists the YAML file to disk. Connection pool fields default to sane
-// values if the DTO leaves them at zero so the dashboard does not need to
-// duplicate every default.
+// saveCHConfig validates the candidate, mutates the in-memory config, persists
+// the password to the encrypted secret store, and writes the rest of the
+// config back to YAML (with the password field scrubbed so it never sits on
+// disk again). Connection pool fields default to sane values if the DTO
+// leaves them at zero so the dashboard does not need to duplicate every default.
 func (s *Server) saveCHConfig(dto handler.ClickHouseConfigDTO) error {
 	if s.configPath == "" {
 		return errors.New("config path unknown — cannot persist changes")
@@ -83,13 +85,21 @@ func (s *Server) saveCHConfig(dto handler.ClickHouseConfigDTO) error {
 		dto.DialTimeoutSecs = 10
 	}
 
+	// Password handling: if the DTO carries a non-empty password, persist it
+	// to the encrypted store. Empty means "keep what's already stored".
+	if dto.Password != "" && s.secretStore != nil {
+		if err := s.secretStore.Set(context.Background(), SecretClickHousePassword, dto.Password, "dashboard"); err != nil {
+			return err
+		}
+	}
+
 	s.config.ClickHouse = ClickHouseConfig{
 		Enabled:         dto.Enabled,
 		Host:            dto.Host,
 		Port:            dto.Port,
 		Database:        dto.Database,
 		User:            dto.User,
-		Password:        dto.Password,
+		Password:        dto.Password, // kept in-memory so the live connection can reuse it without a round-trip
 		Secure:          dto.Secure,
 		SkipVerify:      dto.SkipVerify,
 		DialTimeoutSecs: dto.DialTimeoutSecs,
@@ -97,7 +107,22 @@ func (s *Server) saveCHConfig(dto handler.ClickHouseConfigDTO) error {
 		MaxIdleConns:    dto.MaxIdleConns,
 		ConnMaxLifetime: dto.ConnMaxLifetime,
 	}
-	return SaveConfig(s.configPath, s.config)
+	if dto.Password == "" {
+		// Reload from the encrypted store so the in-memory copy stays accurate
+		// even when the dashboard sends a redacted DTO.
+		if pw, err := s.secretStore.Get(context.Background(), SecretClickHousePassword); err == nil {
+			s.config.ClickHouse.Password = pw
+		}
+	}
+
+	// Persist YAML without the password — secret store is the source of truth.
+	yamlSafe := *s.config
+	yamlSafe.ClickHouse.Password = ""
+	if err := SaveConfig(s.configPath, &yamlSafe); err != nil {
+		return err
+	}
+	log.Info("fleet: ClickHouse config saved (YAML scrubbed; password held in secret store)")
+	return nil
 }
 
 // testCHConfig opens a one-off connection with the candidate config and runs

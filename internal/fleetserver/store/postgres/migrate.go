@@ -552,6 +552,16 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS latest_agent_version TEXT NOT NULL
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS latest_agent_msi_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS auto_update_agents BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS agent_update_repo TEXT NOT NULL DEFAULT 'NovaSky0x1/fibratus';
+
+-- Server-wide encrypted secrets (ClickHouse password, ClickHouse Cloud API
+-- credentials, etc.). Encrypted with FLEET_SECRET_KEY using AES-256-GCM —
+-- value_encrypted is nonce(12) || ciphertext || tag(16).
+CREATE TABLE IF NOT EXISTS system_secrets (
+    name            TEXT PRIMARY KEY,
+    value_encrypted BYTEA NOT NULL,
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_by      TEXT DEFAULT ''
+);
 `
 
 // Migrate runs the database schema migrations.

@@ -353,6 +353,64 @@ export interface ClickhouseTestResult {
   error?: string
 }
 
+export interface CloudCredentialsStatus {
+  configured: boolean
+  key_id?: string
+  organization_id?: string
+}
+
+export interface CloudOrganization {
+  id: string
+  name: string
+  createdAt?: string
+}
+
+export interface CloudEndpoint {
+  protocol: string
+  host: string
+  port: number
+}
+
+export interface CloudService {
+  id: string
+  name: string
+  provider: string
+  region: string
+  state: string
+  endpoints: CloudEndpoint[]
+}
+
+export interface CloudConnectRequest {
+  organization_id: string
+  service_id: string
+  database?: string
+  user?: string
+  service_password: string
+}
+
+export interface CloudCreateServiceRequest {
+  organization_id: string
+  name: string
+  provider: string
+  region: string
+  tier: string
+  min_replica_memory_gb?: number
+  max_replica_memory_gb?: number
+  database?: string
+  user?: string
+}
+
+export interface CloudCreateServiceResult {
+  service_id: string
+  service_name: string
+  host: string
+  port: number
+  region: string
+  state: string
+  bound: boolean
+  restart_required: boolean
+}
+
 // ═════════════════════════════════════════════════
 // API Client
 // ═════════════════════════════════════════════════
@@ -648,6 +706,25 @@ export const api = {
     fetchApi<{ saved: boolean; restart_required: boolean }>('/admin/db/clickhouse/config', { method: 'PUT', body: JSON.stringify(cfg) }),
   testClickhouseConfig: (cfg: ClickhouseConfig) =>
     fetchApi<ClickhouseTestResult>('/admin/db/clickhouse/test', { method: 'POST', body: JSON.stringify(cfg) }),
+  // ClickHouse Cloud admin (server-wide)
+  getCloudCredentialsStatus: () =>
+    fetchApi<CloudCredentialsStatus>('/admin/clickhouse-cloud/credentials'),
+  saveCloudCredentials: (req: { key_id: string; key_secret: string; organization_id?: string }) =>
+    fetchApi<{ saved: boolean }>('/admin/clickhouse-cloud/credentials', { method: 'PUT', body: JSON.stringify(req) }),
+  deleteCloudCredentials: () =>
+    fetchApi<{ deleted: boolean }>('/admin/clickhouse-cloud/credentials', { method: 'DELETE' }),
+  listCloudOrganizations: () =>
+    fetchApi<CloudOrganization[]>('/admin/clickhouse-cloud/organizations'),
+  listCloudServices: (orgID: string) =>
+    fetchApi<CloudService[]>(`/admin/clickhouse-cloud/services?organization_id=${encodeURIComponent(orgID)}`),
+  createCloudService: (req: CloudCreateServiceRequest) =>
+    fetchApi<CloudCreateServiceResult>('/admin/clickhouse-cloud/services', { method: 'POST', body: JSON.stringify(req) }),
+  connectCloudService: (req: CloudConnectRequest) =>
+    fetchApi<{ bound: boolean; restart_required: boolean }>('/admin/clickhouse-cloud/connect', { method: 'POST', body: JSON.stringify(req) }),
+  resetCloudServicePassword: (orgID: string, serviceID: string) =>
+    fetchApi<{ reset: boolean; restart_required: boolean }>(`/admin/clickhouse-cloud/services/reset-password?organization_id=${encodeURIComponent(orgID)}&service_id=${encodeURIComponent(serviceID)}`, { method: 'POST' }),
+  restartFleetServer: () =>
+    fetchApi<{ restarting: boolean }>('/admin/restart', { method: 'POST' }),
   adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),
   adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string; account_id?: string; org_restrictions?: string[]; set_org_restrictions?: boolean }) =>
     fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

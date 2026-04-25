@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, type ClickhouseConfig, type ClickhouseMode, type ClickhouseTestResult } from '../../lib/api'
+import { api, type ClickhouseConfig, type ClickhouseMode, type ClickhouseTestResult, type CloudCredentialsStatus, type CloudOrganization, type CloudService } from '../../lib/api'
 
 type DbType = 'postgres' | 'clickhouse'
-type BrowseView = 'tables' | 'browse' | 'query' | 'connection'
+type BrowseView = 'tables' | 'browse' | 'query' | 'connection' | 'cloud'
 
 interface QueryResult {
   columns: string[]
@@ -446,6 +446,481 @@ function ClickHouseConnectionPanel() {
   )
 }
 
+// ClickHouseCloudPanel drives the "bam" Cloud setup flow:
+//   1. Paste ClickHouse Cloud Console API Key ID + Secret (stored encrypted server-side)
+//   2. Pick an organisation
+//   3. Pick an existing service + paste its password, OR create a new one
+//   4. Apply (restarts fibratus-fleet via systemd)
+function ClickHouseCloudPanel() {
+  const [status, setStatus] = useState<CloudCredentialsStatus | null>(null)
+  const [statusLoading, setStatusLoading] = useState(true)
+  const [savingCreds, setSavingCreds] = useState(false)
+  const [credsError, setCredsError] = useState('')
+  const [keyID, setKeyID] = useState('')
+  const [keySecret, setKeySecret] = useState('')
+
+  const [orgs, setOrgs] = useState<CloudOrganization[] | null>(null)
+  const [orgsLoading, setOrgsLoading] = useState(false)
+  const [orgsError, setOrgsError] = useState('')
+  const [selectedOrg, setSelectedOrg] = useState('')
+
+  const [services, setServices] = useState<CloudService[] | null>(null)
+  const [servicesLoading, setServicesLoading] = useState(false)
+  const [servicesError, setServicesError] = useState('')
+  const [selectedService, setSelectedService] = useState('')
+  const [servicePassword, setServicePassword] = useState('')
+  const [serviceDb, setServiceDb] = useState('default')
+  const [serviceUser, setServiceUser] = useState('default')
+  const [connecting, setConnecting] = useState(false)
+  const [connectMsg, setConnectMsg] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [resetting, setResetting] = useState(false)
+
+  // Create-new-service form
+  const [showCreate, setShowCreate] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newProvider, setNewProvider] = useState('aws')
+  const [newRegion, setNewRegion] = useState('us-east-1')
+  const [newTier, setNewTier] = useState('development')
+  const [creating, setCreating] = useState(false)
+  const [createMsg, setCreateMsg] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const [restarting, setRestarting] = useState(false)
+
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true)
+    try {
+      const res = await api.getCloudCredentialsStatus()
+      if (res.data) {
+        setStatus(res.data)
+        if (res.data.organization_id) setSelectedOrg(res.data.organization_id)
+      }
+    } finally {
+      setStatusLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadStatus() }, [loadStatus])
+
+  // Auto-load orgs once credentials are confirmed configured.
+  useEffect(() => {
+    if (status?.configured) {
+      void loadOrgs()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.configured])
+
+  // Auto-load services when an org is selected.
+  useEffect(() => {
+    if (selectedOrg && status?.configured) {
+      void loadServices(selectedOrg)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrg, status?.configured])
+
+  async function saveCreds() {
+    setCredsError('')
+    setSavingCreds(true)
+    try {
+      const res = await api.saveCloudCredentials({
+        key_id: keyID.trim(),
+        key_secret: keySecret.trim(),
+      })
+      if (res.error) {
+        setCredsError(res.error.message)
+        return
+      }
+      setKeyID('')
+      setKeySecret('')
+      await loadStatus()
+    } catch (err) {
+      setCredsError(String(err))
+    } finally {
+      setSavingCreds(false)
+    }
+  }
+
+  async function clearCreds() {
+    if (!confirm('Remove stored ClickHouse Cloud API credentials? You will need to paste them again to use this tab.')) return
+    await api.deleteCloudCredentials()
+    setOrgs(null)
+    setServices(null)
+    setSelectedOrg('')
+    setSelectedService('')
+    await loadStatus()
+  }
+
+  async function loadOrgs() {
+    setOrgsLoading(true)
+    setOrgsError('')
+    try {
+      const res = await api.listCloudOrganizations()
+      if (res.error) {
+        setOrgsError(res.error.message)
+        setOrgs(null)
+      } else {
+        setOrgs(res.data || [])
+      }
+    } finally {
+      setOrgsLoading(false)
+    }
+  }
+
+  async function loadServices(orgID: string) {
+    setServicesLoading(true)
+    setServicesError('')
+    setSelectedService('')
+    try {
+      const res = await api.listCloudServices(orgID)
+      if (res.error) {
+        setServicesError(res.error.message)
+        setServices(null)
+      } else {
+        setServices(res.data || [])
+      }
+    } finally {
+      setServicesLoading(false)
+    }
+  }
+
+  async function connect() {
+    if (!selectedOrg || !selectedService || !servicePassword) {
+      setConnectMsg({ ok: false, msg: 'Select a service and enter the service password.' })
+      return
+    }
+    setConnecting(true)
+    setConnectMsg(null)
+    try {
+      const res = await api.connectCloudService({
+        organization_id: selectedOrg,
+        service_id: selectedService,
+        database: serviceDb || 'default',
+        user: serviceUser || 'default',
+        service_password: servicePassword,
+      })
+      if (res.error) {
+        setConnectMsg({ ok: false, msg: res.error.message })
+      } else {
+        setConnectMsg({ ok: true, msg: 'Bound to Cloud service. Click "Apply now" to restart fibratus-fleet so the new connection takes effect.' })
+        setServicePassword('')
+      }
+    } catch (err) {
+      setConnectMsg({ ok: false, msg: String(err) })
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  async function resetPassword() {
+    if (!selectedOrg || !selectedService) return
+    if (!confirm('Reset the password for this service? Anything currently using the old password will stop working until reconfigured.')) return
+    setResetting(true)
+    setConnectMsg(null)
+    try {
+      const res = await api.resetCloudServicePassword(selectedOrg, selectedService)
+      if (res.error) {
+        setConnectMsg({ ok: false, msg: res.error.message })
+      } else {
+        setConnectMsg({ ok: true, msg: 'Password rotated and saved. Apply now to use the new password.' })
+        setServicePassword('')
+      }
+    } catch (err) {
+      setConnectMsg({ ok: false, msg: String(err) })
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  async function createService() {
+    if (!selectedOrg || !newName || !newRegion) {
+      setCreateMsg({ ok: false, msg: 'Pick an organisation and provide a service name + region.' })
+      return
+    }
+    setCreating(true)
+    setCreateMsg(null)
+    try {
+      const res = await api.createCloudService({
+        organization_id: selectedOrg,
+        name: newName,
+        provider: newProvider,
+        region: newRegion,
+        tier: newTier,
+        database: serviceDb || 'default',
+        user: serviceUser || 'default',
+      })
+      if (res.error) {
+        setCreateMsg({ ok: false, msg: res.error.message })
+      } else if (res.data) {
+        setCreateMsg({ ok: true, msg: `Service "${res.data.service_name}" created at ${res.data.host}:${res.data.port}. Click "Apply now" to start using it.` })
+        setNewName('')
+        await loadServices(selectedOrg)
+      }
+    } catch (err) {
+      setCreateMsg({ ok: false, msg: String(err) })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function applyNow() {
+    if (!confirm('Restart fibratus-fleet now? In-flight requests will be interrupted; the dashboard will reconnect within a few seconds.')) return
+    setRestarting(true)
+    try {
+      await api.restartFleetServer()
+    } catch {
+      // Expected — the connection will drop as the server exits.
+    }
+    // Poll for the server coming back up.
+    const start = Date.now()
+    let backUp = false
+    while (Date.now() - start < 60000) {
+      await new Promise(r => setTimeout(r, 2000))
+      try {
+        const res = await api.getCloudCredentialsStatus()
+        if (res.data) { backUp = true; break }
+      } catch { /* not yet */ }
+    }
+    setRestarting(false)
+    if (backUp) {
+      setConnectMsg({ ok: true, msg: 'fibratus-fleet restarted successfully.' })
+    } else {
+      setConnectMsg({ ok: false, msg: 'Server did not come back up within 60s. Check systemctl status fibratus-fleet on the host.' })
+    }
+  }
+
+  const inputCls = 'w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 text-sm focus:border-amber-500 dark:focus:border-amber-500 focus:outline-none'
+  const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1'
+  const sectionCls = 'rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5'
+
+  if (statusLoading) {
+    return <div className="text-center py-12 text-gray-500 dark:text-slate-400">Loading Cloud setup...</div>
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Step 1 — credentials */}
+      <div className={sectionCls}>
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">1. ClickHouse Cloud API credentials</h3>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+              Create a Console API key under <span className="font-mono">clickhouse.cloud → API Keys</span>. Stored encrypted server-side; never written to disk in plaintext.
+            </p>
+          </div>
+          {status?.configured && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-2.5 py-0.5 text-xs text-emerald-700 dark:text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Configured
+            </span>
+          )}
+        </div>
+        {status?.configured ? (
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-gray-500 dark:text-slate-400">Key ID:</span>
+            <code className="font-mono text-xs bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 px-2 py-1 rounded">{status.key_id}</code>
+            <button onClick={clearCreds} className="text-xs text-red-600 dark:text-red-400 hover:underline">Remove</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Key ID</label>
+              <input value={keyID} onChange={e => setKeyID(e.target.value)} placeholder="ABCDEFGHIJ" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Key Secret</label>
+              <input type="password" value={keySecret} onChange={e => setKeySecret(e.target.value)} className={inputCls} />
+            </div>
+            <div className="md:col-span-2 flex items-center gap-2">
+              <button
+                onClick={saveCreds}
+                disabled={savingCreds || !keyID || !keySecret}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {savingCreds ? 'Validating...' : 'Save & validate'}
+              </button>
+              {credsError && <span className="text-xs text-red-600 dark:text-red-400">{credsError}</span>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Steps 2+ require credentials */}
+      {status?.configured && (
+        <>
+          {/* Step 2 — pick org */}
+          <div className={sectionCls}>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">2. Organisation</h3>
+            {orgsLoading ? (
+              <div className="text-sm text-gray-500 dark:text-slate-400">Loading organisations...</div>
+            ) : orgsError ? (
+              <div className="text-sm text-red-600 dark:text-red-400">{orgsError}</div>
+            ) : orgs && orgs.length > 0 ? (
+              <select value={selectedOrg} onChange={e => setSelectedOrg(e.target.value)} className={inputCls + ' max-w-md'}>
+                <option value="">— Select organisation —</option>
+                {orgs.map(o => <option key={o.id} value={o.id}>{o.name} ({o.id})</option>)}
+              </select>
+            ) : (
+              <div className="text-sm text-gray-500 dark:text-slate-400">No organisations visible to this API key.</div>
+            )}
+            <button onClick={loadOrgs} className="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300 mt-2">Refresh</button>
+          </div>
+
+          {/* Step 3 — pick or create service */}
+          {selectedOrg && (
+            <div className={sectionCls}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">3. Service</h3>
+                <button
+                  onClick={() => setShowCreate(s => !s)}
+                  className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                >
+                  {showCreate ? 'Cancel new service' : '+ Create new service'}
+                </button>
+              </div>
+
+              {servicesLoading ? (
+                <div className="text-sm text-gray-500 dark:text-slate-400">Loading services...</div>
+              ) : servicesError ? (
+                <div className="text-sm text-red-600 dark:text-red-400">{servicesError}</div>
+              ) : services && services.length > 0 ? (
+                <div className="space-y-2 mb-4">
+                  {services.map(svc => {
+                    const ep = svc.endpoints?.find(e => e.protocol === 'nativesecure')
+                    return (
+                      <button
+                        key={svc.id}
+                        onClick={() => setSelectedService(svc.id)}
+                        className={`w-full text-left rounded-lg border-2 p-3 transition-all ${selectedService === svc.id ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/10' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm text-gray-900 dark:text-slate-100">{svc.name}</span>
+                          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">{svc.state}</span>
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                          {svc.provider} / {svc.region}
+                          {ep && <> · <span className="font-mono">{ep.host}:{ep.port}</span></>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500 dark:text-slate-400 mb-4">No services in this org yet — create one below.</div>
+              )}
+
+              {/* Create new service form */}
+              {showCreate && (
+                <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/30 p-4 mb-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className={labelCls}>Service name</label>
+                      <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="fibratus-prod" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Provider</label>
+                      <select value={newProvider} onChange={e => setNewProvider(e.target.value)} className={inputCls}>
+                        <option value="aws">AWS</option>
+                        <option value="gcp">GCP</option>
+                        <option value="azure">Azure</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Region</label>
+                      <input value={newRegion} onChange={e => setNewRegion(e.target.value)} placeholder="us-east-1" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Tier</label>
+                      <select value={newTier} onChange={e => setNewTier(e.target.value)} className={inputCls}>
+                        <option value="development">Development</option>
+                        <option value="production">Production</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button
+                    onClick={createService}
+                    disabled={creating || !newName || !newRegion}
+                    className="mt-3 px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {creating ? 'Creating service (~30s)...' : 'Create service'}
+                  </button>
+                  {createMsg && (
+                    <div className={`mt-2 text-xs ${createMsg.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'}`}>{createMsg.msg}</div>
+                  )}
+                </div>
+              )}
+
+              {/* Existing service connect form */}
+              {selectedService && !showCreate && (
+                <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-4 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Service password</label>
+                      <input type="password" value={servicePassword} onChange={e => setServicePassword(e.target.value)} placeholder="from your records, or click Reset" className={inputCls} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className={labelCls}>Database</label>
+                        <input value={serviceDb} onChange={e => setServiceDb(e.target.value)} className={inputCls} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>User</label>
+                        <input value={serviceUser} onChange={e => setServiceUser(e.target.value)} className={inputCls} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={connect}
+                      disabled={connecting || !servicePassword}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {connecting ? 'Binding...' : 'Bind to this service'}
+                    </button>
+                    <button
+                      onClick={resetPassword}
+                      disabled={resetting}
+                      className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
+                    >
+                      {resetting ? 'Resetting...' : 'Reset password (server-side, then bind)'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-slate-500">
+                    The Cloud API never returns existing service passwords. Either paste the one you saved at creation, or click "Reset password" — we'll generate a new one and save it.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Apply / restart */}
+          <div className={sectionCls}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">4. Apply</h3>
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                  Bind / reset operations stage the new connection but the running server still uses the old one. Click Apply to restart fibratus-fleet via systemd.
+                </p>
+              </div>
+              <button
+                onClick={applyNow}
+                disabled={restarting}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+              >
+                {restarting ? 'Restarting & polling...' : 'Apply now (restart)'}
+              </button>
+            </div>
+            {connectMsg && (
+              <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${connectMsg.ok
+                ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
+                {connectMsg.msg}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function DatabaseTab() {
   const [dbType, setDbType] = useState<DbType>('postgres')
   const [query, setQuery] = useState('')
@@ -817,12 +1292,20 @@ export default function DatabaseTab() {
               Query
             </button>
             {dbType === 'clickhouse' && (
-              <button
-                onClick={() => { setBrowseView('connection'); setActiveTable(null) }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${browseView === 'connection' ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-600 dark:text-slate-300'}`}
-              >
-                Connection
-              </button>
+              <>
+                <button
+                  onClick={() => { setBrowseView('connection'); setActiveTable(null) }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${browseView === 'connection' ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-600 dark:text-slate-300'}`}
+                >
+                  Connection
+                </button>
+                <button
+                  onClick={() => { setBrowseView('cloud'); setActiveTable(null) }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${browseView === 'cloud' ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-600 dark:text-slate-300'}`}
+                >
+                  Cloud Setup
+                </button>
+              </>
             )}
           </div>
           {activeTable && browseView === 'browse' && (
@@ -843,6 +1326,11 @@ export default function DatabaseTab() {
       {/* Connection Config (ClickHouse only) */}
       {browseView === 'connection' && dbType === 'clickhouse' && (
         <ClickHouseConnectionPanel />
+      )}
+
+      {/* ClickHouse Cloud Setup */}
+      {browseView === 'cloud' && dbType === 'clickhouse' && (
+        <ClickHouseCloudPanel />
       )}
 
       {/* Database Overview Bar */}

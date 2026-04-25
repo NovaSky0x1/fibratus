@@ -49,12 +49,13 @@ import (
 
 // Server is the fleet management server (HTTP for dashboard, gRPC for agents).
 type Server struct {
-	config     *Config
-	configPath string
-	httpServer *http.Server
-	grpcServer *GRPCServer
-	pgStore    *postgres.Store
-	apiKeys    map[string]bool
+	config      *Config
+	configPath  string
+	httpServer  *http.Server
+	grpcServer  *GRPCServer
+	pgStore     *postgres.Store
+	apiKeys     map[string]bool
+	secretStore *postgres.SecretStore
 }
 
 // New creates a new fleet server instance. configPath is the absolute path to
@@ -95,6 +96,13 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	db := s.pgStore.DB()
+
+	// Initialise the encrypted secret store. Resolved secrets (ClickHouse
+	// password, ClickHouse Cloud API credentials, etc.) are loaded from this
+	// store and live-overridden on the in-memory config below.
+	if err := s.initSecretStore(ctx, db); err != nil {
+		return err
+	}
 
 	// Create stores
 	accountStore := postgres.NewAccountStore(db)
@@ -193,6 +201,7 @@ func (s *Server) Run(ctx context.Context) error {
 		s.saveCHConfig,
 		s.testCHConfig,
 	)
+	cloudHandler := handler.NewCloudHandler(s.cloudHandlerDeps())
 	groupHandler := handler.NewGroupHandler(groupStore)
 	captureHandler := handler.NewCaptureHandler(captureStore, agentStore, commandStore, auditStore, userStore)
 	eventLogPolicyStore := postgres.NewEventLogPolicyStore(db)
@@ -968,6 +977,34 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	})
 	dashMux.HandleFunc("/api/v1/admin/db/clickhouse/test", methodGuard(http.MethodPost, chConfigHandler.Test))
+
+	// ClickHouse Cloud admin: credentials + service discovery + bind/connect.
+	dashMux.HandleFunc("/api/v1/admin/clickhouse-cloud/credentials", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			cloudHandler.GetCredentialsStatus(w, r)
+		case http.MethodPut:
+			cloudHandler.PutCredentials(w, r)
+		case http.MethodDelete:
+			cloudHandler.DeleteCredentials(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/admin/clickhouse-cloud/organizations", methodGuard(http.MethodGet, cloudHandler.ListOrganizations))
+	dashMux.HandleFunc("/api/v1/admin/clickhouse-cloud/services", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			cloudHandler.ListServices(w, r)
+		case http.MethodPost:
+			cloudHandler.CreateService(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/admin/clickhouse-cloud/connect", methodGuard(http.MethodPost, cloudHandler.ConnectService))
+	dashMux.HandleFunc("/api/v1/admin/clickhouse-cloud/services/reset-password", methodGuard(http.MethodPost, cloudHandler.ResetPassword))
+	dashMux.HandleFunc("/api/v1/admin/restart", methodGuard(http.MethodPost, cloudHandler.Restart))
 
 	// TOTP 2FA routes (JWT auth, user-scoped)
 	dashMux.HandleFunc("/api/v1/auth/totp/setup", methodGuard(http.MethodPost, totpHandler.Setup))
