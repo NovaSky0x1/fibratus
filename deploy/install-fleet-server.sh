@@ -34,6 +34,12 @@ DB_USER="fibratus"
 DB_PASS="$(openssl rand -hex 16)"
 JWT_SECRET="$(openssl rand -hex 32)"
 API_KEY="$(openssl rand -hex 32)"
+# Master key for server-wide encrypted secrets (ClickHouse password, ClickHouse
+# Cloud API credentials, etc.). Stored at ${CONFIG_DIR}/master.key with mode
+# 0600 owned by the service user. Back this up — losing it bricks every
+# encrypted secret. To rotate manually: regenerate, then re-enter every secret
+# via the dashboard.
+MASTER_KEY="$(openssl rand -hex 32)"
 
 CH_DB="fibratus"
 CH_USER="fibratus"
@@ -519,6 +525,16 @@ YAML
 chmod 600 "${CONFIG_DIR}/fleet-server.yml"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}/fleet-server.yml"
 ok "Configuration written to ${CONFIG_DIR}/fleet-server.yml"
+
+# Master key for the encrypted secret store. The server can auto-generate this
+# at first boot, but ProtectSystem=strict in the systemd unit blocks writes to
+# /etc, so we pre-create it here with the right ownership.
+if [ ! -f "${CONFIG_DIR}/master.key" ]; then
+    echo "${MASTER_KEY}" > "${CONFIG_DIR}/master.key"
+    chmod 600 "${CONFIG_DIR}/master.key"
+    chown "${SERVICE_USER}:${SERVICE_USER}" "${CONFIG_DIR}/master.key"
+    ok "Encrypted-secret master key written to ${CONFIG_DIR}/master.key (back this up)"
+fi
 
 # ─── Step 12: Configure Nginx reverse proxy ─────────────────────────────────
 
