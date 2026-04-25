@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, setSession, isAuthenticated, type AuthResponse } from '../lib/api'
+import { usePermissions } from '../contexts/PermissionContext'
 
 export default function Login() {
   const navigate = useNavigate()
+  const { refresh: refreshPermissions } = usePermissions()
   const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -41,6 +43,7 @@ export default function Login() {
     if (orgs && orgs.length > 0) {
       setSession(token, orgs[0].id)
     }
+    await refreshPermissions()
     navigate('/')
   }
 
@@ -121,14 +124,14 @@ export default function Login() {
   }
 
   const handleSetupComplete = async () => {
-    // Set session, then full page reload to initialize PermissionContext + sidebar
     setSession(pendingToken, '')
     const orgsRes = await api.getOrganizations()
     const orgs = orgsRes.data as { id: string }[] | undefined
     if (orgs && orgs.length > 0) {
       setSession(pendingToken, orgs[0].id)
     }
-    window.location.href = '/'
+    await refreshPermissions()
+    navigate('/')
   }
 
   const inputCls = 'rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-500 px-4 py-3 text-sm focus:border-fibratus-500 focus:ring-1 focus:ring-fibratus-500 focus:outline-none w-full'

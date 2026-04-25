@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { api, isAuthenticated } from '../lib/api'
 
 interface PermissionContextValue {
@@ -7,6 +7,8 @@ interface PermissionContextValue {
   hasPermission: (perm: string) => boolean
   hasAnyPermission: (...perms: string[]) => boolean
   isRoot: boolean
+  refresh: () => Promise<void>
+  clear: () => void
 }
 
 const PermissionContext = createContext<PermissionContextValue>({
@@ -15,30 +17,47 @@ const PermissionContext = createContext<PermissionContextValue>({
   hasPermission: () => false,
   hasAnyPermission: () => false,
   isRoot: false,
+  refresh: async () => {},
+  clear: () => {},
 })
 
 export function PermissionProvider({ children }: { children: React.ReactNode }) {
   const [permissions, setPermissions] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     if (!isAuthenticated()) {
+      setPermissions(new Set())
       setLoading(false)
       return
     }
-    api.getMyPermissions().then(res => {
+    setLoading(true)
+    try {
+      const res = await api.getMyPermissions()
       const perms = (res.data || []) as string[]
       setPermissions(new Set(perms))
+    } catch {
+      setPermissions(new Set())
+    } finally {
       setLoading(false)
-    }).catch(() => setLoading(false))
+    }
   }, [])
+
+  const clear = useCallback(() => {
+    setPermissions(new Set())
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const hasPermission = (perm: string) => permissions.has(perm)
   const hasAnyPermission = (...perms: string[]) => perms.some(p => permissions.has(p))
   const isRoot = permissions.has('admin:panel') && permissions.has('accounts:manage')
 
   return (
-    <PermissionContext.Provider value={{ permissions, loading, hasPermission, hasAnyPermission, isRoot }}>
+    <PermissionContext.Provider value={{ permissions, loading, hasPermission, hasAnyPermission, isRoot, refresh, clear }}>
       {children}
     </PermissionContext.Provider>
   )

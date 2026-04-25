@@ -66,7 +66,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isRoot = user?.role === 'root'
 
   // Permission-based access control (augments role checks)
-  const { hasPermission, loading: permsLoading } = usePermissions()
+  const { hasPermission, loading: permsLoading, clear: clearPermissions } = usePermissions()
   const canSuperAdmin = hasPermission('admin:panel')
   const showManagement = permsLoading ? isAdminOrRoot : hasPermission('page:management')
   const showSuperAdmin = permsLoading ? isRoot : canSuperAdmin
@@ -153,6 +153,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const handleLogout = () => {
     clearSession()
+    clearPermissions()
     navigate('/login')
   }
 
