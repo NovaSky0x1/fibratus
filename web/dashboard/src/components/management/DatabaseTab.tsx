@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../../lib/api'
+import { api, type ClickhouseConfig, type ClickhouseMode, type ClickhouseTestResult } from '../../lib/api'
 
 type DbType = 'postgres' | 'clickhouse'
-type BrowseView = 'tables' | 'browse' | 'query'
+type BrowseView = 'tables' | 'browse' | 'query' | 'connection'
 
 interface QueryResult {
   columns: string[]
@@ -60,6 +60,390 @@ function saveHistory(history: string[]) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)))
   } catch { /* ignore */ }
+}
+
+// Default ClickHouse config used while the server response is in flight, and
+// as a sensible starting point for first-time setup.
+const defaultCHConfig: ClickhouseConfig = {
+  mode: 'local',
+  enabled: false,
+  host: 'localhost',
+  port: 9000,
+  database: 'fibratus',
+  user: 'default',
+  password: '',
+  secure: false,
+  skip_verify: false,
+  dial_timeout_secs: 10,
+  max_open_conns: 20,
+  max_idle_conns: 10,
+  conn_max_lifetime_secs: 3600,
+}
+
+// ClickHouseConnectionPanel renders the connection-config form for ClickHouse.
+// It supports two modes:
+//   - Local: typical for self-hosted clusters (port 9000, no TLS).
+//   - Cloud: ClickHouse Cloud (port 9440, TLS required).
+// The form persists changes via PUT and exposes a Test Connection action that
+// runs against the server-side endpoint without saving — operators can verify
+// credentials before committing.
+function ClickHouseConnectionPanel() {
+  const [cfg, setCfg] = useState<ClickhouseConfig>(defaultCHConfig)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<ClickhouseTestResult | null>(null)
+  const [saveStatus, setSaveStatus] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [passwordTouched, setPasswordTouched] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.getClickhouseConfig()
+      if (res.data) setCfg(res.data)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  function update<K extends keyof ClickhouseConfig>(key: K, value: ClickhouseConfig[K]) {
+    setCfg(prev => ({ ...prev, [key]: value }))
+    setTestResult(null)
+    setSaveStatus(null)
+  }
+
+  function setMode(mode: ClickhouseMode) {
+    if (mode === 'cloud') {
+      // Cloud presets: TLS on, native port 9440. Don't clobber a hostname
+      // the operator may have already typed, but reset port if it's the local default.
+      setCfg(prev => ({
+        ...prev,
+        mode,
+        secure: true,
+        port: prev.port === 9000 ? 9440 : prev.port,
+        host: prev.host === 'localhost' ? '' : prev.host,
+      }))
+    } else {
+      setCfg(prev => ({
+        ...prev,
+        mode,
+        secure: false,
+        skip_verify: false,
+        port: prev.port === 9440 ? 9000 : prev.port,
+        host: prev.host === '' ? 'localhost' : prev.host,
+      }))
+    }
+    setTestResult(null)
+    setSaveStatus(null)
+  }
+
+  async function runTest() {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      // Omit password if untouched so the server falls back to the stored one.
+      const payload: ClickhouseConfig = passwordTouched ? cfg : { ...cfg, password: '' }
+      const res = await api.testClickhouseConfig(payload)
+      if (res.data) setTestResult(res.data)
+      else if (res.error) setTestResult({ ok: false, error: res.error.message })
+    } catch (err) {
+      setTestResult({ ok: false, error: String(err) })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  async function save() {
+    setSaving(true)
+    setSaveStatus(null)
+    try {
+      const payload: ClickhouseConfig = passwordTouched ? cfg : { ...cfg, password: '' }
+      const res = await api.saveClickhouseConfig(payload)
+      if (res.error) {
+        setSaveStatus({ ok: false, msg: res.error.message })
+      } else {
+        setSaveStatus({ ok: true, msg: 'Saved. Restart fibratus-fleet for the new connection to take effect.' })
+        setPasswordTouched(false)
+      }
+    } catch (err) {
+      setSaveStatus({ ok: false, msg: String(err) })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500 dark:text-slate-400">Loading connection config...</div>
+  }
+
+  const isCloud = cfg.mode === 'cloud'
+  const inputCls = 'w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 text-sm focus:border-amber-500 dark:focus:border-amber-500 focus:outline-none'
+  const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1'
+
+  return (
+    <div className="space-y-6">
+      {/* Mode selector */}
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Deployment</h3>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Choose where telemetry events are stored.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <button
+            onClick={() => setMode('local')}
+            className={`text-left rounded-lg border-2 p-4 transition-all ${!isCloud ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/10' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium text-gray-900 dark:text-slate-100">Local / Self-hosted</span>
+              {!isCloud && <span className="text-xs text-amber-600 dark:text-amber-400">Active</span>}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-slate-400">ClickHouse running on this host or a private network. Native protocol, no TLS by default.</p>
+          </button>
+          <button
+            onClick={() => setMode('cloud')}
+            className={`text-left rounded-lg border-2 p-4 transition-all ${isCloud ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/10' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium text-gray-900 dark:text-slate-100">ClickHouse Cloud</span>
+              {isCloud && <span className="text-xs text-amber-600 dark:text-amber-400">Active</span>}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Managed service from clickhouse.com. TLS-required native protocol on port 9440. Scales beyond what a single host can.</p>
+          </button>
+        </div>
+      </div>
+
+      {/* Connection form */}
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+            {isCloud ? 'ClickHouse Cloud connection' : 'Local connection'}
+          </h3>
+          <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cfg.enabled}
+              onChange={e => update('enabled', e.target.checked)}
+              className="rounded border-gray-300 dark:border-slate-600"
+            />
+            Enabled (use ClickHouse for telemetry)
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
+            <label className={labelCls}>
+              {isCloud ? 'Service hostname' : 'Host'}
+            </label>
+            <input
+              value={cfg.host}
+              onChange={e => update('host', e.target.value)}
+              placeholder={isCloud ? 'abc123.us-east-1.aws.clickhouse.cloud' : 'localhost'}
+              className={inputCls}
+            />
+            {isCloud && (
+              <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+                Find this in the ClickHouse Cloud console under your service → Connect → Native interface.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className={labelCls}>Port</label>
+            <input
+              type="number"
+              value={cfg.port}
+              onChange={e => update('port', Number(e.target.value) || 0)}
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+              {isCloud ? 'Cloud uses 9440 (native + TLS).' : 'Native protocol typically on 9000.'}
+            </p>
+          </div>
+
+          <div>
+            <label className={labelCls}>Database</label>
+            <input
+              value={cfg.database}
+              onChange={e => update('database', e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>User</label>
+            <input
+              value={cfg.user}
+              onChange={e => update('user', e.target.value)}
+              placeholder={isCloud ? 'default' : 'default'}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>Password</label>
+            <input
+              type="password"
+              value={cfg.password ?? ''}
+              onChange={e => { update('password', e.target.value); setPasswordTouched(true) }}
+              placeholder={passwordTouched ? '' : '•••••• (unchanged)'}
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+              Leave blank to keep the existing password.
+            </p>
+          </div>
+        </div>
+
+        {/* TLS section — only meaningful for Cloud, but exposed for local TLS too */}
+        <div className="mt-4 rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cfg.secure}
+              onChange={e => update('secure', e.target.checked)}
+              className="rounded border-gray-300 dark:border-slate-600"
+            />
+            <span>TLS (required for ClickHouse Cloud)</span>
+          </label>
+          {cfg.secure && (
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer mt-2 ml-6">
+              <input
+                type="checkbox"
+                checked={cfg.skip_verify}
+                onChange={e => update('skip_verify', e.target.checked)}
+                className="rounded border-gray-300 dark:border-slate-600"
+              />
+              <span>Skip certificate verification (development only — never use against Cloud)</span>
+            </label>
+          )}
+        </div>
+
+        {/* Advanced */}
+        <div className="mt-4">
+          <button
+            onClick={() => setShowAdvanced(s => !s)}
+            className="flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
+          >
+            <svg className={`w-3 h-3 transition-transform ${showAdvanced ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            Advanced (connection pool & timeouts)
+          </button>
+          {showAdvanced && (
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className={labelCls}>Dial timeout (s)</label>
+                <input
+                  type="number"
+                  value={cfg.dial_timeout_secs}
+                  onChange={e => update('dial_timeout_secs', Number(e.target.value) || 0)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Max open conns</label>
+                <input
+                  type="number"
+                  value={cfg.max_open_conns}
+                  onChange={e => update('max_open_conns', Number(e.target.value) || 0)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Max idle conns</label>
+                <input
+                  type="number"
+                  value={cfg.max_idle_conns}
+                  onChange={e => update('max_idle_conns', Number(e.target.value) || 0)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Conn max lifetime (s)</label>
+                <input
+                  type="number"
+                  value={cfg.conn_max_lifetime_secs}
+                  onChange={e => update('conn_max_lifetime_secs', Number(e.target.value) || 0)}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            onClick={runTest}
+            disabled={testing || !cfg.host || !cfg.port}
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600 disabled:opacity-50"
+          >
+            {testing ? 'Testing...' : 'Test Connection'}
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !cfg.host || !cfg.port}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
+          >
+            Reload from server
+          </button>
+        </div>
+
+        {/* Test result */}
+        {testResult && (
+          <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${testResult.ok
+            ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
+            {testResult.ok ? (
+              <div>
+                <div className="font-medium">Connection successful</div>
+                <div className="text-xs mt-1 opacity-80">
+                  Server version: <span className="font-mono">{testResult.version}</span>
+                  {testResult.latency_ms !== undefined && <> &middot; {testResult.latency_ms} ms</>}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="font-medium">Connection failed</div>
+                <div className="text-xs mt-1 font-mono break-all">{testResult.error}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Save status */}
+        {saveStatus && (
+          <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${saveStatus.ok
+            ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
+            {saveStatus.msg}
+          </div>
+        )}
+      </div>
+
+      {isCloud && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-900/10 p-4 text-xs text-amber-800 dark:text-amber-300">
+          <div className="font-medium mb-1">ClickHouse Cloud notes</div>
+          <ul className="list-disc list-inside space-y-1 opacity-90">
+            <li>The Cloud service must be running before agents can stream telemetry.</li>
+            <li>Telemetry storage is billed by ClickHouse based on compute units and stored bytes.</li>
+            <li>Schema migration runs against the configured database the next time the server starts.</li>
+            <li>Saving here updates the YAML config on disk; restart <span className="font-mono">fibratus-fleet</span> to apply.</li>
+          </ul>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function DatabaseTab() {
@@ -432,6 +816,14 @@ export default function DatabaseTab() {
             >
               Query
             </button>
+            {dbType === 'clickhouse' && (
+              <button
+                onClick={() => { setBrowseView('connection'); setActiveTable(null) }}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${browseView === 'connection' ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-600 dark:text-slate-300'}`}
+              >
+                Connection
+              </button>
+            )}
           </div>
           {activeTable && browseView === 'browse' && (
             <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400">
@@ -447,6 +839,11 @@ export default function DatabaseTab() {
           )}
         </div>
       </div>
+
+      {/* Connection Config (ClickHouse only) */}
+      {browseView === 'connection' && dbType === 'clickhouse' && (
+        <ClickHouseConnectionPanel />
+      )}
 
       {/* Database Overview Bar */}
       {browseView === 'tables' && dbOverview && !overviewLoading && (

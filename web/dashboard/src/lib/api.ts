@@ -328,6 +328,31 @@ export interface PermissionDef {
   category: string
 }
 
+export type ClickhouseMode = 'local' | 'cloud'
+
+export interface ClickhouseConfig {
+  mode: ClickhouseMode
+  enabled: boolean
+  host: string
+  port: number
+  database: string
+  user: string
+  password?: string
+  secure: boolean
+  skip_verify: boolean
+  dial_timeout_secs: number
+  max_open_conns: number
+  max_idle_conns: number
+  conn_max_lifetime_secs: number
+}
+
+export interface ClickhouseTestResult {
+  ok: boolean
+  version?: string
+  latency_ms?: number
+  error?: string
+}
+
 // ═════════════════════════════════════════════════
 // API Client
 // ═════════════════════════════════════════════════
@@ -617,6 +642,12 @@ export const api = {
     fetchApi<{ columns: string[]; rows: unknown[][] }>('/admin/db/postgres/tables'),
   dbTablesClickhouse: () =>
     fetchApi<{ columns: string[]; rows: unknown[][] }>('/admin/db/clickhouse/tables'),
+  getClickhouseConfig: () =>
+    fetchApi<ClickhouseConfig>('/admin/db/clickhouse/config'),
+  saveClickhouseConfig: (cfg: ClickhouseConfig) =>
+    fetchApi<{ saved: boolean; restart_required: boolean }>('/admin/db/clickhouse/config', { method: 'PUT', body: JSON.stringify(cfg) }),
+  testClickhouseConfig: (cfg: ClickhouseConfig) =>
+    fetchApi<ClickhouseTestResult>('/admin/db/clickhouse/test', { method: 'POST', body: JSON.stringify(cfg) }),
   adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),
   adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string; account_id?: string; org_restrictions?: string[]; set_org_restrictions?: boolean }) =>
     fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

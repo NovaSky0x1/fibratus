@@ -40,7 +40,7 @@ var serveCmd = &cobra.Command{
 
 		initLogging(cfg.Logging.Level)
 
-		srv, err := fleetserver.New(cfg)
+		srv, err := fleetserver.New(cfg, configFile)
 		if err != nil {
 			return err
 		}

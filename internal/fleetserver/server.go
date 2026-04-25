@@ -50,14 +50,17 @@ import (
 // Server is the fleet management server (HTTP for dashboard, gRPC for agents).
 type Server struct {
 	config     *Config
+	configPath string
 	httpServer *http.Server
 	grpcServer *GRPCServer
 	pgStore    *postgres.Store
 	apiKeys    map[string]bool
 }
 
-// New creates a new fleet server instance.
-func New(cfg *Config) (*Server, error) {
+// New creates a new fleet server instance. configPath is the absolute path to
+// the YAML config file, retained so admin endpoints can persist config changes
+// (e.g. switching ClickHouse to a Cloud-hosted instance).
+func New(cfg *Config, configPath string) (*Server, error) {
 	pgStore, err := postgres.New(cfg.Database.DSN(), cfg.Database.MaxConnections)
 	if err != nil {
 		return nil, fmt.Errorf("fleet server: %w", err)
@@ -77,9 +80,10 @@ func New(cfg *Config) (*Server, error) {
 	}
 
 	return &Server{
-		config:  cfg,
-		pgStore: pgStore,
-		apiKeys: apiKeys,
+		config:     cfg,
+		configPath: configPath,
+		pgStore:    pgStore,
+		apiKeys:    apiKeys,
 	}, nil
 }
 
@@ -184,6 +188,11 @@ func (s *Server) Run(ctx context.Context) error {
 	adminHandler.SetGroupStore(groupStore)
 	adminHandler.SetAuthHandler(authHandler)
 	dbAdminHandler := handler.NewDBAdminHandler(db, chDB)
+	chConfigHandler := handler.NewCHConfigHandler(
+		s.getCHConfigDTO,
+		s.saveCHConfig,
+		s.testCHConfig,
+	)
 	groupHandler := handler.NewGroupHandler(groupStore)
 	captureHandler := handler.NewCaptureHandler(captureStore, agentStore, commandStore, auditStore, userStore)
 	eventLogPolicyStore := postgres.NewEventLogPolicyStore(db)
@@ -948,6 +957,17 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/admin/db/postgres/tables", methodGuard(http.MethodGet, dbAdminHandler.TablesPG))
 	dashMux.HandleFunc("/api/v1/admin/db/clickhouse/query", methodGuard(http.MethodPost, dbAdminHandler.QueryCH))
 	dashMux.HandleFunc("/api/v1/admin/db/clickhouse/tables", methodGuard(http.MethodGet, dbAdminHandler.TablesCH))
+	dashMux.HandleFunc("/api/v1/admin/db/clickhouse/config", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			chConfigHandler.Get(w, r)
+		case http.MethodPut:
+			chConfigHandler.Save(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	dashMux.HandleFunc("/api/v1/admin/db/clickhouse/test", methodGuard(http.MethodPost, chConfigHandler.Test))
 
 	// TOTP 2FA routes (JWT auth, user-scoped)
 	dashMux.HandleFunc("/api/v1/auth/totp/setup", methodGuard(http.MethodPost, totpHandler.Setup))

@@ -20,7 +20,10 @@ package fleetserver
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -42,16 +45,27 @@ type Config struct {
 }
 
 // ClickHouseConfig configures the ClickHouse connection for telemetry.
+//
+// Two deployment modes are supported:
+//   - Local/self-hosted: TLS off, native protocol on :9000
+//   - ClickHouse Cloud: TLS on (Secure=true), native protocol on :9440
+//
+// For ClickHouse Cloud, set Host to the service hostname
+// (e.g. "abc123.us-east-1.aws.clickhouse.cloud"), Port to 9440, Secure to true,
+// and supply the service username/password issued in the Cloud console.
 type ClickHouseConfig struct {
-	Enabled        bool   `yaml:"enabled"`
-	Host           string `yaml:"host"`
-	Port           int    `yaml:"port"`
-	Database       string `yaml:"database"`
-	User           string `yaml:"user"`
-	Password       string `yaml:"password"`
-	MaxOpenConns   int    `yaml:"max-open-conns"`
-	MaxIdleConns   int    `yaml:"max-idle-conns"`
-	ConnMaxLifetime int   `yaml:"conn-max-lifetime-secs"`
+	Enabled         bool   `yaml:"enabled"`
+	Host            string `yaml:"host"`
+	Port            int    `yaml:"port"`
+	Database        string `yaml:"database"`
+	User            string `yaml:"user"`
+	Password        string `yaml:"password"`
+	Secure          bool   `yaml:"secure"`            // TLS — required for ClickHouse Cloud
+	SkipVerify      bool   `yaml:"skip-verify"`       // skip TLS cert verification (dev only)
+	DialTimeoutSecs int    `yaml:"dial-timeout-secs"` // 0 = driver default
+	MaxOpenConns    int    `yaml:"max-open-conns"`
+	MaxIdleConns    int    `yaml:"max-idle-conns"`
+	ConnMaxLifetime int    `yaml:"conn-max-lifetime-secs"`
 }
 
 // ServerConfig configures the HTTP server.
@@ -88,13 +102,33 @@ func (d DatabaseConfig) DSN() string {
 	)
 }
 
-// DSN builds a ClickHouse connection string for database/sql.
+// DSN builds a ClickHouse connection string compatible with the
+// clickhouse-go v2 database/sql driver. It URL-encodes credentials and emits
+// TLS / dial-timeout options as query parameters so ClickHouse Cloud and
+// self-hosted deployments share the same code path.
 func (c ClickHouseConfig) DSN() string {
-	dsn := fmt.Sprintf("clickhouse://%s:%d/%s", c.Host, c.Port, c.Database)
-	if c.User != "" {
-		dsn += fmt.Sprintf("?username=%s&password=%s", c.User, c.Password)
+	u := url.URL{
+		Scheme: "clickhouse",
+		Host:   fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:   "/" + c.Database,
 	}
-	return dsn
+	if c.User != "" {
+		u.User = url.UserPassword(c.User, c.Password)
+	}
+	q := url.Values{}
+	if c.Secure {
+		q.Set("secure", "true")
+		if c.SkipVerify {
+			q.Set("skip_verify", "true")
+		}
+	}
+	if c.DialTimeoutSecs > 0 {
+		q.Set("dial_timeout", strconv.Itoa(c.DialTimeoutSecs)+"s")
+	}
+	if len(q) > 0 {
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
 }
 
 // ElasticsearchConfig configures the Elasticsearch connection.
@@ -171,6 +205,9 @@ func LoadConfig(path string) (*Config, error) {
 			Database:        "fibratus",
 			User:            "default",
 			Password:        "",
+			Secure:          false,
+			SkipVerify:      false,
+			DialTimeoutSecs: 10,
 			MaxOpenConns:    20,
 			MaxIdleConns:    10,
 			ConnMaxLifetime: 3600,
@@ -203,4 +240,43 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// SaveConfig writes cfg back to path as YAML. The write is performed via a
+// temp file + rename so a partially written config can never appear on disk.
+// File mode is preserved if the original file exists.
+func SaveConfig(path string, cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	mode := os.FileMode(0o600)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".fleet-config-*.yaml")
+	if err != nil {
+		return fmt.Errorf("create temp config: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("write temp config: %w", err)
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("chmod temp config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("close temp config: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("rename temp config: %w", err)
+	}
+	return nil
 }
