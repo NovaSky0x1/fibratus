@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, type ClickhouseConfig, type ClickhouseMode, type ClickhouseTestResult, type CloudCredentialsStatus, type CloudOrganization, type CloudService } from '../../lib/api'
+import { api, type ClickhouseConfig, type ClickhouseTestResult, type CloudCredentialsStatus, type CloudOrganization, type CloudService } from '../../lib/api'
 import ConfirmDialog from '../ConfirmDialog'
 
 type DbType = 'postgres' | 'clickhouse'
@@ -116,31 +116,6 @@ function ClickHouseConnectionPanel() {
     setSaveStatus(null)
   }
 
-  function setMode(mode: ClickhouseMode) {
-    if (mode === 'cloud') {
-      // Cloud presets: TLS on, native port 9440. Don't clobber a hostname
-      // the operator may have already typed, but reset port if it's the local default.
-      setCfg(prev => ({
-        ...prev,
-        mode,
-        secure: true,
-        port: prev.port === 9000 ? 9440 : prev.port,
-        host: prev.host === 'localhost' ? '' : prev.host,
-      }))
-    } else {
-      setCfg(prev => ({
-        ...prev,
-        mode,
-        secure: false,
-        skip_verify: false,
-        port: prev.port === 9440 ? 9000 : prev.port,
-        host: prev.host === '' ? 'localhost' : prev.host,
-      }))
-    }
-    setTestResult(null)
-    setSaveStatus(null)
-  }
-
   async function runTest() {
     setTesting(true)
     setTestResult(null)
@@ -180,75 +155,39 @@ function ClickHouseConnectionPanel() {
     return <div className="text-center py-12 text-gray-500 dark:text-slate-400">Loading connection config...</div>
   }
 
-  const isCloud = cfg.mode === 'cloud'
   const inputCls = 'w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 text-sm focus:border-amber-500 dark:focus:border-amber-500 focus:outline-none'
   const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1'
 
   return (
     <div className="space-y-6">
-      {/* Mode selector */}
-      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Deployment</h3>
-          <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Choose where telemetry events are stored.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <button
-            onClick={() => setMode('local')}
-            className={`text-left rounded-lg border-2 p-4 transition-all ${!isCloud ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/10' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-medium text-gray-900 dark:text-slate-100">Local / Self-hosted</span>
-              {!isCloud && <span className="text-xs text-amber-600 dark:text-amber-400">Active</span>}
-            </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400">ClickHouse running on this host or a private network. Native protocol, no TLS by default.</p>
-          </button>
-          <button
-            onClick={() => setMode('cloud')}
-            className={`text-left rounded-lg border-2 p-4 transition-all ${isCloud ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/10' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'}`}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-medium text-gray-900 dark:text-slate-100">ClickHouse Cloud</span>
-              {isCloud && <span className="text-xs text-amber-600 dark:text-amber-400">Active</span>}
-            </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400">Managed service from clickhouse.com. TLS-required native protocol on port 9440. Scales beyond what a single host can.</p>
-          </button>
-        </div>
-      </div>
-
-      {/* Connection form */}
       <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
-            {isCloud ? 'ClickHouse Cloud connection' : 'Local connection'}
-          </h3>
-          <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300 cursor-pointer">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Connection</h3>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+              The current ClickHouse connection. To bind a managed Cloud service end-to-end, use the <span className="font-medium">Cloud Setup</span> tab — it handles credentials, service discovery, and password rotation in one flow.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300 cursor-pointer whitespace-nowrap">
             <input
               type="checkbox"
               checked={cfg.enabled}
               onChange={e => update('enabled', e.target.checked)}
               className="rounded border-gray-300 dark:border-slate-600"
             />
-            Enabled (use ClickHouse for telemetry)
+            Enabled
           </label>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
-            <label className={labelCls}>
-              {isCloud ? 'Service hostname' : 'Host'}
-            </label>
+            <label className={labelCls}>Host</label>
             <input
               value={cfg.host}
               onChange={e => update('host', e.target.value)}
-              placeholder={isCloud ? 'abc123.us-east-1.aws.clickhouse.cloud' : 'localhost'}
+              placeholder="localhost"
               className={inputCls}
             />
-            {isCloud && (
-              <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
-                Find this in the ClickHouse Cloud console under your service → Connect → Native interface.
-              </p>
-            )}
           </div>
 
           <div>
@@ -259,9 +198,6 @@ function ClickHouseConnectionPanel() {
               onChange={e => update('port', Number(e.target.value) || 0)}
               className={inputCls}
             />
-            <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
-              {isCloud ? 'Cloud uses 9440 (native + TLS).' : 'Native protocol typically on 9000.'}
-            </p>
           </div>
 
           <div>
@@ -278,7 +214,7 @@ function ClickHouseConnectionPanel() {
             <input
               value={cfg.user}
               onChange={e => update('user', e.target.value)}
-              placeholder={isCloud ? 'default' : 'default'}
+              placeholder="default"
               className={inputCls}
             />
           </div>
@@ -298,7 +234,6 @@ function ClickHouseConnectionPanel() {
           </div>
         </div>
 
-        {/* TLS section — only meaningful for Cloud, but exposed for local TLS too */}
         <div className="mt-4 rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3">
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer">
             <input
@@ -307,7 +242,7 @@ function ClickHouseConnectionPanel() {
               onChange={e => update('secure', e.target.checked)}
               className="rounded border-gray-300 dark:border-slate-600"
             />
-            <span>TLS (required for ClickHouse Cloud)</span>
+            <span>TLS</span>
           </label>
           {cfg.secure && (
             <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer mt-2 ml-6">
@@ -317,7 +252,7 @@ function ClickHouseConnectionPanel() {
                 onChange={e => update('skip_verify', e.target.checked)}
                 className="rounded border-gray-300 dark:border-slate-600"
               />
-              <span>Skip certificate verification (development only — never use against Cloud)</span>
+              <span>Skip certificate verification (development only)</span>
             </label>
           )}
         </div>
@@ -431,18 +366,6 @@ function ClickHouseConnectionPanel() {
           </div>
         )}
       </div>
-
-      {isCloud && (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-900/10 p-4 text-xs text-amber-800 dark:text-amber-300">
-          <div className="font-medium mb-1">ClickHouse Cloud notes</div>
-          <ul className="list-disc list-inside space-y-1 opacity-90">
-            <li>The Cloud service must be running before agents can stream telemetry.</li>
-            <li>Telemetry storage is billed by ClickHouse based on compute units and stored bytes.</li>
-            <li>Schema migration runs against the configured database the next time the server starts.</li>
-            <li>Saving here updates the YAML config on disk; restart <span className="font-mono">fibratus-fleet</span> to apply.</li>
-          </ul>
-        </div>
-      )}
     </div>
   )
 }
