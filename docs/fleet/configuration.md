@@ -19,11 +19,19 @@ database:
   password: "<generated>"
   sslmode: "disable"
 
-# ClickHouse connection
+# ClickHouse connection — bootstrap only.
+# After the first successful boot, the active profile is read from the
+# clickhouse_profiles table in Postgres. Edit profiles via the dashboard
+# (Database → ClickHouse → Connection / Cloud Setup), not by hand-editing
+# this file. The password field below is migrated to the encrypted secret
+# store on first boot, then scrubbed from disk on the next dashboard save.
+# See: ClickHouse Profiles & Cloud (fleet/clickhouse-profiles.md).
 clickhouse:
-  addr: "localhost:9000"
-  database: "fibratus_fleet"
-  username: "default"
+  enabled: true
+  host: "localhost"
+  port: 9000
+  database: "fibratus"
+  user: "default"
   password: ""
 
 # JWT authentication
@@ -53,8 +61,9 @@ log:
 | `database.user` | Database user | `fibratus` |
 | `database.password` | Database password | Generated at install |
 | `database.sslmode` | SSL mode | `disable` |
-| `clickhouse.addr` | ClickHouse address | `localhost:9000` |
-| `clickhouse.database` | ClickHouse database | `fibratus_fleet` |
+| `clickhouse.host` / `port` | ClickHouse address. Bootstrap only — runtime values come from the active profile in Postgres. | `localhost:9000` |
+| `clickhouse.database` | Bootstrap database | `fibratus` |
+| `clickhouse.secure` | TLS for the bootstrap profile (Cloud needs `true`). Profile-level TLS settings override this on subsequent boots. | `false` |
 | `auth.jwt_secret` | JWT signing secret | Generated at install |
 | `auth.token_expiry` | JWT token expiry duration | `24h` |
 | `api.key` | API key for programmatic access | Generated at install |

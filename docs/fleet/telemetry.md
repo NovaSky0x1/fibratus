@@ -128,6 +128,14 @@ Telemetry retention is configurable per-account from the Super Admin panel:
 
 New accounts default to 1 day retention to prevent unexpected storage growth.
 
+Editing retention from either Super Admin → Accounts or Management → Account fires `ALTER TABLE … MODIFY TTL` against whichever ClickHouse profile is currently active (local or Cloud). The metadata change is instant; the actual row deletion happens during background merges (within hours of the threshold).
+
+### Local vs. ClickHouse Cloud
+
+Telemetry can target either a self-hosted ClickHouse on the fleet host or a managed [ClickHouse Cloud](https://clickhouse.com/cloud) service. Both are stored as **profiles** (`local` and `cloud`) in the `clickhouse_profiles` table; switching is one click in the dashboard with no service restart — the running pipeline drains its in-memory buffer, opens a fresh connection to the new profile, and swaps atomically.
+
+The full setup flow (paste a Console API key, list services, rotate password, hot-swap) is documented in [ClickHouse Profiles & Cloud](fleet/clickhouse-profiles.md).
+
 ## Querying Telemetry
 
 ### Fibratus QL Integration

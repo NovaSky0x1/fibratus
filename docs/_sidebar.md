@@ -87,6 +87,7 @@
   * [SIGMA Integration](fleet/sigma.md)
   * [Events (SIEM)](fleet/events.md)
   * [Telemetry Pipeline](fleet/telemetry.md)
+  * [ClickHouse Profiles & Cloud](fleet/clickhouse-profiles.md)
   * [Process Tree](fleet/process-tree.md)
   * [Live Captures](fleet/captures.md)
   * [Event Log Collection](fleet/eventlog.md)

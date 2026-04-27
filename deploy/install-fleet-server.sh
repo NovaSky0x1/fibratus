@@ -683,10 +683,13 @@ step "Step 14/14: Systemd service, logrotate, firewall"
 # ProtectSystem=strict makes / read-only; we must explicitly allow paths
 # the server needs to read or write.
 #
-# Write: data dir, log dir, sigmahq dir (git pull updates)
-# Read:  config dir, source dir (seeding rules/macros from files)
-READWRITE_PATHS="${DATA_DIR} ${LOG_DIR} ${SIGMAHQ_DIR}"
-READONLY_PATHS="${CONFIG_DIR} ${INSTALL_DIR}/src"
+# Write: data dir, log dir, sigmahq dir (git pull updates), config dir
+#        (the server rewrites fleet-server.yml when an operator edits the
+#         ClickHouse profile, signup settings, etc. via the dashboard, and
+#         auto-generates master.key on first boot when it doesn't exist).
+# Read:  source dir (seeding rules/macros from files)
+READWRITE_PATHS="${DATA_DIR} ${LOG_DIR} ${SIGMAHQ_DIR} ${CONFIG_DIR}"
+READONLY_PATHS="${INSTALL_DIR}/src"
 
 # Systemd service with full hardening
 cat > /etc/systemd/system/fibratus-fleet.service <<SERVICE
@@ -851,6 +854,13 @@ JWT Secret:    ${JWT_SECRET}
 API Key:       ${API_KEY}
 Enrollment:    ${ENROLL_TOKEN}
 Org ID:        ${ORG_ID}
+
+# Encrypted-secret master key — DO NOT lose this file.
+# It encrypts every secret stored in Postgres (ClickHouse password,
+# ClickHouse Cloud API credentials, future server-wide secrets).
+# If you lose it the server cannot decrypt those values; you'd have to
+# re-enter every secret via the dashboard after generating a new key.
+Master Key:    ${CONFIG_DIR}/master.key (back this file up alongside DB backups)
 CREDS
 chmod 600 "${CREDS_FILE}"
 echo -e "  ${YELLOW}Credentials saved to ${CREDS_FILE}${NC}"

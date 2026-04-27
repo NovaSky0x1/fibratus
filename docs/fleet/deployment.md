@@ -51,7 +51,22 @@ The script prompts for:
 9. **Nginx configuration**: Sets up reverse proxy for HTTP API, gRPC, and static dashboard files
 10. **Systemd service**: Creates and enables the `fibratus-fleet` service
 11. **Bootstrap**: Runs `fleet-server bootstrap` to create initial admin account and enrollment token
-12. **Credentials**: Saves initial login credentials to `/etc/fibratus/install-credentials.txt`
+12. **Master key**: Generates a 32-byte AES-256 master key at `/etc/fibratus/master.key` (mode `0600`, owned by the service user). The key encrypts every secret stored in Postgres — back this file up alongside your database backups
+13. **Credentials**: Saves initial login credentials to `/etc/fibratus/install-credentials.txt` (delete after stashing securely)
+
+### Encrypted Secret Store
+
+After install, every server-wide secret (ClickHouse password, ClickHouse Cloud API credentials, future server-wide secrets) lives encrypted in the `system_secrets` Postgres table, sealed with AES-256-GCM under the master key. The YAML config no longer carries plaintext passwords once the dashboard has been used to save any setting.
+
+The master key is loaded in this order at boot:
+1. `FLEET_SECRET_KEY` env var (64 hex chars) — set via systemd `EnvironmentFile=` if you prefer to manage rotation through a secrets manager
+2. `/etc/fibratus/master.key` file (the install script default)
+
+Losing the key means losing access to every encrypted secret — back it up.
+
+### Optional Open Signup
+
+By default, new account signups land in a pending state and require a root admin to approve them via Super Admin → Pending Users. For public previews you can disable approval gating from **Super Admin → Settings → Account signup approval**. Existing pending users are not auto-approved — the toggle only affects future signups.
 
 ## Server Architecture
 
