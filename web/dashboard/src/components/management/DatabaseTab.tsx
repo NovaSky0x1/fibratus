@@ -1612,7 +1612,7 @@ export default function DatabaseTab() {
                         {tableData.rows.map((row, ri) => (
                           <tr
                             key={ri}
-                            className={`border-b border-gray-100 dark:border-slate-700/50 ${selectedRows.has(ri) ? 'bg-red-50/50 dark:bg-red-900/10' : 'hover:bg-gray-50 dark:hover:bg-slate-700/30'}`}
+                            className={`border-b border-gray-100 dark:border-slate-700/50 ${selectedRows.has(ri) ? 'bg-red-50/50 dark:bg-red-900/10' : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}
                           >
                             {dbType === 'postgres' && (
                               <td className="px-2 py-1.5 w-8">
@@ -1900,7 +1900,7 @@ export default function DatabaseTab() {
                         </thead>
                         <tbody>
                           {result.rows.map((row, ri) => (
-                            <tr key={ri} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                            <tr key={ri} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/50">
                               {row.map((val, ci) => {
                                 const cellKey = `${ri}-${ci}`
                                 const expanded = expandedCells.has(cellKey)

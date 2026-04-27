@@ -156,7 +156,7 @@ export default function AgentProcesses({ agentId }: { agentId: string }) {
                 const pid = proc.ProcessId || proc.Id || 0
                 const killed = killedPids.has(pid)
                 return (
-                <tr key={pid} className={`even:bg-gray-50 dark:even:bg-slate-800/50 hover:bg-gray-100/50 dark:hover:bg-slate-700/30 ${killed ? 'opacity-50' : ''}`}>
+                <tr key={pid} className={`even:bg-gray-50 dark:even:bg-slate-800/50 hover:bg-gray-100/50 dark:hover:bg-slate-700/50 ${killed ? 'opacity-50' : ''}`}>
                   <td className="px-6 py-2 font-mono text-gray-700 dark:text-slate-300 tabular-nums">{pid}</td>
                   <td className="px-6 py-2 font-medium text-gray-900 dark:text-slate-100">
                     <span className={killed ? 'line-through' : ''}>{proc.Name || proc.ProcessName}</span>

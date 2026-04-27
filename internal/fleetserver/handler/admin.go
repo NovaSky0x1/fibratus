@@ -20,6 +20,7 @@ type AdminHandler struct {
 	orgs        store.OrgStore
 	users       store.UserStore
 	groups      store.UserGroupStore
+	settings    store.SettingsStore
 	authHandler *AuthHandler
 }
 
@@ -33,9 +34,66 @@ func (h *AdminHandler) SetGroupStore(s store.UserGroupStore) {
 	h.groups = s
 }
 
+// SetSettingsStore wires server-wide settings access (signup gating, etc.).
+func (h *AdminHandler) SetSettingsStore(s store.SettingsStore) {
+	h.settings = s
+}
+
 // SetAuthHandler sets the auth handler for org defaults seeding on account creation.
 func (h *AdminHandler) SetAuthHandler(a *AuthHandler) {
 	h.authHandler = a
+}
+
+// GetSignupSettings handles GET /api/v1/admin/settings/signup — root-only.
+// Returns whether new account signups require root admin approval.
+func (h *AdminHandler) GetSignupSettings(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+	require := true
+	if h.settings != nil {
+		require = h.settings.GetBoolOr(r.Context(), "signup.require_approval", true)
+	}
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"require_approval": require,
+	}})
+}
+
+// PutSignupSettings handles PUT /api/v1/admin/settings/signup — root-only.
+// Body: {"require_approval": bool}. Default is true; flipping to false enables
+// open self-service signup so any visitor can create an account without
+// admin intervention. Existing pending users are NOT auto-approved.
+func (h *AdminHandler) PutSignupSettings(w http.ResponseWriter, r *http.Request) {
+	role := ctxutil.RoleFromContext(r.Context())
+	if !fleetauth.IsRoot(role) {
+		writeError(w, http.StatusForbidden, "root access required")
+		return
+	}
+	if h.settings == nil {
+		writeError(w, http.StatusInternalServerError, "settings store not initialised")
+		return
+	}
+	var req struct {
+		RequireApproval *bool `json:"require_approval"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RequireApproval == nil {
+		writeError(w, http.StatusBadRequest, "require_approval is required")
+		return
+	}
+	updatedBy := ctxutil.UserIDFromContext(r.Context())
+	if updatedBy == "" {
+		updatedBy = "admin"
+	}
+	if err := h.settings.SetBool(r.Context(), "signup.require_approval", *req.RequireApproval, updatedBy); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	log.Infof("fleet: signup.require_approval set to %v by %s", *req.RequireApproval, updatedBy)
+	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
+		"require_approval": *req.RequireApproval,
+	}})
 }
 
 // seedDefaultGroups creates the default user groups for a new account.

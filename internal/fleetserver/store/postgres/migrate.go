@@ -569,6 +569,15 @@ CREATE TABLE IF NOT EXISTS system_secrets (
 -- The active profile is tracked via system_secrets row "clickhouse.active_profile".
 -- Passwords are NOT stored here — they live in system_secrets under
 -- "clickhouse.<profile>.password".
+-- Server-wide non-sensitive settings (signup gating, future feature flags).
+-- For sensitive values use system_secrets, which encrypts value_encrypted at rest.
+CREATE TABLE IF NOT EXISTS system_settings (
+    name       TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_by TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS clickhouse_profiles (
     name                   TEXT PRIMARY KEY,
     enabled                BOOLEAN NOT NULL DEFAULT FALSE,

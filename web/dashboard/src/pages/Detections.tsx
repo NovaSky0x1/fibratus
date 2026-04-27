@@ -162,7 +162,7 @@ export default function Detections() {
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {isLoading && <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>}
               {!isLoading && sortedDetections.map(det => (
-                <tr key={det.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30"
+                <tr key={det.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/50"
                   onClick={() => { selectDetection(det); setDetailView('detail') }}>
                   <td className="px-6 py-3">
                     <div className="font-medium text-gray-900 dark:text-slate-100">{det.title || det.rule_name}</div>

@@ -301,6 +301,15 @@ type EventLogPolicyStore interface {
 	Upsert(ctx context.Context, policy *fleet.EventLogPolicy) error
 }
 
+// SettingsStore reads and writes server-wide non-secret settings.
+// Sensitive values use a separate encrypted store; this one is plaintext.
+type SettingsStore interface {
+	Get(ctx context.Context, name string) (string, error)
+	GetBoolOr(ctx context.Context, name string, fallback bool) bool
+	Set(ctx context.Context, name, value, updatedBy string) error
+	SetBool(ctx context.Context, name string, value bool, updatedBy string) error
+}
+
 // TelemetrySearchOpts defines search filters for telemetry events.
 type TelemetrySearchOpts struct {
 	AgentID     string

@@ -38,6 +38,11 @@ const (
 	SecretClickHouseCloudOrgID     = "clickhouse_cloud.organization_id"
 )
 
+// Server-wide non-secret setting keys. Live in system_settings.name.
+const (
+	SettingSignupRequireApproval = "signup.require_approval"
+)
+
 // initSecretStore loads the master key, constructs the SecretStore, and runs
 // any one-time migrations that move plaintext config into the encrypted store.
 //

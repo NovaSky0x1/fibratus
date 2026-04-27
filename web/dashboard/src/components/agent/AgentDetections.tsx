@@ -67,7 +67,7 @@ export default function AgentDetections({ agentId }: { agentId: string }) {
               {!isLoading && sorted.map(det => (
                 <tr
                   key={det.id}
-                  className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30 transition-colors"
+                  className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/50 transition-colors"
                   onClick={() => window.location.href = `/detections?id=${det.id}`}
                 >
                   <td className="px-6 py-3">

@@ -678,7 +678,7 @@ export default function AgentOverview({ agent }: { agent: Agent }) {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
               {detections.map(d => (
-                <tr key={d.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" onClick={() => window.location.href = `/detections?id=${d.id}`}>
+                <tr key={d.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/50" onClick={() => window.location.href = `/detections?id=${d.id}`}>
                   <td className="px-6 py-2.5 text-gray-900 dark:text-slate-100 font-medium">{d.rule_name}</td>
                   <td className="px-6 py-2.5"><SeverityBadge severity={d.severity} /></td>
                   <td className="px-6 py-2.5 text-gray-500 dark:text-slate-400 font-mono text-xs">{d.labels?.['technique.id'] || '-'}</td>

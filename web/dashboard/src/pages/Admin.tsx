@@ -2,12 +2,13 @@ import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Account, type Organization, type User } from '../lib/api'
 import SlidePanel from '../components/SlidePanel'
+import ConfirmDialog from '../components/ConfirmDialog'
 import Groups from './Groups'
 import DatabaseTab from '../components/management/DatabaseTab'
 import { useTableSort } from '../hooks/useTableSort'
 import SortableHeader from '../components/SortableHeader'
 
-type Tab = 'accounts' | 'users' | 'organizations' | 'groups' | 'database'
+type Tab = 'accounts' | 'users' | 'organizations' | 'groups' | 'database' | 'settings'
 
 const roleBadge: Record<string, string> = {
   root: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -100,6 +101,7 @@ export default function Admin() {
     { key: 'organizations', label: 'Organizations' },
     { key: 'groups', label: 'User Groups' },
     { key: 'database', label: 'Database' },
+    { key: 'settings', label: 'Settings' },
   ]
 
   return (
@@ -133,6 +135,95 @@ export default function Admin() {
       {tab === 'organizations' && <OrganizationsTab filterAccountId={filterAccountId} onClearFilter={() => setFilterAccountId(null)} onAccountClick={handleAccountClick} />}
       {tab === 'groups' && <Groups />}
       {tab === 'database' && <DatabaseTab />}
+      {tab === 'settings' && <SystemSettingsTab />}
+    </div>
+  )
+}
+
+// ================================================================
+// System Settings Tab — server-wide policy toggles (root only)
+// ================================================================
+
+function SystemSettingsTab() {
+  const queryClient = useQueryClient()
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-signup-settings'],
+    queryFn: () => api.getSignupSettings(),
+  })
+  const setting = data?.data
+  const requireApproval = setting?.require_approval ?? true
+
+  const [pendingFlip, setPendingFlip] = useState<boolean | null>(null)
+  const [saveError, setSaveError] = useState('')
+
+  const mutate = useMutation({
+    mutationFn: (next: boolean) => api.setSignupSettings(next),
+    onSuccess: () => {
+      setSaveError('')
+      setPendingFlip(null)
+      queryClient.invalidateQueries({ queryKey: ['admin-signup-settings'] })
+    },
+    onError: (err: Error) => {
+      setSaveError(err.message || 'Failed to update')
+      setPendingFlip(null)
+    },
+  })
+
+  if (isLoading) {
+    return <div className="mt-6 text-sm text-gray-500 dark:text-slate-400">Loading system settings...</div>
+  }
+
+  const cardCls = 'rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5'
+
+  return (
+    <div className="mt-6 space-y-4 max-w-3xl">
+      <div className={cardCls}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Account signup approval</h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              When <span className="font-medium">enabled</span> (default), new account signups land in a pending state and a root admin must approve them before they can log in.
+              When <span className="font-medium">disabled</span>, anyone who hits the signup page can create an account and log in immediately — useful for a public preview, but exposes the server to the open internet.
+              Existing pending users are <span className="font-medium">not</span> auto-approved when this is flipped off; switch only affects future signups.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+            <input
+              type="checkbox"
+              checked={requireApproval}
+              disabled={mutate.isPending}
+              onChange={e => setPendingFlip(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-fibratus-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+        <div className="mt-3 text-xs">
+          <span className={requireApproval ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+            {requireApproval ? 'Approval required (current behaviour)' : 'Open self-service signup is ON'}
+          </span>
+        </div>
+        {saveError && (
+          <div className="mt-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+            {saveError}
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={pendingFlip !== null}
+        title={pendingFlip ? 'Require approval for new signups?' : 'Allow open self-service signup?'}
+        message={
+          pendingFlip
+            ? 'New account signups will land in a pending state until a root admin approves them.'
+            : 'Anyone who reaches the signup page will be able to create an account and log in immediately. Use only when the server is exposed to a trusted audience or a public preview is intended.'
+        }
+        confirmLabel={pendingFlip ? 'Require approval' : 'Allow open signup'}
+        onCancel={() => setPendingFlip(null)}
+        onConfirm={() => {
+          if (pendingFlip !== null) mutate.mutate(pendingFlip)
+        }}
+      />
     </div>
   )
 }

@@ -81,7 +81,7 @@ function AgentEventsTab({ agentId }: { agentId: string }) {
             {events.map((evt, idx) => {
               const isOpen = expandedIdx === idx
               return (
-                <tr key={`${evt.id}-${idx}`} className={'border-t border-gray-100 dark:border-slate-700 cursor-pointer ' + (isOpen ? 'bg-gray-50 dark:bg-slate-700' : 'hover:bg-gray-50/50 dark:hover:bg-slate-700/30')}
+                <tr key={`${evt.id}-${idx}`} className={'border-t border-gray-100 dark:border-slate-700 cursor-pointer ' + (isOpen ? 'bg-gray-50 dark:bg-slate-700' : 'hover:bg-gray-50/50 dark:hover:bg-slate-700/50')}
                   onClick={() => setExpandedIdx(isOpen ? null : idx)}>
                   <td className="px-3 py-1.5 text-gray-500 dark:text-slate-400 tabular-nums whitespace-nowrap font-mono align-top">
                     {new Date(evt.timestamp).toLocaleTimeString()}
@@ -227,7 +227,7 @@ export default function Agents() {
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 dark:text-slate-500">Loading...</td></tr>
               )}
               {!isLoading && sortedAgents.map((agent) => (
-                <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/30" onClick={() => window.location.href = `/agents/${agent.id}`}>
+                <tr key={agent.id} className="cursor-pointer hover:bg-gray-50/50 dark:hover:bg-slate-700/50" onClick={() => window.location.href = `/agents/${agent.id}`}>
                   <td className="px-6 py-3">
                     <span className="font-medium text-gray-900 dark:text-slate-100">{agent.hostname}</span>
                     <span className="ml-2 text-xs text-gray-400 dark:text-slate-500">{agent.id.slice(0, 8)}</span>

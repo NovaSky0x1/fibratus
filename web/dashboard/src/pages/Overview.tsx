@@ -516,7 +516,7 @@ export default function Overview() {
             <button
               key={det.id}
               onClick={() => navigate('/detections')}
-              className="flex w-full items-center gap-4 px-6 py-4 text-left transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/40"
+              className="flex w-full items-center gap-4 px-6 py-4 text-left transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/50"
             >
               {/* Severity indicator dot */}
               <span

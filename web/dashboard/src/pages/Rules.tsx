@@ -488,7 +488,7 @@ export default function Rules() {
               )}
               {!isLoading &&
                 sortedRules.map((rule) => (
-                  <tr key={rule.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/30">
+                  <tr key={rule.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                     <td className="px-6 py-3">
                       <div className="font-medium text-gray-900 dark:text-slate-100">
                         {search ? highlightMatch(rule.name, search) : rule.name}
@@ -941,7 +941,7 @@ function TuningTab({ allRules, toggleMutation, queryClient }: {
               {noisyRules.map((nr, idx) => {
                 const rule = allRules.find(r => r.id === nr.rule_id)
                 return (
-                  <tr key={nr.rule_id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/30">
+                  <tr key={nr.rule_id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
                     <td className="px-6 py-3 font-mono text-xs text-gray-400 dark:text-slate-500">{idx + 1}</td>
                     <td className="px-6 py-3">
                       <div className="font-medium text-gray-900 dark:text-slate-100">{nr.rule_name}</div>

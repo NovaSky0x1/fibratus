@@ -113,7 +113,7 @@ export default function AgentCommandHistory({ agentId }: { agentId: string }) {
                   <tr
                     key={cmd.id}
                     className={`border-t border-gray-100 dark:border-slate-700 cursor-pointer transition-colors ${
-                      isExpanded ? 'bg-gray-50 dark:bg-slate-700/50' : 'hover:bg-gray-50/50 dark:hover:bg-slate-700/30'
+                      isExpanded ? 'bg-gray-50 dark:bg-slate-700/50' : 'hover:bg-gray-50/50 dark:hover:bg-slate-700/50'
                     }`}
                     onClick={() => setExpandedId(isExpanded ? null : cmd.id)}
                   >

@@ -770,6 +770,15 @@ export const api = {
     fetchApi<{ active: string }>(`/admin/clickhouse-profiles/${encodeURIComponent(name)}/activate`, { method: 'POST' }),
   testClickhouseProfile: (name: string) =>
     fetchApi<ProfileTestResult>(`/admin/clickhouse-profiles/${encodeURIComponent(name)}/test`, { method: 'POST' }),
+
+  // System-wide settings (root only)
+  getSignupSettings: () =>
+    fetchApi<{ require_approval: boolean }>('/admin/settings/signup'),
+  setSignupSettings: (requireApproval: boolean) =>
+    fetchApi<{ require_approval: boolean }>('/admin/settings/signup', {
+      method: 'PUT',
+      body: JSON.stringify({ require_approval: requireApproval }),
+    }),
   adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),
   adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string; account_id?: string; org_restrictions?: string[]; set_org_restrictions?: boolean }) =>
     fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

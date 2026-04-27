@@ -66,6 +66,7 @@ type AuthHandler struct {
 	jwtSecret      string
 	onCmdCreated   CommandPushCallback
 	onRetentionChange RetentionCallback
+	settings       store.SettingsStore
 }
 
 // NewAuthHandler creates a new auth handler.
@@ -83,6 +84,22 @@ func NewAuthHandler(accounts store.AccountStore, orgs store.OrgStore, users stor
 // SetEventLogPolicyStore sets the event log policy store for account-level propagation.
 func (h *AuthHandler) SetEventLogPolicyStore(s store.EventLogPolicyStore) {
 	h.eventlogPolicy = s
+}
+
+// SetSettingsStore wires the server-wide settings store so signup gating and
+// other policy decisions can read non-secret config without the handler
+// importing a concrete store.
+func (h *AuthHandler) SetSettingsStore(s store.SettingsStore) {
+	h.settings = s
+}
+
+// SignupRequiresApproval reads the server-wide signup approval policy. Defaults
+// to true (preserve current behaviour) when the setting is unset or unreachable.
+func (h *AuthHandler) SignupRequiresApproval(ctx context.Context) bool {
+	if h.settings == nil {
+		return true
+	}
+	return h.settings.GetBoolOr(ctx, "signup.require_approval", true)
 }
 
 // SetRetentionCallback registers a callback for when telemetry retention changes.
@@ -324,8 +341,15 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	// Seed default macros and official rules for the new org
 	go h.seedOrgDefaults(context.Background(), orgID)
 
-	// Create user in 'pending' state — signup requires root admin approval
-	// before the user can log in. No JWT is minted until approval.
+	// Decide signup approval policy. Default is "require approval" (server-wide
+	// safety default); operators can flip the signup.require_approval setting
+	// to false to enable open registration (e.g. for a public preview).
+	requireApproval := h.SignupRequiresApproval(r.Context())
+	initialStatus := fleet.UserStatusApproved
+	if requireApproval {
+		initialStatus = fleet.UserStatusPending
+	}
+
 	userID := GenerateID()
 	user := &fleet.User{
 		ID:        userID,
@@ -334,7 +358,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		Password:  hashedPassword,
 		AccountID: accountID,
 		Role:      fleetauth.RoleMember,
-		Status:    fleet.UserStatusPending,
+		Status:    initialStatus,
 		CreatedAt: now,
 	}
 	if err := h.users.Create(r.Context(), user); err != nil {
@@ -350,8 +374,10 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Seed default groups for the new account and add user to Administrators
-	// (permissions take effect once a root admin approves the signup).
+	// Seed default groups for the new account and add user to Administrators.
+	// When approval is required these permissions take effect post-approval;
+	// when approval is off the user immediately has admin rights on their own
+	// account (which is the whole point — self-service signup).
 	if h.groups != nil {
 		adminGroupID := h.seedDefaultGroupsForSignup(r.Context(), accountID)
 		if adminGroupID != "" {
@@ -360,16 +386,38 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Infof("fleet: pending signup: %s (%s) — awaiting root admin approval", account.Name, accountID)
+	if requireApproval {
+		log.Infof("fleet: pending signup: %s (%s) — awaiting root admin approval", account.Name, accountID)
+		// Intentionally DO NOT mint a JWT. The user cannot log in until a root
+		// admin transitions the row to 'approved' via /api/v1/admin/pending-users.
+		resp := fleet.SignupResponse{
+			AccountID:        accountID,
+			OrgID:            orgID,
+			UserID:           userID,
+			PendingApproval:  true,
+			MFASetupRequired: false,
+		}
+		writeJSON(w, http.StatusCreated, fleet.Response{Data: resp})
+		return
+	}
 
-	// Intentionally DO NOT mint a JWT. The user cannot log in until a root
-	// admin transitions the row to 'approved' via /api/v1/admin/pending-users.
+	// Open-signup path: mint a JWT immediately so the new user is logged in
+	// without an admin step. MFA setup is handled by the standard login flow
+	// if the account requires 2FA.
+	log.Infof("fleet: open signup approved: %s (%s)", account.Name, accountID)
+	token, err := fleetauth.GenerateJWT(h.jwtSecret, user.ID, user.AccountID, user.Role)
+	if err != nil {
+		log.Errorf("fleet: signup mint token error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	resp := fleet.SignupResponse{
 		AccountID:        accountID,
 		OrgID:            orgID,
 		UserID:           userID,
-		PendingApproval:  true,
-		MFASetupRequired: false,
+		PendingApproval:  false,
+		MFASetupRequired: account.Require2FA,
+		Token:            token,
 	}
 	writeJSON(w, http.StatusCreated, fleet.Response{Data: resp})
 }

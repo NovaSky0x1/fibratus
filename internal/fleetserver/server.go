@@ -55,9 +55,10 @@ type Server struct {
 	grpcServer   *GRPCServer
 	pgStore      *postgres.Store
 	apiKeys      map[string]bool
-	secretStore  *postgres.SecretStore
-	profileStore *postgres.ClickHouseProfileStore
-	pipeline     *pipelineManager
+	secretStore   *postgres.SecretStore
+	settingsStore *postgres.SettingsStore
+	profileStore  *postgres.ClickHouseProfileStore
+	pipeline      *pipelineManager
 }
 
 // New creates a new fleet server instance. configPath is the absolute path to
@@ -105,6 +106,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if err := s.initSecretStore(ctx, db); err != nil {
 		return err
 	}
+	s.settingsStore = postgres.NewSettingsStore(db)
 
 	// Create stores
 	accountStore := postgres.NewAccountStore(db)
@@ -172,6 +174,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, agentStore, commandStore, s.config.Auth.JWTSecret)
+	authHandler.SetSettingsStore(s.settingsStore)
 	totpHandler := handler.NewTOTPHandler(userStore)
 	agentHandler := handler.NewAgentHandler(agentStore, accountStore, orgStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)
@@ -197,6 +200,7 @@ func (s *Server) Run(ctx context.Context) error {
 	installHandler.SetOrgStore(orgStore)
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
 	adminHandler.SetGroupStore(groupStore)
+	adminHandler.SetSettingsStore(s.settingsStore)
 	adminHandler.SetAuthHandler(authHandler)
 	dbAdminHandler := handler.NewDBAdminHandler(db, s.pipeline.activeDB)
 	chConfigHandler := handler.NewCHConfigHandler(
@@ -978,6 +982,19 @@ func (s *Server) Run(ctx context.Context) error {
 			adminHandler.RejectPendingUser(w, r)
 		default:
 			http.NotFound(w, r)
+		}
+	})
+
+	// Server-wide settings (root only). Today this only exposes the signup
+	// approval gate; future server-wide toggles can hang off the same path.
+	dashMux.HandleFunc("/api/v1/admin/settings/signup", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.GetSignupSettings(w, r)
+		case http.MethodPut:
+			adminHandler.PutSignupSettings(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 
