@@ -371,6 +371,13 @@ func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.Te
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		if isUnknownTableErr(err) {
+			// Per-org table is created lazily on first ingest. A brand-new
+			// org with zero events has no table yet — treat as empty result
+			// so the dashboard's Events page renders cleanly instead of
+			// surfacing an internal error to the operator.
+			return []store.TelemetryEvent{}, 0, nil
+		}
 		return nil, 0, err
 	}
 	defer rows.Close()
@@ -396,6 +403,17 @@ func (s *TelemetryStore) Search(ctx context.Context, orgID string, opts store.Te
 	return events, total, rows.Err()
 }
 
+// isUnknownTableErr matches ClickHouse's UNKNOWN_TABLE error (code 60),
+// raised when a SELECT references a per-org table that hasn't been lazily
+// created yet. We treat that as an empty result rather than a hard failure.
+func isUnknownTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "code: 60") || strings.Contains(msg, "UNKNOWN_TABLE") || strings.Contains(msg, "doesn't exist") || strings.Contains(msg, "Unknown table")
+}
+
 func (s *TelemetryStore) GetLatestForAgent(ctx context.Context, orgID, agentID string, limit int) ([]store.TelemetryEvent, error) {
 	if limit <= 0 {
 		limit = 100
@@ -411,6 +429,9 @@ func (s *TelemetryStore) GetLatestForAgent(ctx context.Context, orgID, agentID s
 		orgID, agentID, limit,
 	)
 	if err != nil {
+		if isUnknownTableErr(err) {
+			return []store.TelemetryEvent{}, nil
+		}
 		return nil, err
 	}
 	defer rows.Close()
@@ -448,6 +469,9 @@ func (s *TelemetryStore) CountByAgent(ctx context.Context, orgID string) (map[st
 		orgID,
 	)
 	if err != nil {
+		if isUnknownTableErr(err) {
+			return map[string]int64{}, nil
+		}
 		return nil, err
 	}
 	defer rows.Close()
