@@ -90,6 +90,26 @@ func (h *AuthHandler) SetRetentionCallback(cb RetentionCallback) {
 	h.onRetentionChange = cb
 }
 
+// ApplyRetentionToAccountOrgs walks every org in the account and fires the
+// retention callback so the live ClickHouse table TTL is updated for each.
+// Returns nil even if individual orgs fail — failures are logged. Used by the
+// root admin path to propagate retention edits made via /admin/accounts/{id}.
+func (h *AuthHandler) ApplyRetentionToAccountOrgs(ctx context.Context, accountID string, days int) {
+	if h.onRetentionChange == nil || h.orgs == nil {
+		return
+	}
+	orgs, err := h.orgs.ListByAccount(ctx, accountID)
+	if err != nil {
+		log.Warnf("fleet: list orgs for retention update (account=%s): %v", accountID, err)
+		return
+	}
+	for _, org := range orgs {
+		if err := h.onRetentionChange(org.ID, days); err != nil {
+			log.Warnf("fleet: clickhouse TTL update failed for org %s: %v", org.ID, err)
+		}
+	}
+}
+
 // SetCommandPushCallback registers a callback for instant command delivery.
 func (h *AuthHandler) SetCommandPushCallback(cb CommandPushCallback) {
 	h.onCmdCreated = cb

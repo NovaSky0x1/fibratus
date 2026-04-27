@@ -330,11 +330,18 @@ func (h *AdminHandler) UpdateAccount(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Update retention if provided
+	// Update retention if provided. Persist to Postgres, then propagate to
+	// the active ClickHouse via the auth handler's retention callback so the
+	// per-org TTL on the live tables (Cloud or local) reflects the new value.
+	// Without the callback the DB row would be correct but the table TTL on
+	// the running ClickHouse would silently keep the old value.
 	if req.TelemetryRetentionDays != nil && *req.TelemetryRetentionDays > 0 {
 		if err := h.accounts.UpdateRetention(r.Context(), accountID, *req.TelemetryRetentionDays); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to update retention")
 			return
+		}
+		if h.authHandler != nil {
+			h.authHandler.ApplyRetentionToAccountOrgs(r.Context(), accountID, *req.TelemetryRetentionDays)
 		}
 	}
 
