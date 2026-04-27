@@ -303,14 +303,19 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 
-	// Create account
+	// Create account. Open self-service signup forces 2FA on the new account
+	// so a public-facing portal can't be entered with just a password — this
+	// also persists Require2FA on the account so any teammates the operator
+	// invites later inherit the same policy.
+	openSignup := !h.SignupRequiresApproval(r.Context())
 	accountID := GenerateID()
 	account := &fleet.Account{
-		ID:        accountID,
-		Name:      req.AccountName,
-		Plan:      "free",
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         accountID,
+		Name:       req.AccountName,
+		Plan:       "free",
+		Require2FA: openSignup,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := h.accounts.Create(r.Context(), account); err != nil {
 		log.Errorf("fleet: signup create account error: %v", err)
