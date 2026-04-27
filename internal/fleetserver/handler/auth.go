@@ -37,6 +37,7 @@ import (
 
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
+	"github.com/rabbitstack/fibratus/internal/fleetserver/qlparser"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store/postgres"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/validator"
@@ -1343,11 +1344,10 @@ func (h *AuthHandler) seedOrgRules(ctx context.Context, orgID string) {
 		return
 	}
 
-	// Load macros for validation
-	var macros map[string]interface{}
-	if h.macros != nil {
-		macros = make(map[string]interface{})
-	}
+	// Load macros so validation can resolve references like spawn_process,
+	// modify_registry_value, etc. — without these the parser flags every
+	// rule that uses a macro as invalid.
+	macros := loadMacrosForSeeding(rulesDir)
 
 	var count int
 	filepath.Walk(rulesDir, func(path string, info os.FileInfo, err error) error {
@@ -1406,9 +1406,9 @@ func (h *AuthHandler) seedOrgRules(ctx context.Context, orgID string) {
 		if rule.Severity == "" {
 			rule.Severity = "medium"
 		}
-		// Validate condition
-		_ = macros // validator uses DB macros via the handler
-		condResult := validator.ValidateCondition(rule.Condition)
+		// Validate condition with macros so rules referencing spawn_process etc.
+		// resolve correctly. Falls back to the no-macros path if the map is nil.
+		condResult := validator.ValidateConditionWithMacros(rule.Condition, macros)
 		if condResult.Valid {
 			rule.ValidationStatus = "valid"
 			rule.ValidationErrors = json.RawMessage(`[]`)
@@ -1428,6 +1428,18 @@ func (h *AuthHandler) seedOrgRules(ctx context.Context, orgID string) {
 	if count > 0 {
 		log.Infof("fleet: seeded %d official rules for org %s", count, orgID)
 	}
+}
+
+// loadMacrosForSeeding reads rules/macros/macros.yml from the supplied rules
+// directory and returns a parser-ready macro map. Returns nil if the file is
+// missing or unreadable — the caller falls back to no-macro validation, which
+// rejects rules that reference unresolved names.
+func loadMacrosForSeeding(rulesDir string) map[string]*qlparser.Macro {
+	data, err := os.ReadFile(filepath.Join(rulesDir, "macros", "macros.yml"))
+	if err != nil {
+		return nil
+	}
+	return parseMacrosYAML(data)
 }
 
 func slugify(name string) string {
