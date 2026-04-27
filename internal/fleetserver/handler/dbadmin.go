@@ -14,13 +14,19 @@ import (
 
 // DBAdminHandler provides raw database access for root users.
 type DBAdminHandler struct {
-	pgDB *sql.DB
-	chDB *sql.DB
+	pgDB     *sql.DB
+	chDBFunc func() *sql.DB
 }
 
-// NewDBAdminHandler creates a new database admin handler.
-func NewDBAdminHandler(pgDB *sql.DB, chDB *sql.DB) *DBAdminHandler {
-	return &DBAdminHandler{pgDB: pgDB, chDB: chDB}
+// NewDBAdminHandler creates a new database admin handler. chDBFunc is a getter
+// that returns the active ClickHouse connection (or nil when no profile is
+// active) — using a getter rather than a fixed *sql.DB lets profile hot-swaps
+// route queries to the new connection without rebuilding the handler.
+func NewDBAdminHandler(pgDB *sql.DB, chDBFunc func() *sql.DB) *DBAdminHandler {
+	if chDBFunc == nil {
+		chDBFunc = func() *sql.DB { return nil }
+	}
+	return &DBAdminHandler{pgDB: pgDB, chDBFunc: chDBFunc}
 }
 
 // QueryPG handles POST /api/v1/admin/db/postgres — executes a raw PostgreSQL query.
@@ -62,7 +68,8 @@ func (h *DBAdminHandler) QueryCH(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.chDB == nil {
+	chDB := h.chDBFunc()
+	if chDB == nil {
 		writeError(w, http.StatusNotFound, "ClickHouse not configured")
 		return
 	}
@@ -77,7 +84,7 @@ func (h *DBAdminHandler) QueryCH(w http.ResponseWriter, r *http.Request) {
 
 	log.Warnf("fleet: DB admin query (clickhouse) by root: %s", truncate(req.Query, 200))
 
-	result, err := executeQuery(h.chDB, req.Query)
+	result, err := executeQuery(chDB, req.Query)
 	if err != nil {
 		writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 			"error":   err.Error(),
@@ -120,12 +127,13 @@ func (h *DBAdminHandler) TablesCH(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.chDB == nil {
+	chDB := h.chDBFunc()
+	if chDB == nil {
 		writeError(w, http.StatusNotFound, "ClickHouse not configured")
 		return
 	}
 
-	result, err := executeQuery(h.chDB,
+	result, err := executeQuery(chDB,
 		`SELECT name as table_name,
 			formatReadableSize(total_bytes) as size,
 			total_rows as row_count,

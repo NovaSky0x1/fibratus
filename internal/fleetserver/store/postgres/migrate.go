@@ -562,6 +562,31 @@ CREATE TABLE IF NOT EXISTS system_secrets (
     updated_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_by      TEXT DEFAULT ''
 );
+
+-- ClickHouse connection profiles. There are typically two rows:
+--   "local" — self-hosted instance (defaults to localhost:9000)
+--   "cloud" — ClickHouse Cloud service (TLS, native :9440)
+-- The active profile is tracked via system_secrets row "clickhouse.active_profile".
+-- Passwords are NOT stored here — they live in system_secrets under
+-- "clickhouse.<profile>.password".
+CREATE TABLE IF NOT EXISTS clickhouse_profiles (
+    name                   TEXT PRIMARY KEY,
+    enabled                BOOLEAN NOT NULL DEFAULT FALSE,
+    host                   TEXT NOT NULL DEFAULT 'localhost',
+    port                   INT  NOT NULL DEFAULT 9000,
+    database               TEXT NOT NULL DEFAULT 'default',
+    "user"                 TEXT NOT NULL DEFAULT 'default',
+    secure                 BOOLEAN NOT NULL DEFAULT FALSE,
+    skip_verify            BOOLEAN NOT NULL DEFAULT FALSE,
+    dial_timeout_secs      INT  NOT NULL DEFAULT 10,
+    max_open_conns         INT  NOT NULL DEFAULT 20,
+    max_idle_conns         INT  NOT NULL DEFAULT 10,
+    conn_max_lifetime_secs INT  NOT NULL DEFAULT 3600,
+    cloud_org_id           TEXT NOT NULL DEFAULT '',
+    cloud_service_id       TEXT NOT NULL DEFAULT '',
+    updated_at             TIMESTAMPTZ DEFAULT NOW(),
+    updated_by             TEXT DEFAULT ''
+);
 `
 
 // Migrate runs the database schema migrations.

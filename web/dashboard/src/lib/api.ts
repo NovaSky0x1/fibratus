@@ -411,6 +411,33 @@ export interface CloudCreateServiceResult {
   restart_required: boolean
 }
 
+export interface ClickhouseProfile {
+  name: string
+  active: boolean
+  enabled: boolean
+  host: string
+  port: number
+  database: string
+  user: string
+  has_password: boolean
+  password?: string
+  secure: boolean
+  skip_verify: boolean
+  dial_timeout_secs: number
+  max_open_conns: number
+  max_idle_conns: number
+  conn_max_lifetime_secs: number
+  cloud_org_id?: string
+  cloud_service_id?: string
+}
+
+export interface ProfileTestResult {
+  ok: boolean
+  version?: string
+  latency_ms?: number
+  error?: string
+}
+
 // ═════════════════════════════════════════════════
 // API Client
 // ═════════════════════════════════════════════════
@@ -728,6 +755,21 @@ export const api = {
     }),
   restartFleetServer: () =>
     fetchApi<{ restarting: boolean }>('/admin/restart', { method: 'POST' }),
+
+  // ClickHouse profiles (hot-swap between local + cloud)
+  listClickhouseProfiles: () =>
+    fetchApi<ClickhouseProfile[]>('/admin/clickhouse-profiles'),
+  getClickhouseProfile: (name: string) =>
+    fetchApi<ClickhouseProfile>(`/admin/clickhouse-profiles/${encodeURIComponent(name)}`),
+  saveClickhouseProfile: (profile: ClickhouseProfile) =>
+    fetchApi<{ saved: boolean }>(`/admin/clickhouse-profiles/${encodeURIComponent(profile.name)}`, {
+      method: 'PUT',
+      body: JSON.stringify(profile),
+    }),
+  activateClickhouseProfile: (name: string) =>
+    fetchApi<{ active: string }>(`/admin/clickhouse-profiles/${encodeURIComponent(name)}/activate`, { method: 'POST' }),
+  testClickhouseProfile: (name: string) =>
+    fetchApi<ProfileTestResult>(`/admin/clickhouse-profiles/${encodeURIComponent(name)}/test`, { method: 'POST' }),
   adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),
   adminUpdateUser: (id: string, data: { name?: string; email?: string; role?: string; account_id?: string; org_restrictions?: string[]; set_org_restrictions?: boolean }) =>
     fetchApi<{ status: string }>(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

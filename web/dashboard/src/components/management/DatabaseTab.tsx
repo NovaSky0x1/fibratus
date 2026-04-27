@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, type ClickhouseConfig, type ClickhouseTestResult, type CloudCredentialsStatus, type CloudOrganization, type CloudService } from '../../lib/api'
+import { api, type ClickhouseProfile, type CloudCredentialsStatus, type CloudOrganization, type CloudService, type ProfileTestResult } from '../../lib/api'
 import ConfirmDialog from '../ConfirmDialog'
 
 type DbType = 'postgres' | 'clickhouse'
@@ -63,46 +63,36 @@ function saveHistory(history: string[]) {
   } catch { /* ignore */ }
 }
 
-// Default ClickHouse config used while the server response is in flight, and
-// as a sensible starting point for first-time setup.
-const defaultCHConfig: ClickhouseConfig = {
-  mode: 'local',
-  enabled: false,
-  host: 'localhost',
-  port: 9000,
-  database: 'fibratus',
-  user: 'default',
-  password: '',
-  secure: false,
-  skip_verify: false,
-  dial_timeout_secs: 10,
-  max_open_conns: 20,
-  max_idle_conns: 10,
-  conn_max_lifetime_secs: 3600,
-}
-
-// ClickHouseConnectionPanel renders the connection-config form for ClickHouse.
-// It supports two modes:
-//   - Local: typical for self-hosted clusters (port 9000, no TLS).
-//   - Cloud: ClickHouse Cloud (port 9440, TLS required).
-// The form persists changes via PUT and exposes a Test Connection action that
-// runs against the server-side endpoint without saving — operators can verify
-// credentials before committing.
+// ClickHouseConnectionPanel renders the two persistent connection profiles
+// (local + cloud) side-by-side. Each card is an in-place editor with Save /
+// Test, and the inactive profile gets a "Use this profile" button that
+// hot-swaps the running pipeline without a service restart.
 function ClickHouseConnectionPanel() {
-  const [cfg, setCfg] = useState<ClickhouseConfig>(defaultCHConfig)
+  const [profiles, setProfiles] = useState<ClickhouseProfile[] | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<ClickhouseTestResult | null>(null)
-  const [saveStatus, setSaveStatus] = useState<{ ok: boolean; msg: string } | null>(null)
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [passwordTouched, setPasswordTouched] = useState(false)
+  const [drafts, setDrafts] = useState<Record<string, ClickhouseProfile>>({})
+  const [pwTouched, setPwTouched] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState<Record<string, string | null>>({}) // {name: 'saving'|'testing'|'activating'|null}
+  const [results, setResults] = useState<Record<string, { kind: 'test' | 'save' | 'activate'; ok: boolean; msg: string } | null>>({})
+  const [showAdvanced, setShowAdvanced] = useState<Record<string, boolean>>({})
+  const [pendingActivate, setPendingActivate] = useState<ClickhouseProfile | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.getClickhouseConfig()
-      if (res.data) setCfg(res.data)
+      const res = await api.listClickhouseProfiles()
+      if (res.data) {
+        setProfiles(res.data)
+        // Seed drafts from server state.
+        const next: Record<string, ClickhouseProfile> = {}
+        const cleanPw: Record<string, boolean> = {}
+        for (const p of res.data) {
+          next[p.name] = { ...p, password: '' }
+          cleanPw[p.name] = false
+        }
+        setDrafts(next)
+        setPwTouched(cleanPw)
+      }
     } finally {
       setLoading(false)
     }
@@ -110,262 +100,332 @@ function ClickHouseConnectionPanel() {
 
   useEffect(() => { load() }, [load])
 
-  function update<K extends keyof ClickhouseConfig>(key: K, value: ClickhouseConfig[K]) {
-    setCfg(prev => ({ ...prev, [key]: value }))
-    setTestResult(null)
-    setSaveStatus(null)
+  function patch(name: string, partial: Partial<ClickhouseProfile>) {
+    setDrafts(prev => ({ ...prev, [name]: { ...prev[name], ...partial } }))
+    setResults(prev => ({ ...prev, [name]: null }))
   }
 
-  async function runTest() {
-    setTesting(true)
-    setTestResult(null)
-    try {
-      // Omit password if untouched so the server falls back to the stored one.
-      const payload: ClickhouseConfig = passwordTouched ? cfg : { ...cfg, password: '' }
-      const res = await api.testClickhouseConfig(payload)
-      if (res.data) setTestResult(res.data)
-      else if (res.error) setTestResult({ ok: false, error: res.error.message })
-    } catch (err) {
-      setTestResult({ ok: false, error: String(err) })
-    } finally {
-      setTesting(false)
-    }
+  function setBusyFor(name: string, kind: string | null) {
+    setBusy(prev => ({ ...prev, [name]: kind }))
   }
 
-  async function save() {
-    setSaving(true)
-    setSaveStatus(null)
+  async function saveProfile(name: string) {
+    const draft = drafts[name]
+    if (!draft) return
+    setBusyFor(name, 'saving')
     try {
-      const payload: ClickhouseConfig = passwordTouched ? cfg : { ...cfg, password: '' }
-      const res = await api.saveClickhouseConfig(payload)
+      const payload: ClickhouseProfile = pwTouched[name] ? draft : { ...draft, password: '' }
+      const res = await api.saveClickhouseProfile(payload)
       if (res.error) {
-        setSaveStatus({ ok: false, msg: res.error.message })
+        setResults(prev => ({ ...prev, [name]: { kind: 'save', ok: false, msg: res.error!.message } }))
       } else {
-        setSaveStatus({ ok: true, msg: 'Saved. Restart fibratus-fleet for the new connection to take effect.' })
-        setPasswordTouched(false)
+        setResults(prev => ({ ...prev, [name]: { kind: 'save', ok: true, msg: 'Saved.' } }))
+        setPwTouched(prev => ({ ...prev, [name]: false }))
+        await load()
       }
     } catch (err) {
-      setSaveStatus({ ok: false, msg: String(err) })
+      setResults(prev => ({ ...prev, [name]: { kind: 'save', ok: false, msg: String(err) } }))
     } finally {
-      setSaving(false)
+      setBusyFor(name, null)
     }
   }
 
-  if (loading) {
-    return <div className="text-center py-12 text-gray-500 dark:text-slate-400">Loading connection config...</div>
+  async function testProfile(name: string) {
+    setBusyFor(name, 'testing')
+    try {
+      // If the operator typed password changes, save first so the test uses
+      // the new value — otherwise the server tests with whatever's stored.
+      if (pwTouched[name]) {
+        const sv = await api.saveClickhouseProfile(drafts[name])
+        if (sv.error) {
+          setResults(prev => ({ ...prev, [name]: { kind: 'test', ok: false, msg: 'save before test failed: ' + sv.error!.message } }))
+          return
+        }
+        setPwTouched(prev => ({ ...prev, [name]: false }))
+      }
+      const res = await api.testClickhouseProfile(name)
+      const r: ProfileTestResult = res.data ?? { ok: false, error: res.error?.message ?? 'unknown error' }
+      setResults(prev => ({ ...prev, [name]: {
+        kind: 'test',
+        ok: r.ok,
+        msg: r.ok
+          ? `Connection ok · ${r.version ?? '?'}${r.latency_ms !== undefined ? ` · ${r.latency_ms} ms` : ''}`
+          : `Connection failed: ${r.error}`,
+      } }))
+    } catch (err) {
+      setResults(prev => ({ ...prev, [name]: { kind: 'test', ok: false, msg: String(err) } }))
+    } finally {
+      setBusyFor(name, null)
+    }
   }
 
-  const inputCls = 'w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 text-sm focus:border-amber-500 dark:focus:border-amber-500 focus:outline-none'
-  const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1'
+  function requestActivate(p: ClickhouseProfile) {
+    setPendingActivate(p)
+  }
+
+  async function doActivate() {
+    const p = pendingActivate
+    setPendingActivate(null)
+    if (!p) return
+    setBusyFor(p.name, 'activating')
+    try {
+      const res = await api.activateClickhouseProfile(p.name)
+      if (res.error) {
+        setResults(prev => ({ ...prev, [p.name]: { kind: 'activate', ok: false, msg: res.error!.message } }))
+      } else {
+        setResults(prev => ({ ...prev, [p.name]: { kind: 'activate', ok: true, msg: `Hot-swapped to ${p.name} — telemetry now flowing through this connection.` } }))
+        await load()
+      }
+    } catch (err) {
+      setResults(prev => ({ ...prev, [p.name]: { kind: 'activate', ok: false, msg: String(err) } }))
+    } finally {
+      setBusyFor(p.name, null)
+    }
+  }
+
+  if (loading || !profiles) {
+    return <div className="text-center py-12 text-gray-500 dark:text-slate-400">Loading connection profiles...</div>
+  }
+
+  // Always render local first, cloud second (alphabetical also works).
+  const ordered = [...profiles].sort((a, b) => a.name.localeCompare(b.name))
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Connection</h3>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-              The current ClickHouse connection. To bind a managed Cloud service end-to-end, use the <span className="font-medium">Cloud Setup</span> tab — it handles credentials, service discovery, and password rotation in one flow.
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300 cursor-pointer whitespace-nowrap">
-            <input
-              type="checkbox"
-              checked={cfg.enabled}
-              onChange={e => update('enabled', e.target.checked)}
-              className="rounded border-gray-300 dark:border-slate-600"
-            />
-            Enabled
-          </label>
-        </div>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">ClickHouse profiles</h3>
+        <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+          Two persistent connection slots — <span className="font-mono">local</span> for self-hosted, <span className="font-mono">cloud</span> for ClickHouse Cloud. Switch between them with one click; the running pipeline drains the buffer, opens the new connection, and swaps without restarting the server. Use the <span className="font-medium">Cloud Setup</span> tab to discover &amp; bind a Cloud service end-to-end.
+        </p>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
-            <label className={labelCls}>Host</label>
-            <input
-              value={cfg.host}
-              onChange={e => update('host', e.target.value)}
-              placeholder="localhost"
-              className={inputCls}
-            />
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {ordered.map(p => (
+          <ProfileCard
+            key={p.name}
+            profile={p}
+            draft={drafts[p.name]}
+            patch={(partial) => patch(p.name, partial)}
+            pwTouched={!!pwTouched[p.name]}
+            setPwTouched={(v) => setPwTouched(prev => ({ ...prev, [p.name]: v }))}
+            busy={busy[p.name] ?? null}
+            result={results[p.name] ?? null}
+            showAdvanced={!!showAdvanced[p.name]}
+            toggleAdvanced={() => setShowAdvanced(prev => ({ ...prev, [p.name]: !prev[p.name] }))}
+            onSave={() => saveProfile(p.name)}
+            onTest={() => testProfile(p.name)}
+            onActivate={() => requestActivate(p)}
+          />
+        ))}
+      </div>
 
-          <div>
-            <label className={labelCls}>Port</label>
-            <input
-              type="number"
-              value={cfg.port}
-              onChange={e => update('port', Number(e.target.value) || 0)}
-              className={inputCls}
-            />
-          </div>
+      <ConfirmDialog
+        open={pendingActivate !== null}
+        title={`Switch active profile to "${pendingActivate?.name ?? ''}"?`}
+        message="The running pipeline will drain its current buffer, open a fresh connection to this profile, and swap atomically. No restart, but in-flight ingest may pause briefly."
+        confirmLabel="Switch"
+        onCancel={() => setPendingActivate(null)}
+        onConfirm={doActivate}
+      />
+    </div>
+  )
+}
 
-          <div>
-            <label className={labelCls}>Database</label>
-            <input
-              value={cfg.database}
-              onChange={e => update('database', e.target.value)}
-              className={inputCls}
-            />
-          </div>
+interface ProfileCardProps {
+  profile: ClickhouseProfile
+  draft: ClickhouseProfile
+  patch: (p: Partial<ClickhouseProfile>) => void
+  pwTouched: boolean
+  setPwTouched: (v: boolean) => void
+  busy: string | null
+  result: { kind: 'test' | 'save' | 'activate'; ok: boolean; msg: string } | null
+  showAdvanced: boolean
+  toggleAdvanced: () => void
+  onSave: () => void
+  onTest: () => void
+  onActivate: () => void
+}
 
-          <div>
-            <label className={labelCls}>User</label>
-            <input
-              value={cfg.user}
-              onChange={e => update('user', e.target.value)}
-              placeholder="default"
-              className={inputCls}
-            />
-          </div>
-
-          <div>
-            <label className={labelCls}>Password</label>
-            <input
-              type="password"
-              value={cfg.password ?? ''}
-              onChange={e => { update('password', e.target.value); setPasswordTouched(true) }}
-              placeholder={passwordTouched ? '' : '•••••• (unchanged)'}
-              className={inputCls}
-            />
-            <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
-              Leave blank to keep the existing password.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3">
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={cfg.secure}
-              onChange={e => update('secure', e.target.checked)}
-              className="rounded border-gray-300 dark:border-slate-600"
-            />
-            <span>TLS</span>
-          </label>
-          {cfg.secure && (
-            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer mt-2 ml-6">
-              <input
-                type="checkbox"
-                checked={cfg.skip_verify}
-                onChange={e => update('skip_verify', e.target.checked)}
-                className="rounded border-gray-300 dark:border-slate-600"
-              />
-              <span>Skip certificate verification (development only)</span>
-            </label>
-          )}
-        </div>
-
-        {/* Advanced */}
-        <div className="mt-4">
-          <button
-            onClick={() => setShowAdvanced(s => !s)}
-            className="flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
-          >
-            <svg className={`w-3 h-3 transition-transform ${showAdvanced ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            Advanced (connection pool & timeouts)
-          </button>
-          {showAdvanced && (
-            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <label className={labelCls}>Dial timeout (s)</label>
-                <input
-                  type="number"
-                  value={cfg.dial_timeout_secs}
-                  onChange={e => update('dial_timeout_secs', Number(e.target.value) || 0)}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Max open conns</label>
-                <input
-                  type="number"
-                  value={cfg.max_open_conns}
-                  onChange={e => update('max_open_conns', Number(e.target.value) || 0)}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Max idle conns</label>
-                <input
-                  type="number"
-                  value={cfg.max_idle_conns}
-                  onChange={e => update('max_idle_conns', Number(e.target.value) || 0)}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Conn max lifetime (s)</label>
-                <input
-                  type="number"
-                  value={cfg.conn_max_lifetime_secs}
-                  onChange={e => update('conn_max_lifetime_secs', Number(e.target.value) || 0)}
-                  className={inputCls}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <button
-            onClick={runTest}
-            disabled={testing || !cfg.host || !cfg.port}
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600 disabled:opacity-50"
-          >
-            {testing ? 'Testing...' : 'Test Connection'}
-          </button>
-          <button
-            onClick={save}
-            disabled={saving || !cfg.host || !cfg.port}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
-          >
-            Reload from server
-          </button>
-        </div>
-
-        {/* Test result */}
-        {testResult && (
-          <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${testResult.ok
-            ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
-            {testResult.ok ? (
-              <div>
-                <div className="font-medium">Connection successful</div>
-                <div className="text-xs mt-1 opacity-80">
-                  Server version: <span className="font-mono">{testResult.version}</span>
-                  {testResult.latency_ms !== undefined && <> &middot; {testResult.latency_ms} ms</>}
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="font-medium">Connection failed</div>
-                <div className="text-xs mt-1 font-mono break-all">{testResult.error}</div>
-              </div>
+function ProfileCard({
+  profile, draft, patch, pwTouched, setPwTouched,
+  busy, result, showAdvanced, toggleAdvanced,
+  onSave, onTest, onActivate,
+}: ProfileCardProps) {
+  const inputCls = 'w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 text-sm focus:border-amber-500 dark:focus:border-amber-500 focus:outline-none'
+  const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1'
+  const titleCase = profile.name.charAt(0).toUpperCase() + profile.name.slice(1)
+  if (!draft) {
+    return null
+  }
+  return (
+    <div className={`rounded-xl border-2 bg-white dark:bg-slate-800 p-5 ${profile.active ? 'border-amber-500' : 'border-gray-200 dark:border-slate-700'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-slate-100">{titleCase}</h4>
+            {profile.active && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
+              </span>
+            )}
+            {profile.has_password && !pwTouched && (
+              <span className="text-xs text-gray-500 dark:text-slate-500">password stored</span>
             )}
           </div>
-        )}
+          {profile.cloud_org_id && (
+            <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">
+              Bound via Cloud Setup · org <span className="font-mono">{profile.cloud_org_id}</span>
+            </p>
+          )}
+        </div>
+        <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300 cursor-pointer whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            onChange={e => patch({ enabled: e.target.checked })}
+            className="rounded border-gray-300 dark:border-slate-600"
+          />
+          Enabled
+        </label>
+      </div>
 
-        {/* Save status */}
-        {saveStatus && (
-          <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${saveStatus.ok
-            ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
-            {saveStatus.msg}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="md:col-span-2">
+          <label className={labelCls}>Host</label>
+          <input
+            value={draft.host}
+            onChange={e => patch({ host: e.target.value })}
+            placeholder={profile.name === 'cloud' ? 'abc123.us-east-1.aws.clickhouse.cloud' : 'localhost'}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Port</label>
+          <input
+            type="number"
+            value={draft.port}
+            onChange={e => patch({ port: Number(e.target.value) || 0 })}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Database</label>
+          <input
+            value={draft.database}
+            onChange={e => patch({ database: e.target.value })}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>User</label>
+          <input
+            value={draft.user}
+            onChange={e => patch({ user: e.target.value })}
+            placeholder="default"
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Password</label>
+          <input
+            type="password"
+            value={draft.password ?? ''}
+            onChange={e => { patch({ password: e.target.value }); setPwTouched(true) }}
+            placeholder={pwTouched ? '' : (profile.has_password ? '•••••• (stored)' : 'no password set')}
+            className={inputCls}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3">
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={draft.secure}
+            onChange={e => patch({ secure: e.target.checked })}
+            className="rounded border-gray-300 dark:border-slate-600"
+          />
+          <span>TLS</span>
+        </label>
+        {draft.secure && (
+          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer mt-2 ml-6">
+            <input
+              type="checkbox"
+              checked={draft.skip_verify}
+              onChange={e => patch({ skip_verify: e.target.checked })}
+              className="rounded border-gray-300 dark:border-slate-600"
+            />
+            <span>Skip certificate verification (development only)</span>
+          </label>
+        )}
+      </div>
+
+      <div className="mt-3">
+        <button
+          onClick={toggleAdvanced}
+          className="flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
+        >
+          <svg className={`w-3 h-3 transition-transform ${showAdvanced ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          Advanced (pool & timeouts)
+        </button>
+        {showAdvanced && (
+          <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div>
+              <label className={labelCls}>Dial timeout (s)</label>
+              <input type="number" value={draft.dial_timeout_secs} onChange={e => patch({ dial_timeout_secs: Number(e.target.value) || 0 })} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Max open</label>
+              <input type="number" value={draft.max_open_conns} onChange={e => patch({ max_open_conns: Number(e.target.value) || 0 })} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Max idle</label>
+              <input type="number" value={draft.max_idle_conns} onChange={e => patch({ max_idle_conns: Number(e.target.value) || 0 })} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Lifetime (s)</label>
+              <input type="number" value={draft.conn_max_lifetime_secs} onChange={e => patch({ conn_max_lifetime_secs: Number(e.target.value) || 0 })} className={inputCls} />
+            </div>
           </div>
         )}
       </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          onClick={onTest}
+          disabled={busy !== null}
+          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600 disabled:opacity-50"
+        >
+          {busy === 'testing' ? 'Testing...' : 'Test'}
+        </button>
+        <button
+          onClick={onSave}
+          disabled={busy !== null}
+          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+        >
+          {busy === 'saving' ? 'Saving...' : 'Save'}
+        </button>
+        {!profile.active && (
+          <button
+            onClick={onActivate}
+            disabled={busy !== null || !draft.enabled}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            title={!draft.enabled ? 'Enable this profile (and Save) before activating it.' : 'Hot-swap the running pipeline to use this profile.'}
+          >
+            {busy === 'activating' ? 'Switching...' : 'Use this profile'}
+          </button>
+        )}
+      </div>
+
+      {result && (
+        <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${result.ok
+          ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+          : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
+          {result.msg}
+        </div>
+      )}
     </div>
   )
 }
@@ -408,7 +468,6 @@ function ClickHouseCloudPanel() {
   const [creating, setCreating] = useState(false)
   const [createMsg, setCreateMsg] = useState<{ ok: boolean; msg: string } | null>(null)
 
-  const [restarting, setRestarting] = useState(false)
 
   // In-app confirmation dialog state — replaces window.confirm.
   const [pendingConfirm, setPendingConfirm] = useState<
@@ -536,7 +595,7 @@ function ClickHouseCloudPanel() {
       if (res.error) {
         setConnectMsg({ ok: false, msg: res.error.message })
       } else {
-        setConnectMsg({ ok: true, msg: 'Bound to Cloud service. Click "Apply now" to restart fibratus-fleet so the new connection takes effect.' })
+        setConnectMsg({ ok: true, msg: 'Bound to Cloud service. Telemetry will hot-swap on the next switch — head to the Connection tab and click "Use this profile" on Cloud (no restart required).' })
         setServicePassword('')
       }
     } catch (err) {
@@ -560,7 +619,7 @@ function ClickHouseCloudPanel() {
           if (res.error) {
             setConnectMsg({ ok: false, msg: res.error.message })
           } else {
-            setConnectMsg({ ok: true, msg: 'Password rotated and saved. Apply now to use the new password.' })
+            setConnectMsg({ ok: true, msg: 'Password rotated and bound to the cloud profile. If cloud is the active profile the pipeline already hot-swapped; otherwise switch to it from the Connection tab.' })
             setServicePassword('')
           }
         } catch (err) {
@@ -592,7 +651,7 @@ function ClickHouseCloudPanel() {
       if (res.error) {
         setCreateMsg({ ok: false, msg: res.error.message })
       } else if (res.data) {
-        setCreateMsg({ ok: true, msg: `Service "${res.data.service_name}" created at ${res.data.host}:${res.data.port}. Click "Apply now" to start using it.` })
+        setCreateMsg({ ok: true, msg: `Service "${res.data.service_name}" created at ${res.data.host}:${res.data.port} and bound to the cloud profile. Switch to it from the Connection tab to start using it.` })
         setNewName('')
         await loadServices(selectedOrg)
       }
@@ -603,37 +662,6 @@ function ClickHouseCloudPanel() {
     }
   }
 
-  function applyNow() {
-    setPendingConfirm({
-      title: 'Restart fibratus-fleet now?',
-      message: 'In-flight requests will be interrupted. The dashboard will reconnect automatically within a few seconds.',
-      label: 'Restart',
-      run: async () => {
-        setRestarting(true)
-        try {
-          await api.restartFleetServer()
-        } catch {
-          // Expected — the connection will drop as the server exits.
-        }
-        // Poll for the server coming back up.
-        const start = Date.now()
-        let backUp = false
-        while (Date.now() - start < 60000) {
-          await new Promise(r => setTimeout(r, 2000))
-          try {
-            const res = await api.getCloudCredentialsStatus()
-            if (res.data) { backUp = true; break }
-          } catch { /* not yet */ }
-        }
-        setRestarting(false)
-        if (backUp) {
-          setConnectMsg({ ok: true, msg: 'fibratus-fleet restarted successfully.' })
-        } else {
-          setConnectMsg({ ok: false, msg: 'Server did not come back up within 60s. Check systemctl status fibratus-fleet on the host.' })
-        }
-      },
-    })
-  }
 
   const inputCls = 'w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 text-sm focus:border-amber-500 dark:focus:border-amber-500 focus:outline-none'
   const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1'
@@ -855,22 +883,15 @@ function ClickHouseCloudPanel() {
             </div>
           )}
 
-          {/* Apply / restart */}
+          {/* Operation status (bind / rotate / create) */}
           <div className={sectionCls}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">4. Apply</h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">4. Status</h3>
                 <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                  Bind / reset operations stage the new connection but the running server still uses the old one. Click Apply to restart fibratus-fleet via systemd.
+                  Cloud operations write to the <span className="font-mono">cloud</span> profile. If cloud is the active profile the running pipeline hot-swaps automatically; otherwise switch to it from the <span className="font-medium">Connection</span> tab.
                 </p>
               </div>
-              <button
-                onClick={applyNow}
-                disabled={restarting}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
-              >
-                {restarting ? 'Restarting & polling...' : 'Apply now (restart)'}
-              </button>
             </div>
             {connectMsg && (
               <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${connectMsg.ok

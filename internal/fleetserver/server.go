@@ -35,7 +35,6 @@ import (
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	natsPkg "github.com/rabbitstack/fibratus/internal/fleetserver/nats"
 	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
-	chstore "github.com/rabbitstack/fibratus/internal/fleetserver/store/clickhouse"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
@@ -49,13 +48,15 @@ import (
 
 // Server is the fleet management server (HTTP for dashboard, gRPC for agents).
 type Server struct {
-	config      *Config
-	configPath  string
-	httpServer  *http.Server
-	grpcServer  *GRPCServer
-	pgStore     *postgres.Store
-	apiKeys     map[string]bool
-	secretStore *postgres.SecretStore
+	config       *Config
+	configPath   string
+	httpServer   *http.Server
+	grpcServer   *GRPCServer
+	pgStore      *postgres.Store
+	apiKeys      map[string]bool
+	secretStore  *postgres.SecretStore
+	profileStore *postgres.ClickHouseProfileStore
+	pipeline     *pipelineManager
 }
 
 // New creates a new fleet server instance. configPath is the absolute path to
@@ -115,47 +116,48 @@ func (s *Server) Run(ctx context.Context) error {
 	commandStore := postgres.NewCommandStore(db)
 	enrollStore := postgres.NewEnrollmentTokenStore(db)
 
-	// Telemetry store: use ClickHouse if configured, otherwise PostgreSQL
-	var telemetryStore store.TelemetryStore
-	var chDB *sql.DB
-	if s.config.ClickHouse.Enabled {
-		var err error
-		chDB, err = sql.Open("clickhouse", s.config.ClickHouse.DSN())
-		if err != nil {
-			return fmt.Errorf("clickhouse connect: %w", err)
-		}
-		chDB.SetMaxOpenConns(s.config.ClickHouse.MaxOpenConns)
-		chDB.SetMaxIdleConns(s.config.ClickHouse.MaxIdleConns)
-		chDB.SetConnMaxLifetime(time.Duration(s.config.ClickHouse.ConnMaxLifetime) * time.Second)
-		if err := chDB.Ping(); err != nil {
-			return fmt.Errorf("clickhouse ping: %w", err)
-		}
-		chTelemetry := chstore.NewTelemetryStore(chDB)
-		if err := chTelemetry.Migrate(ctx); err != nil {
-			return fmt.Errorf("clickhouse migrate: %w", err)
-		}
-		// Wire org name resolver so ClickHouse tables get human-readable names
-		chTelemetry.SetOrgNameResolver(func(orgID string) string {
-			org, err := orgStore.Get(ctx, orgID)
-			if err != nil || org == nil {
-				return ""
-			}
-			return org.Name
-		})
-		// Wrap with buffer for high-throughput batch inserts.
-		buffered := store.NewBufferedTelemetryStore(chTelemetry, store.BufferConfig{
-			FlushInterval: 2 * time.Second,
-			FlushSize:     50000,
-		})
-		buffered.Start()
-		defer buffered.Stop()
-		telemetryStore = buffered
-		log.Infof("fleet: using ClickHouse for telemetry (pool: %d open, %d idle, buffered)",
-			s.config.ClickHouse.MaxOpenConns, s.config.ClickHouse.MaxIdleConns)
-	} else {
-		telemetryStore = postgres.NewTelemetryStore(db)
-		log.Info("fleet: using PostgreSQL for telemetry storage")
+	// Telemetry store: profile-aware ClickHouse pipeline behind a hot-swap
+	// holder, with a PostgreSQL fallback when no profile is enabled. The
+	// holder lets us swap profiles (local <-> cloud) without restarting the
+	// server.
+	s.profileStore = postgres.NewClickHouseProfileStore(db)
+	if err := s.migrateLegacyClickHouseConfig(ctx); err != nil {
+		return fmt.Errorf("clickhouse profile migration: %w", err)
 	}
+	pgFallback := postgres.NewTelemetryStore(db)
+	telemetryHolder := store.NewTelemetryHolder(pgFallback)
+	orgResolver := func(orgID string) string {
+		org, err := orgStore.Get(ctx, orgID)
+		if err != nil || org == nil {
+			return ""
+		}
+		return org.Name
+	}
+	s.pipeline = newPipelineManager(telemetryHolder, orgResolver, store.BufferConfig{
+		FlushInterval: 2 * time.Second,
+		FlushSize:     50000,
+	})
+	defer s.pipeline.shutdown()
+
+	activeName, _ := s.secretStore.GetOr(ctx, SecretActiveProfile, ProfileLocal)
+	activeProfile, err := s.profileStore.Get(ctx, activeName)
+	if err != nil {
+		return fmt.Errorf("load active clickhouse profile %q: %w", activeName, err)
+	}
+	if activeProfile.Enabled {
+		pw, err := s.resolvePassword(ctx, activeName)
+		if err != nil {
+			return fmt.Errorf("load active clickhouse password: %w", err)
+		}
+		next, err := s.pipeline.openProfile(ctx, activeProfile, pw)
+		if err != nil {
+			return fmt.Errorf("open clickhouse profile %q: %w", activeName, err)
+		}
+		s.pipeline.activate(next)
+	} else {
+		log.Infof("fleet: clickhouse profile %q is disabled — falling back to PostgreSQL telemetry", activeName)
+	}
+	var telemetryStore store.TelemetryStore = telemetryHolder
 	caManager := ca.NewManager(db)
 
 	// Create stores for new features
@@ -195,13 +197,14 @@ func (s *Server) Run(ctx context.Context) error {
 	adminHandler := handler.NewAdminHandler(accountStore, orgStore, userStore)
 	adminHandler.SetGroupStore(groupStore)
 	adminHandler.SetAuthHandler(authHandler)
-	dbAdminHandler := handler.NewDBAdminHandler(db, chDB)
+	dbAdminHandler := handler.NewDBAdminHandler(db, s.pipeline.activeDB)
 	chConfigHandler := handler.NewCHConfigHandler(
 		s.getCHConfigDTO,
 		s.saveCHConfig,
 		s.testCHConfig,
 	)
 	cloudHandler := handler.NewCloudHandler(s.cloudHandlerDeps())
+	chProfileHandler := handler.NewCHProfileHandler(s.chProfileHandlerDeps())
 	groupHandler := handler.NewGroupHandler(groupStore)
 	captureHandler := handler.NewCaptureHandler(captureStore, agentStore, commandStore, auditStore, userStore)
 	eventLogPolicyStore := postgres.NewEventLogPolicyStore(db)
@@ -1005,6 +1008,36 @@ func (s *Server) Run(ctx context.Context) error {
 	dashMux.HandleFunc("/api/v1/admin/clickhouse-cloud/connect", methodGuard(http.MethodPost, cloudHandler.ConnectService))
 	dashMux.HandleFunc("/api/v1/admin/clickhouse-cloud/services/reset-password", methodGuard(http.MethodPost, cloudHandler.ResetPassword))
 	dashMux.HandleFunc("/api/v1/admin/restart", methodGuard(http.MethodPost, cloudHandler.Restart))
+
+	// ClickHouse profiles (hot-swap between local + cloud).
+	dashMux.HandleFunc("/api/v1/admin/clickhouse-profiles", methodGuard(http.MethodGet, chProfileHandler.List))
+	dashMux.HandleFunc("/api/v1/admin/clickhouse-profiles/", func(w http.ResponseWriter, r *http.Request) {
+		// Sub-paths: /{name}, /{name}/activate, /{name}/test
+		path := r.URL.Path
+		switch {
+		case strings.HasSuffix(path, "/activate"):
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			chProfileHandler.Activate(w, r)
+		case strings.HasSuffix(path, "/test"):
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			chProfileHandler.Test(w, r)
+		default:
+			switch r.Method {
+			case http.MethodGet:
+				chProfileHandler.Get(w, r)
+			case http.MethodPut:
+				chProfileHandler.Upsert(w, r)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+		}
+	})
 
 	// TOTP 2FA routes (JWT auth, user-scoped)
 	dashMux.HandleFunc("/api/v1/auth/totp/setup", methodGuard(http.MethodPost, totpHandler.Setup))

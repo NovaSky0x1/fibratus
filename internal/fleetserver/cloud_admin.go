@@ -245,14 +245,11 @@ func (s *Server) cloudHandlerDeps() handler.CloudHandlerDeps {
 	}
 }
 
-// bindCloudService updates the in-memory ClickHouse config with cloud
-// connection details, persists the password to the secret store, and rewrites
-// the YAML on disk (without the password). Restart is required to pick up the
-// new connection.
+// bindCloudService writes the cloud connection details into the "cloud"
+// profile, stores the supplied password under the cloud profile's secret key,
+// and — if the cloud profile is currently active — hot-swaps the running
+// pipeline so the new connection takes effect immediately, no restart.
 func (s *Server) bindCloudService(ctx context.Context, host string, port int, db, user, password, orgID string) error {
-	if s.configPath == "" {
-		return errors.New("config path unknown — cannot persist changes")
-	}
 	host = strings.TrimSpace(host)
 	if host == "" || port == 0 {
 		return errors.New("invalid cloud service endpoint")
@@ -260,41 +257,62 @@ func (s *Server) bindCloudService(ctx context.Context, host string, port int, db
 	if password == "" {
 		return errors.New("service password is required")
 	}
-	s.config.ClickHouse = ClickHouseConfig{
-		Enabled:         true,
-		Host:            host,
-		Port:            port,
-		Database:        db,
-		User:            user,
-		Password:        password,
-		Secure:          true,
-		SkipVerify:      false,
-		DialTimeoutSecs: 10,
-		MaxOpenConns:    s.config.ClickHouse.MaxOpenConns,
-		MaxIdleConns:    s.config.ClickHouse.MaxIdleConns,
-		ConnMaxLifetime: s.config.ClickHouse.ConnMaxLifetime,
+	if db == "" {
+		db = "default"
 	}
-	if s.config.ClickHouse.MaxOpenConns == 0 {
-		s.config.ClickHouse.MaxOpenConns = 20
+	if user == "" {
+		user = "default"
 	}
-	if s.config.ClickHouse.MaxIdleConns == 0 {
-		s.config.ClickHouse.MaxIdleConns = 10
+	if s.profileStore == nil {
+		return errors.New("clickhouse profile store not initialised")
 	}
-	if s.config.ClickHouse.ConnMaxLifetime == 0 {
-		s.config.ClickHouse.ConnMaxLifetime = 3600
+
+	// Read the existing cloud profile (created by boot migration) so we
+	// preserve operator-tuned fields (pool sizes, timeouts) on rebind.
+	existing, err := s.profileStore.Get(ctx, ProfileCloud)
+	if err != nil {
+		return fmt.Errorf("load cloud profile: %w", err)
 	}
-	if err := s.secretStore.Set(ctx, SecretClickHousePassword, password, "dashboard-cloud-connect"); err != nil {
+	existing.Enabled = true
+	existing.Host = host
+	existing.Port = port
+	existing.Database = db
+	existing.User = user
+	existing.Secure = true
+	existing.SkipVerify = false
+	if existing.DialTimeoutSecs <= 0 {
+		existing.DialTimeoutSecs = 10
+	}
+	if existing.MaxOpenConns <= 0 {
+		existing.MaxOpenConns = 20
+	}
+	if existing.MaxIdleConns <= 0 {
+		existing.MaxIdleConns = 10
+	}
+	if existing.ConnMaxLifetimeSecs <= 0 {
+		existing.ConnMaxLifetimeSecs = 3600
+	}
+	existing.CloudOrgID = orgID
+	existing.UpdatedBy = "dashboard-cloud-bind"
+
+	if err := s.profileStore.Upsert(ctx, existing); err != nil {
+		return err
+	}
+	if err := s.SetProfilePassword(ctx, ProfileCloud, password, "dashboard-cloud-bind"); err != nil {
 		return err
 	}
 	if orgID != "" {
-		_ = s.secretStore.Set(ctx, SecretClickHouseCloudOrgID, orgID, "dashboard-cloud-connect")
+		_ = s.secretStore.Set(ctx, SecretClickHouseCloudOrgID, orgID, "dashboard-cloud-bind")
 	}
-	yamlSafe := *s.config
-	yamlSafe.ClickHouse.Password = ""
-	if err := SaveConfig(s.configPath, &yamlSafe); err != nil {
-		return err
+
+	// Hot-swap if this is the active profile, otherwise just leave the
+	// updated row for the next activation.
+	active, _ := s.secretStore.GetOr(ctx, SecretActiveProfile, "")
+	if active == ProfileCloud {
+		if err := s.activateProfile(ctx, ProfileCloud); err != nil {
+			return fmt.Errorf("bound cloud profile but hot-swap failed: %w", err)
+		}
 	}
-	log.Infof("fleet: bound to ClickHouse Cloud service at %s:%d (db=%s user=%s) — restart required",
-		host, port, db, user)
+	log.Infof("fleet: bound clickhouse cloud profile to %s:%d (db=%s user=%s)", host, port, db, user)
 	return nil
 }
