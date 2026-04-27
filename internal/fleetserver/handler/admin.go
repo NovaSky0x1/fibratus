@@ -264,6 +264,12 @@ func (h *AdminHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create account")
 		return
 	}
+	// Baseline YARA rules — async so the create response isn't blocked. Mirrors
+	// what the signup path does so admin-created and self-service accounts both
+	// land with the same starter rule set.
+	if h.authHandler != nil {
+		go SeedBaselineYARARulesForAccount(context.Background(), h.authHandler.yaraRules, accountID, account.Name)
+	}
 
 	// Create default organization
 	orgID := GenerateID()

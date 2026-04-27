@@ -132,30 +132,45 @@ func SeedBaselineYARARules(
 		log.Warnf("yara seed: list accounts: %v", err)
 		return
 	}
-	baseline := splitBaseline(baselineYARARules)
 	for _, acct := range accs {
-		existing, err := yaraRules.List(ctx, acct.ID)
-		if err != nil {
-			log.Warnf("yara seed: list rules for account %s: %v", acct.ID, err)
-			continue
-		}
-		if len(existing) > 0 {
-			continue
-		}
-		for _, b := range baseline {
-			r := &fleet.YARARule{
-				ID:               GenerateID(),
-				AccountID:        acct.ID,
-				Name:             b.Name,
-				Description:      "Baseline Fibratus rule — shipped on first deployment",
-				Content:          b.Content,
-				Enabled:          true,
-				ValidationStatus: "valid",
-			}
-			if err := yaraRules.Create(ctx, r); err != nil {
-				log.Warnf("yara seed: create %s for account %s: %v", b.Name, acct.ID, err)
-			}
-		}
-		log.Infof("yara seed: inserted %d baseline YARA rules into account %s (%s)", len(baseline), acct.Name, acct.ID)
+		SeedBaselineYARARulesForAccount(ctx, yaraRules, acct.ID, acct.Name)
 	}
+}
+
+// SeedBaselineYARARulesForAccount seeds the baseline rule set into a single
+// account when it has zero rules. Safe to call from the signup / admin-create
+// paths so newly created accounts don't have to wait for a server restart for
+// the boot-time pass to fire.
+func SeedBaselineYARARulesForAccount(
+	ctx context.Context,
+	yaraRules store.YARARuleStore,
+	accountID, accountName string,
+) {
+	if yaraRules == nil || accountID == "" {
+		return
+	}
+	existing, err := yaraRules.List(ctx, accountID)
+	if err != nil {
+		log.Warnf("yara seed: list rules for account %s: %v", accountID, err)
+		return
+	}
+	if len(existing) > 0 {
+		return
+	}
+	baseline := splitBaseline(baselineYARARules)
+	for _, b := range baseline {
+		r := &fleet.YARARule{
+			ID:               GenerateID(),
+			AccountID:        accountID,
+			Name:             b.Name,
+			Description:      "Baseline Fibratus rule — shipped on first deployment",
+			Content:          b.Content,
+			Enabled:          true,
+			ValidationStatus: "valid",
+		}
+		if err := yaraRules.Create(ctx, r); err != nil {
+			log.Warnf("yara seed: create %s for account %s: %v", b.Name, accountID, err)
+		}
+	}
+	log.Infof("yara seed: inserted %d baseline YARA rules into account %s (%s)", len(baseline), accountName, accountID)
 }

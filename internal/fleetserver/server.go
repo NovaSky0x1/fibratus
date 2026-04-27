@@ -175,6 +175,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, agentStore, commandStore, s.config.Auth.JWTSecret)
 	authHandler.SetSettingsStore(s.settingsStore)
+	authHandler.SetYARARuleStore(yaraRuleStore)
 	totpHandler := handler.NewTOTPHandler(userStore)
 	agentHandler := handler.NewAgentHandler(agentStore, accountStore, orgStore)
 	commandHandler := handler.NewCommandHandler(commandStore, agentStore, auditStore, userStore)

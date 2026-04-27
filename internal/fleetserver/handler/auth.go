@@ -68,6 +68,7 @@ type AuthHandler struct {
 	onCmdCreated   CommandPushCallback
 	onRetentionChange RetentionCallback
 	settings       store.SettingsStore
+	yaraRules      store.YARARuleStore
 }
 
 // NewAuthHandler creates a new auth handler.
@@ -92,6 +93,13 @@ func (h *AuthHandler) SetEventLogPolicyStore(s store.EventLogPolicyStore) {
 // importing a concrete store.
 func (h *AuthHandler) SetSettingsStore(s store.SettingsStore) {
 	h.settings = s
+}
+
+// SetYARARuleStore wires the YARA rule store so signup / org creation can
+// seed the baseline rule set into newly created accounts without waiting for
+// the boot-time bulk seed pass.
+func (h *AuthHandler) SetYARARuleStore(s store.YARARuleStore) {
+	h.yaraRules = s
 }
 
 // SignupRequiresApproval reads the server-wide signup approval policy. Defaults
@@ -323,6 +331,10 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Baseline YARA rules — seed asynchronously so the signup response isn't
+	// blocked on the per-account inserts. Without this the new account starts
+	// with zero YARA rules until the boot-time seed pass fires on next restart.
+	go SeedBaselineYARARulesForAccount(context.Background(), h.yaraRules, accountID, account.Name)
 
 	// Create organization
 	orgName := req.OrgName
