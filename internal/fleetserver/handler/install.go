@@ -122,9 +122,14 @@ if ($enrollExit -ne 0) {
     Write-Host "  Enrollment complete" -ForegroundColor Green
 }
 
-# Start service
+# Start service. Capture the actual start error if it fails so the operator
+# isn't left with "Service status: Stopped" and no clue why.
 Write-Host "[4/5] Starting service..." -ForegroundColor Yellow
-Start-Service fibratus -ErrorAction SilentlyContinue
+try {
+    Start-Service fibratus -ErrorAction Stop
+} catch {
+    Write-Host "  Start-Service raised: $_" -ForegroundColor Red
+}
 Start-Sleep -Seconds 3
 
 # Verify
@@ -134,6 +139,20 @@ if ($svc -and $svc.Status -eq "Running") {
     Write-Host "  Service RUNNING" -ForegroundColor Green
 } elseif ($svc) {
     Write-Host "  Service status: $($svc.Status)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Diagnostic: sc.exe query fibratus" -ForegroundColor DarkGray
+    sc.exe query fibratus | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    foreach ($logPath in @(
+        "C:\Program Files\Fibratus\fibratus.log",
+        "C:\ProgramData\Fibratus\fibratus.log",
+        "C:\Program Files\Fibratus\Bin\fibratus.log"
+    )) {
+        if (Test-Path $logPath) {
+            Write-Host ""
+            Write-Host "  Tail of $logPath" -ForegroundColor DarkGray
+            Get-Content $logPath -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+        }
+    }
 } else {
     Write-Host "  Warning: Service not found" -ForegroundColor Yellow
 }
