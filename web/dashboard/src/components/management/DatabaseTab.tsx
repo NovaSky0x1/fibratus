@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, type ClickhouseConfig, type ClickhouseMode, type ClickhouseTestResult, type CloudCredentialsStatus, type CloudOrganization, type CloudService } from '../../lib/api'
+import ConfirmDialog from '../ConfirmDialog'
 
 type DbType = 'postgres' | 'clickhouse'
 type BrowseView = 'tables' | 'browse' | 'query' | 'connection' | 'cloud'
@@ -486,6 +487,12 @@ function ClickHouseCloudPanel() {
 
   const [restarting, setRestarting] = useState(false)
 
+  // In-app confirmation dialog state — replaces window.confirm.
+  const [pendingConfirm, setPendingConfirm] = useState<
+    | { title: string; message: string; label: string; run: () => void | Promise<void> }
+    | null
+  >(null)
+
   const loadStatus = useCallback(async () => {
     setStatusLoading(true)
     try {
@@ -539,14 +546,20 @@ function ClickHouseCloudPanel() {
     }
   }
 
-  async function clearCreds() {
-    if (!confirm('Remove stored ClickHouse Cloud API credentials? You will need to paste them again to use this tab.')) return
-    await api.deleteCloudCredentials()
-    setOrgs(null)
-    setServices(null)
-    setSelectedOrg('')
-    setSelectedService('')
-    await loadStatus()
+  function clearCreds() {
+    setPendingConfirm({
+      title: 'Remove stored credentials?',
+      message: 'You will need to paste the Key ID and Key Secret again to use this tab.',
+      label: 'Remove',
+      run: async () => {
+        await api.deleteCloudCredentials()
+        setOrgs(null)
+        setServices(null)
+        setSelectedOrg('')
+        setSelectedService('')
+        await loadStatus()
+      },
+    })
   }
 
   async function loadOrgs() {
@@ -610,24 +623,30 @@ function ClickHouseCloudPanel() {
     }
   }
 
-  async function resetPassword() {
+  function resetPassword() {
     if (!selectedOrg || !selectedService) return
-    if (!confirm('Reset the password for this service? Anything currently using the old password will stop working until reconfigured.')) return
-    setResetting(true)
-    setConnectMsg(null)
-    try {
-      const res = await api.resetCloudServicePassword(selectedOrg, selectedService)
-      if (res.error) {
-        setConnectMsg({ ok: false, msg: res.error.message })
-      } else {
-        setConnectMsg({ ok: true, msg: 'Password rotated and saved. Apply now to use the new password.' })
-        setServicePassword('')
-      }
-    } catch (err) {
-      setConnectMsg({ ok: false, msg: String(err) })
-    } finally {
-      setResetting(false)
-    }
+    setPendingConfirm({
+      title: 'Reset service password?',
+      message: 'Anything currently using the old password will stop working until reconfigured. The new password will be stored encrypted on the server.',
+      label: 'Reset password',
+      run: async () => {
+        setResetting(true)
+        setConnectMsg(null)
+        try {
+          const res = await api.resetCloudServicePassword(selectedOrg, selectedService)
+          if (res.error) {
+            setConnectMsg({ ok: false, msg: res.error.message })
+          } else {
+            setConnectMsg({ ok: true, msg: 'Password rotated and saved. Apply now to use the new password.' })
+            setServicePassword('')
+          }
+        } catch (err) {
+          setConnectMsg({ ok: false, msg: String(err) })
+        } finally {
+          setResetting(false)
+        }
+      },
+    })
   }
 
   async function createService() {
@@ -661,30 +680,36 @@ function ClickHouseCloudPanel() {
     }
   }
 
-  async function applyNow() {
-    if (!confirm('Restart fibratus-fleet now? In-flight requests will be interrupted; the dashboard will reconnect within a few seconds.')) return
-    setRestarting(true)
-    try {
-      await api.restartFleetServer()
-    } catch {
-      // Expected — the connection will drop as the server exits.
-    }
-    // Poll for the server coming back up.
-    const start = Date.now()
-    let backUp = false
-    while (Date.now() - start < 60000) {
-      await new Promise(r => setTimeout(r, 2000))
-      try {
-        const res = await api.getCloudCredentialsStatus()
-        if (res.data) { backUp = true; break }
-      } catch { /* not yet */ }
-    }
-    setRestarting(false)
-    if (backUp) {
-      setConnectMsg({ ok: true, msg: 'fibratus-fleet restarted successfully.' })
-    } else {
-      setConnectMsg({ ok: false, msg: 'Server did not come back up within 60s. Check systemctl status fibratus-fleet on the host.' })
-    }
+  function applyNow() {
+    setPendingConfirm({
+      title: 'Restart fibratus-fleet now?',
+      message: 'In-flight requests will be interrupted. The dashboard will reconnect automatically within a few seconds.',
+      label: 'Restart',
+      run: async () => {
+        setRestarting(true)
+        try {
+          await api.restartFleetServer()
+        } catch {
+          // Expected — the connection will drop as the server exits.
+        }
+        // Poll for the server coming back up.
+        const start = Date.now()
+        let backUp = false
+        while (Date.now() - start < 60000) {
+          await new Promise(r => setTimeout(r, 2000))
+          try {
+            const res = await api.getCloudCredentialsStatus()
+            if (res.data) { backUp = true; break }
+          } catch { /* not yet */ }
+        }
+        setRestarting(false)
+        if (backUp) {
+          setConnectMsg({ ok: true, msg: 'fibratus-fleet restarted successfully.' })
+        } else {
+          setConnectMsg({ ok: false, msg: 'Server did not come back up within 60s. Check systemctl status fibratus-fleet on the host.' })
+        }
+      },
+    })
   }
 
   const inputCls = 'w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 text-sm focus:border-amber-500 dark:focus:border-amber-500 focus:outline-none'
@@ -917,6 +942,19 @@ function ClickHouseCloudPanel() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={pendingConfirm !== null}
+        title={pendingConfirm?.title ?? ''}
+        message={pendingConfirm?.message ?? ''}
+        confirmLabel={pendingConfirm?.label}
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={() => {
+          const action = pendingConfirm
+          setPendingConfirm(null)
+          if (action) void action.run()
+        }}
+      />
     </div>
   )
 }

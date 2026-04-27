@@ -18,6 +18,7 @@ Fibratus is a Windows-native security tool for adversary tradecraft detection, p
 - Follow senior Go developer standards: idiomatic Go, clear error handling, interface-driven design
 - **Always list all files changed at the end of every task**
 - **NEVER attribute anything to Claude** — no `Co-Authored-By: Claude` in commits, no mention of AI in PR descriptions, commit messages, code comments, or anywhere else. All work is attributed to the human author only.
+- **NEVER use browser-native `window.confirm()` / `window.alert()` / `window.prompt()` in the dashboard.** They look terrible and break the visual language of the app. Use the existing `ConfirmDialog` component (or build an equivalent inline confirmation/toast) instead. Applies to every page, every flow, every "are you sure?" — no exceptions.
 
 ## Building & Testing
 ```powershell
