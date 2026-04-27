@@ -410,9 +410,15 @@ function ProfileCard({
         {!profile.active && (
           <button
             onClick={onActivate}
-            disabled={busy !== null || !draft.enabled}
+            disabled={busy !== null || !profile.enabled || !profile.host || !profile.port}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-            title={!draft.enabled ? 'Enable this profile (and Save) before activating it.' : 'Hot-swap the running pipeline to use this profile.'}
+            title={
+              !profile.enabled
+                ? 'Enable and Save this profile before activating it.'
+                : !profile.host
+                  ? 'Set host (and Save) before activating.'
+                  : 'Hot-swap the running pipeline to use this profile.'
+            }
           >
             {busy === 'activating' ? 'Switching...' : 'Use this profile'}
           </button>
