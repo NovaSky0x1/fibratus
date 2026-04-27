@@ -123,10 +123,22 @@ type EnrollmentData struct {
 }
 
 // StoreEnrollment writes enrollment data to DPAPI-encrypted registry values.
+//
+// On re-enrollment the existing keys may be locked down to SYSTEM-only by
+// ProtectRegistryKeys from the previous install, which leaves administrators
+// with read-only access. If CreateKey fails because of that, take ownership
+// and widen the DACL so the elevated re-install can proceed; ProtectRegistryKeys
+// re-applies the lockdown after the rewrite.
 func StoreEnrollment(data *EnrollmentData) error {
 	k, _, err := registry.CreateKey(registry.LOCAL_MACHINE, enrollmentKeyPath, registry.SET_VALUE)
 	if err != nil {
-		return fmt.Errorf("create enrollment registry key: %w", err)
+		if isAccessDenied(err) {
+			unprotectEnrollmentKeys()
+			k, _, err = registry.CreateKey(registry.LOCAL_MACHINE, enrollmentKeyPath, registry.SET_VALUE)
+		}
+		if err != nil {
+			return fmt.Errorf("create enrollment registry key: %w", err)
+		}
 	}
 	defer k.Close()
 
@@ -352,4 +364,42 @@ func readFileContent(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// isAccessDenied returns true when err corresponds to ERROR_ACCESS_DENIED (5).
+// Used to detect SYSTEM-only-locked enrollment keys on re-enrollment.
+func isAccessDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errno, ok := err.(syscall.Errno); ok {
+		return errno == syscall.ERROR_ACCESS_DENIED
+	}
+	return strings.Contains(err.Error(), "Access is denied")
+}
+
+// unprotectEnrollmentKeys walks the enrollment registry tree, claims ownership
+// for the local Administrators group, and rewrites the DACL to grant Admin
+// full access. Lets the elevated enroll command overwrite keys that the
+// previous install had locked to SYSTEM-only via ProtectRegistryKeys. ACLs
+// are re-tightened by ProtectRegistryKeys at the end of StoreEnrollment.
+func unprotectEnrollmentKeys() {
+	enableTakeOwnershipPrivilege()
+	// Process child keys before the parent so ownership/ACL changes propagate
+	// in the order the registry expects.
+	for _, path := range []string{
+		`MACHINE\SOFTWARE\Fibratus\Enrollment`,
+		`MACHINE\SOFTWARE\Fibratus\State`,
+		`MACHINE\SOFTWARE\Fibratus`,
+	} {
+		// Owner = Built-in Administrators (S-1-5-32-544). Then DACL grants
+		// SYSTEM full + Admin full so the rewrite can proceed.
+		if err := setRegistryOwnerToAdministrators(path); err != nil {
+			log.Debugf("enrollment: take ownership %s: %v", path, err)
+			continue
+		}
+		if err := setRegistrySecurity(path, `D:P(A;CI;KA;;;SY)(A;CI;KA;;;BA)`); err != nil {
+			log.Debugf("enrollment: relax DACL on %s: %v", path, err)
+		}
+	}
 }
