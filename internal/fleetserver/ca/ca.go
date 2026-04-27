@@ -74,8 +74,14 @@ func (m *Manager) GetOrCreateCA(ctx context.Context, orgID, accountID string) (*
 		return nil, err
 	}
 
-	// Store in database
-	_, err = m.db.ExecContext(ctx,
+	// Persist with a detached context: if the agent's HTTP client times out
+	// mid-enrollment, the request ctx is cancelled — but the CA generation
+	// has already completed and the row MUST land so the next retry hits
+	// the cached CA path instead of regenerating. A 10s budget is plenty
+	// for the local Postgres write.
+	insertCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = m.db.ExecContext(insertCtx,
 		`INSERT INTO org_cas (org_id, ca_cert, ca_key) VALUES ($1, $2, $3)
 		 ON CONFLICT (org_id) DO NOTHING`,
 		orgID, ca.CertPEM, ca.KeyPEM,
@@ -179,8 +185,15 @@ func (m *Manager) LoadAllCACerts(ctx context.Context) (*x509.CertPool, error) {
 }
 
 // generateCA creates a new self-signed CA certificate and private key.
+//
+// 2048-bit RSA matches the industry default for internal CAs and generates
+// in ~50–200ms — fast enough that the first agent enrollment for a fresh
+// org doesn't risk timing out the agent's HTTP client. 4096 bits is overkill
+// for a CA that only signs short-lived agent certs and used to take 5–15s on
+// small VMs, which was bumping the request past the agent's enroll timeout
+// and leaving the CA half-saved (context cancelled).
 func generateCA(orgID, accountID string) (*OrgCA, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, fmt.Errorf("ca: keygen failed: %w", err)
 	}
