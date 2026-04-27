@@ -316,13 +316,17 @@ func (s *Server) Run(ctx context.Context) error {
 	commandHandler.SetCommandPushCallback(cmdPushCallback)
 	captureHandler.SetCommandPushCallback(cmdPushCallback)
 	authHandler.SetCommandPushCallback(cmdPushCallback)
-	if chDB != nil {
-		authHandler.SetRetentionCallback(func(orgID string, days int) error {
-			table := "telemetry_" + orgID
-			_, err := chDB.Exec(fmt.Sprintf("ALTER TABLE %s MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", table, days))
-			return err
-		})
-	}
+	authHandler.SetRetentionCallback(func(orgID string, days int) error {
+		// Resolve the active ClickHouse connection per call so the callback
+		// always targets the live profile, even after a hot-swap.
+		chDB := s.pipeline.activeDB()
+		if chDB == nil {
+			return fmt.Errorf("no active clickhouse profile — cannot apply retention to org %s", orgID)
+		}
+		table := "telemetry_" + orgID
+		_, err := chDB.Exec(fmt.Sprintf("ALTER TABLE %s MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", table, days))
+		return err
+	})
 	eventLogPolicyHandler.SetCommandPushCallback(cmdPushCallback)
 	agentHandler.SetCommandDeps(commandStore, eventLogPolicyStore, cmdPushCallback)
 
