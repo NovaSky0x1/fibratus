@@ -930,6 +930,7 @@ export default function DatabaseTab() {
   const [dbType, setDbType] = useState<DbType>('postgres')
   const [query, setQuery] = useState('')
   const [result, setResult] = useState<QueryResult | null>(null)
+  const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [activeTable, setActiveTable] = useState<string | null>(null)
   const [tableColumns, setTableColumns] = useState<QueryResult | null>(null)
@@ -1025,6 +1026,7 @@ export default function DatabaseTab() {
     if (!query.trim()) return
     setLoading(true)
     setResult(null)
+    setExpandedCells(new Set())
     setQueryTime(null)
     const start = performance.now()
     try {
@@ -1899,15 +1901,38 @@ export default function DatabaseTab() {
                         <tbody>
                           {result.rows.map((row, ri) => (
                             <tr key={ri} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
-                              {row.map((val, ci) => (
-                                <td key={ci} className="px-3 py-1.5 whitespace-nowrap max-w-[300px] truncate">
-                                  {val === null || val === undefined ? (
-                                    <span className="text-gray-300 dark:text-slate-600 italic">NULL</span>
-                                  ) : (
-                                    <span className="text-gray-700 dark:text-slate-300">{formatCellValue(val)}</span>
-                                  )}
-                                </td>
-                              ))}
+                              {row.map((val, ci) => {
+                                const cellKey = `${ri}-${ci}`
+                                const expanded = expandedCells.has(cellKey)
+                                const formatted = val === null || val === undefined ? '' : formatCellValue(val)
+                                // Long cells are click-to-expand; short ones stay
+                                // single-line and unclickable. Threshold ~120 chars
+                                // is roughly when truncation actually kicks in for
+                                // the 300px max-width.
+                                const isLong = formatted.length > 120
+                                return (
+                                  <td
+                                    key={ci}
+                                    onClick={() => {
+                                      if (!isLong) return
+                                      setExpandedCells(prev => {
+                                        const next = new Set(prev)
+                                        if (next.has(cellKey)) next.delete(cellKey)
+                                        else next.add(cellKey)
+                                        return next
+                                      })
+                                    }}
+                                    className={`px-3 py-1.5 align-top ${isLong ? 'cursor-pointer' : ''} ${expanded ? 'whitespace-pre-wrap break-all' : 'whitespace-nowrap max-w-[300px] truncate'}`}
+                                    title={isLong && !expanded ? 'Click to expand' : isLong ? 'Click to collapse' : undefined}
+                                  >
+                                    {val === null || val === undefined ? (
+                                      <span className="text-gray-300 dark:text-slate-600 italic">NULL</span>
+                                    ) : (
+                                      <span className="text-gray-700 dark:text-slate-300">{formatted}</span>
+                                    )}
+                                  </td>
+                                )
+                              })}
                             </tr>
                           ))}
                         </tbody>

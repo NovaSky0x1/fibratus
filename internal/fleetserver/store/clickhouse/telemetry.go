@@ -106,9 +106,13 @@ SETTINGS index_granularity = 8192,
 var orgIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 var safeTableName = regexp.MustCompile(`[^a-z0-9_]`)
 
-// orgTableName generates a human-readable ClickHouse table name from org name + ID.
+// OrgTableName generates a human-readable ClickHouse table name from org name + ID.
 // e.g., "telemetry_production_e5b2a5a0" — sanitized name + 8-char ID suffix.
-func orgTableName(orgID, orgName string) string {
+//
+// Exported so the fleet server's retention callback (and other admin paths
+// outside this package) can resolve the same table name the ingest pipeline
+// uses, instead of guessing.
+func OrgTableName(orgID, orgName string) string {
 	if orgID == "" || !orgIDPattern.MatchString(orgID) {
 		return "telemetry_events"
 	}
@@ -158,7 +162,7 @@ func (s *TelemetryStore) resolveTable(orgID string) string {
 	if s.orgResolver != nil {
 		orgName = s.orgResolver(orgID)
 	}
-	return orgTableName(orgID, orgName)
+	return OrgTableName(orgID, orgName)
 }
 
 // Migrate creates the legacy shared table (for backward compat) and ensures

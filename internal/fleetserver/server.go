@@ -35,6 +35,7 @@ import (
 	"github.com/rabbitstack/fibratus/internal/fleetserver/fleetauth"
 	natsPkg "github.com/rabbitstack/fibratus/internal/fleetserver/nats"
 	pb "github.com/rabbitstack/fibratus/pkg/fleet/pb"
+	chstore "github.com/rabbitstack/fibratus/internal/fleetserver/store/clickhouse"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/ctxutil"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/handler"
 	"github.com/rabbitstack/fibratus/internal/fleetserver/store"
@@ -323,9 +324,21 @@ func (s *Server) Run(ctx context.Context) error {
 		if chDB == nil {
 			return fmt.Errorf("no active clickhouse profile — cannot apply retention to org %s", orgID)
 		}
-		table := "telemetry_" + orgID
+		// The ingest pipeline names tables as telemetry_<slug>_<id8> via
+		// chstore.OrgTableName, NOT telemetry_<full-uuid>. Resolve the org
+		// name and reuse the same builder so the ALTER TABLE actually targets
+		// the live table on Cloud / local.
+		orgName := ""
+		if org, err := orgStore.Get(ctx, orgID); err == nil && org != nil {
+			orgName = org.Name
+		}
+		table := chstore.OrgTableName(orgID, orgName)
 		_, err := chDB.Exec(fmt.Sprintf("ALTER TABLE %s MODIFY TTL toDateTime(timestamp) + INTERVAL %d DAY DELETE", table, days))
-		return err
+		if err != nil {
+			return fmt.Errorf("alter ttl on %s: %w", table, err)
+		}
+		log.Infof("fleet: applied %d-day TTL to %s", days, table)
+		return nil
 	})
 	eventLogPolicyHandler.SetCommandPushCallback(cmdPushCallback)
 	agentHandler.SetCommandDeps(commandStore, eventLogPolicyStore, cmdPushCallback)
