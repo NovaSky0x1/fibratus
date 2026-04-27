@@ -100,13 +100,24 @@ if ($proc.ExitCode -ne 0) {
 }
 Write-Host "  MSI installation complete" -ForegroundColor Green
 
-# Enroll agent
+# Enroll agent. Drop ErrorActionPreference to Continue around the native call:
+# fibratus writes info-level logs to stderr (logrus default), and PowerShell
+# under $ErrorActionPreference=Stop treats any stderr line from a native
+# command as a terminating NativeCommandError — which would abort the script
+# even on a successful exit-0 enrollment.
 Write-Host "[3/5] Enrolling agent..." -ForegroundColor Yellow
 Stop-Service fibratus -ErrorAction SilentlyContinue
-$enrollOut = & "C:\Program Files\Fibratus\Bin\fibratus.exe" enroll --token $enrollToken --server $serverURL --insecure 2>&1
+$prevAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $enrollOut = & "C:\Program Files\Fibratus\Bin\fibratus.exe" enroll --token $enrollToken --server $serverURL --insecure 2>&1
+    $enrollExit = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $prevAction
+}
 $enrollOut | ForEach-Object { Write-Host "  $_" }
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  Enrollment failed (exit $LASTEXITCODE)" -ForegroundColor Red
+if ($enrollExit -ne 0) {
+    Write-Host "  Enrollment failed (exit $enrollExit)" -ForegroundColor Red
 } else {
     Write-Host "  Enrollment complete" -ForegroundColor Green
 }
