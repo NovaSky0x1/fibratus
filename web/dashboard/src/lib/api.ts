@@ -721,8 +721,11 @@ export const api = {
     fetchApi<CloudCreateServiceResult>('/admin/clickhouse-cloud/services', { method: 'POST', body: JSON.stringify(req) }),
   connectCloudService: (req: CloudConnectRequest) =>
     fetchApi<{ bound: boolean; restart_required: boolean }>('/admin/clickhouse-cloud/connect', { method: 'POST', body: JSON.stringify(req) }),
-  resetCloudServicePassword: (orgID: string, serviceID: string) =>
-    fetchApi<{ reset: boolean; restart_required: boolean }>(`/admin/clickhouse-cloud/services/reset-password?organization_id=${encodeURIComponent(orgID)}&service_id=${encodeURIComponent(serviceID)}`, { method: 'POST' }),
+  resetCloudServicePassword: (orgID: string, serviceID: string, database: string, user: string) =>
+    fetchApi<{ reset: boolean; restart_required: boolean }>('/admin/clickhouse-cloud/services/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ organization_id: orgID, service_id: serviceID, database, user }),
+    }),
   restartFleetServer: () =>
     fetchApi<{ restarting: boolean }>('/admin/restart', { method: 'POST' }),
   adminGetAccountUsers: (accountId: string) => fetchApi<User[]>(`/admin/accounts/${accountId}/users`),

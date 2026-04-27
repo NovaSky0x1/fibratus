@@ -633,7 +633,7 @@ function ClickHouseCloudPanel() {
         setResetting(true)
         setConnectMsg(null)
         try {
-          const res = await api.resetCloudServicePassword(selectedOrg, selectedService)
+          const res = await api.resetCloudServicePassword(selectedOrg, selectedService, serviceDb || 'default', serviceUser || 'default')
           if (res.error) {
             setConnectMsg({ ok: false, msg: res.error.message })
           } else {

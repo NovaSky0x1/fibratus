@@ -55,6 +55,17 @@ type CloudConnectRequest struct {
 	ServicePassword string `json:"service_password"`
 }
 
+// CloudResetPasswordRequest rotates the service password and rebinds the
+// local config in one call. Database / User come from the dashboard form so
+// the caller's choice (typically "default" / "default" for a fresh Cloud
+// service) overrides whatever the local YAML had.
+type CloudResetPasswordRequest struct {
+	OrgID     string `json:"organization_id"`
+	ServiceID string `json:"service_id"`
+	Database  string `json:"database"`
+	User      string `json:"user"`
+}
+
 // CloudCreateServiceRequest is forwarded to the Cloud API after the handler
 // substitutes the stored credentials. It mirrors clickhousecloud.CreateServiceRequest
 // but lives here to avoid a hard import cycle on the typed client from this
@@ -82,7 +93,7 @@ type CloudHandler struct {
 	listServices      func(r *http.Request, orgID string) (interface{}, error)
 	createService     func(req CloudCreateServiceRequest) (interface{}, error)
 	connectService    func(req CloudConnectRequest) error
-	resetPassword     func(orgID, serviceID string) error
+	resetPassword     func(req CloudResetPasswordRequest) error
 	restart           func()
 }
 
@@ -95,7 +106,7 @@ type CloudHandlerDeps struct {
 	ListServices      func(r *http.Request, orgID string) (interface{}, error)
 	CreateService     func(req CloudCreateServiceRequest) (interface{}, error)
 	ConnectService    func(req CloudConnectRequest) error
-	ResetPassword     func(orgID, serviceID string) error
+	ResetPassword     func(req CloudResetPasswordRequest) error
 	Restart           func()
 }
 
@@ -246,23 +257,34 @@ func (h *CloudHandler) ConnectService(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// ResetPassword resets a service's password and stores the new one.
-// POST /api/v1/admin/clickhouse-cloud/services/reset-password?organization_id=...&service_id=...
+// ResetPassword resets a service's password, stores the new one, and rebinds
+// the local config to the service endpoint in one atomic operation.
+// POST /api/v1/admin/clickhouse-cloud/services/reset-password
 func (h *CloudHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	if !rootGuard(w, r) {
 		return
 	}
-	orgID := r.URL.Query().Get("organization_id")
-	serviceID := r.URL.Query().Get("service_id")
-	if orgID == "" || serviceID == "" {
-		writeError(w, http.StatusBadRequest, "organization_id and service_id query parameters are required")
+	var req CloudResetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := h.resetPassword(orgID, serviceID); err != nil {
+	// Backwards-compatible: accept query params if the body is empty.
+	if req.OrgID == "" {
+		req.OrgID = r.URL.Query().Get("organization_id")
+	}
+	if req.ServiceID == "" {
+		req.ServiceID = r.URL.Query().Get("service_id")
+	}
+	if req.OrgID == "" || req.ServiceID == "" {
+		writeError(w, http.StatusBadRequest, "organization_id and service_id are required")
+		return
+	}
+	if err := h.resetPassword(req); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	log.Infof("fleet: rotated password for ClickHouse Cloud service %s", serviceID)
+	log.Infof("fleet: rotated password for ClickHouse Cloud service %s", req.ServiceID)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]interface{}{
 		"reset":            true,
 		"restart_required": true,
