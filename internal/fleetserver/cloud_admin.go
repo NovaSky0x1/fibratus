@@ -205,6 +205,7 @@ func (s *Server) cloudHandlerDeps() handler.CloudHandlerDeps {
 			}
 			cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
+			// Rotate the password.
 			newPw, err := cli.ResetServicePassword(cctx, orgID, serviceID, "")
 			if err != nil {
 				return err
@@ -212,11 +213,28 @@ func (s *Server) cloudHandlerDeps() handler.CloudHandlerDeps {
 			if newPw == "" {
 				return errors.New("API rotated the password but did not return the new value")
 			}
-			s.config.ClickHouse.Password = newPw
-			if err := s.secretStore.Set(ctx, SecretClickHousePassword, newPw, "dashboard-cloud-reset"); err != nil {
-				return err
+			// Then resolve the service's connection endpoint and bind the local
+			// config so YAML host/port + secret-store password move together.
+			// Without this, the encrypted store would diverge from the YAML and
+			// the next restart would crash-loop on auth failure against the old
+			// host with the new password.
+			svc, err := cli.GetService(cctx, orgID, serviceID)
+			if err != nil {
+				return fmt.Errorf("password rotated but could not fetch service endpoint to bind: %w", err)
 			}
-			return nil
+			host, port, ok := svc.NativeSecureEndpoint()
+			if !ok {
+				return errors.New("password rotated but service has no native secure endpoint")
+			}
+			db := s.config.ClickHouse.Database
+			if db == "" {
+				db = "default"
+			}
+			user := s.config.ClickHouse.User
+			if user == "" {
+				user = "default"
+			}
+			return s.bindCloudService(ctx, host, port, db, user, newPw, orgID)
 		},
 		Restart: func() {
 			// Give the in-flight HTTP response time to flush before exit.
