@@ -377,9 +377,13 @@ else
     ok "Service user '${SERVICE_USER}' created"
 fi
 
-# Set ownership on directories the service user needs
+# Set ownership on directories the service user needs.
+# CONFIG_DIR is owned by the service user (mode 0750) so the server can write
+# atomic config updates (e.g. SaveConfig's temp-file + rename) and persist the
+# secret-store master key without root-only paths blocking it.
 mkdir -p "${DATA_DIR}" "${LOG_DIR}" "${CONFIG_DIR}"
-chown "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" "${LOG_DIR}"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}" "${LOG_DIR}" "${CONFIG_DIR}"
+chmod 750 "${CONFIG_DIR}"
 
 # SigmaHQ directory needs read access for the service user
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${SIGMAHQ_DIR}"

@@ -38,8 +38,6 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // DefaultBaseURL is the public ClickHouse Cloud API base.
@@ -216,14 +214,6 @@ func (c *Client) ResetServicePassword(ctx context.Context, orgID, serviceID, new
 	return resp.Result.Password, nil
 }
 
-// truncateForLog clips long bodies so the journal stays readable.
-func truncateForLog(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "...(truncated)"
-}
-
 // do is the shared transport: build the request, attach basic auth, decode JSON.
 func (c *Client) do(ctx context.Context, method, path string, body, out interface{}) error {
 	if c.keyID == "" || c.keySecret == "" {
@@ -255,8 +245,6 @@ func (c *Client) do(ctx context.Context, method, path string, body, out interfac
 	if err != nil {
 		return fmt.Errorf("clickhouse cloud: read response: %w", err)
 	}
-	// TEMP debug — remove once response-shape parsing is verified.
-	log.Infof("clickhouse cloud: %s %s -> HTTP %d body=%s", method, path, resp.StatusCode, truncateForLog(string(respBody), 800))
 	if resp.StatusCode >= 400 {
 		apiErr := &APIError{Status: resp.StatusCode}
 		// Best-effort decode; the response may not be JSON for some errors.

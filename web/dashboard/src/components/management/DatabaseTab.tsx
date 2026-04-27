@@ -874,42 +874,59 @@ function ClickHouseCloudPanel() {
 
               {/* Existing service connect form */}
               {selectedService && !showCreate && (
-                <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-4 space-y-3">
+                <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-4 space-y-4">
+                  <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
+                    <span className="font-semibold">Don't know the password?</span> Click <strong>Rotate &amp; bind</strong> below. ClickHouse Cloud doesn't expose the existing service password through the API or the portal (resetting it in the portal doesn't display the new value either) — so the cleanest path is to let us rotate it via the API: we'll receive the new password, store it encrypted, and bind in one step.
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
-                      <label className={labelCls}>Service password</label>
-                      <input type="password" value={servicePassword} onChange={e => setServicePassword(e.target.value)} placeholder="from your records, or click Reset" className={inputCls} />
+                      <label className={labelCls}>Database</label>
+                      <input value={serviceDb} onChange={e => setServiceDb(e.target.value)} className={inputCls} />
+                      <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+                        ClickHouse Cloud services start with a <span className="font-mono">default</span> database. Change only if you've created another DB inside the service.
+                      </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className={labelCls}>Database</label>
-                        <input value={serviceDb} onChange={e => setServiceDb(e.target.value)} className={inputCls} />
-                      </div>
-                      <div>
-                        <label className={labelCls}>User</label>
-                        <input value={serviceUser} onChange={e => setServiceUser(e.target.value)} className={inputCls} />
-                      </div>
+                    <div>
+                      <label className={labelCls}>User</label>
+                      <input value={serviceUser} onChange={e => setServiceUser(e.target.value)} className={inputCls} />
+                      <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+                        The default Cloud user is <span className="font-mono">default</span>; create a dedicated SQL user inside the service for production.
+                      </p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={connect}
-                      disabled={connecting || !servicePassword}
-                      className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      {connecting ? 'Binding...' : 'Bind to this service'}
-                    </button>
-                    <button
-                      onClick={resetPassword}
-                      disabled={resetting}
-                      className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
-                    >
-                      {resetting ? 'Resetting...' : 'Reset password (server-side, then bind)'}
-                    </button>
+
+                  <div className="border-t border-gray-200 dark:border-slate-700 pt-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={resetPassword}
+                        disabled={resetting}
+                        className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {resetting ? 'Rotating...' : 'Rotate & bind (recommended)'}
+                      </button>
+                      <span className="text-xs text-gray-500 dark:text-slate-400">— or, if you already have the password —</span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
+                      <div>
+                        <label className={labelCls}>Existing service password</label>
+                        <input
+                          type="password"
+                          value={servicePassword}
+                          onChange={e => setServicePassword(e.target.value)}
+                          placeholder="paste here if you saved it at creation"
+                          className={inputCls}
+                        />
+                      </div>
+                      <button
+                        onClick={connect}
+                        disabled={connecting || !servicePassword}
+                        className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600 disabled:opacity-50"
+                      >
+                        {connecting ? 'Binding...' : 'Bind with this password'}
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-slate-500">
-                    The Cloud API never returns existing service passwords. Either paste the one you saved at creation, or click "Reset password" — we'll generate a new one and save it.
-                  </p>
                 </div>
               )}
             </div>
