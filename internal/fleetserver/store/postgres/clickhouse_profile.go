@@ -111,16 +111,21 @@ func (s *ClickHouseProfileStore) List(ctx context.Context) ([]*ClickHouseProfile
 	return out, rows.Err()
 }
 
-// Upsert creates or updates a profile by name.
+// Upsert creates or updates a profile by name. Validation is deliberately
+// lenient — a disabled profile is allowed to be incomplete (e.g. a freshly
+// seeded "cloud" row before the operator pastes a hostname). Strict checks
+// happen in the activation path where the connection is actually opened.
 func (s *ClickHouseProfileStore) Upsert(ctx context.Context, p *ClickHouseProfile) error {
 	if p.Name == "" {
 		return errors.New("profile name is required")
 	}
-	if p.Port <= 0 {
-		return errors.New("profile port must be positive")
-	}
-	if p.Host == "" {
-		return errors.New("profile host is required")
+	if p.Enabled {
+		if p.Port <= 0 {
+			return errors.New("profile port must be positive when enabled")
+		}
+		if p.Host == "" {
+			return errors.New("profile host is required when enabled")
+		}
 	}
 	if p.Database == "" {
 		p.Database = "default"
