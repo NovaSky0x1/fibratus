@@ -130,45 +130,88 @@ try {
 } catch {
     Write-Host "  Start-Service raised: $_" -ForegroundColor Red
 }
-Start-Sleep -Seconds 3
 
-# Verify
+# Poll for Running state. The agent does heavy bootstrap work (ETW provider
+# registration, symbolizer init, fleet client connect) before reporting
+# Running, so a single 3-second sleep is unreliable on slower hosts.
 Write-Host "[5/5] Verifying..." -ForegroundColor Yellow
-$svc = Get-Service fibratus -ErrorAction SilentlyContinue
+$svc = $null
+$timeout = (Get-Date).AddSeconds(30)
+$lastStatus = ""
+while ((Get-Date) -lt $timeout) {
+    $svc = Get-Service fibratus -ErrorAction SilentlyContinue
+    if (-not $svc) { break }
+    if ($svc.Status -eq "Running") { break }
+    if ($svc.Status -eq "Stopped" -and $lastStatus -eq "Stopped") { break } # crashed early
+    $lastStatus = $svc.Status
+    Start-Sleep -Milliseconds 800
+}
+
 if ($svc -and $svc.Status -eq "Running") {
     Write-Host "  Service RUNNING" -ForegroundColor Green
-} elseif ($svc) {
-    Write-Host "  Service status: $($svc.Status)" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  Diagnostic: sc.exe query fibratus" -ForegroundColor DarkGray
-    sc.exe query fibratus | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-    foreach ($logPath in @(
-        "C:\Program Files\Fibratus\fibratus.log",
-        "C:\ProgramData\Fibratus\fibratus.log",
-        "C:\Program Files\Fibratus\Bin\fibratus.log"
-    )) {
-        if (Test-Path $logPath) {
-            Write-Host ""
-            Write-Host "  Tail of $logPath" -ForegroundColor DarkGray
-            Get-Content $logPath -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-        }
-    }
+    Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
+    Write-Host "Server:      $serverURL"
+    Write-Host "Agent log:   C:\Program Files\Fibratus\Logs\fibratus.log"
+    Write-Host "Service ctl: sc.exe query fibratus  |  Stop-Service fibratus"
+    Write-Host ""
+    Write-Host "The agent will appear on the dashboard's Agents page within ~30s." -ForegroundColor Green
+    exit 0
+}
+
+# Service did not reach Running — dump every diagnostic we can.
+if ($svc) {
+    Write-Host "  Service status: $($svc.Status) (did not reach Running within 30s)" -ForegroundColor Red
 } else {
-    Write-Host "  Warning: Service not found" -ForegroundColor Yellow
+    Write-Host "  Warning: Service not found" -ForegroundColor Red
+}
+Write-Host ""
+Write-Host "  --- sc.exe query fibratus ---" -ForegroundColor DarkGray
+sc.exe query fibratus 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+Write-Host ""
+Write-Host "  --- sc.exe qc fibratus ---" -ForegroundColor DarkGray
+sc.exe qc fibratus 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+
+# Tail the agent log from every location we know about.
+$logFound = $false
+foreach ($logPath in @(
+    "C:\Program Files\Fibratus\Logs\fibratus.log",
+    "C:\Program Files\Fibratus\fibratus.log",
+    "C:\ProgramData\Fibratus\Logs\fibratus.log",
+    "C:\ProgramData\Fibratus\fibratus.log",
+    "C:\Program Files\Fibratus\Bin\fibratus.log"
+)) {
+    if (Test-Path $logPath) {
+        $logFound = $true
+        Write-Host ""
+        Write-Host "  --- Tail of $logPath ---" -ForegroundColor DarkGray
+        Get-Content $logPath -Tail 30 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    }
+}
+if (-not $logFound) {
+    Write-Host ""
+    Write-Host "  No agent log file found — the binary likely crashed before logging was initialised." -ForegroundColor Yellow
 }
 
-if (Test-Path "C:\Program Files\Fibratus\data\agent-id") {
-    Write-Host "  Agent ID: $(Get-Content 'C:\Program Files\Fibratus\data\agent-id')" -ForegroundColor Green
+# Recent SCM events for fibratus.
+Write-Host ""
+Write-Host "  --- Recent Service Control Manager events (fibratus) ---" -ForegroundColor DarkGray
+try {
+    Get-WinEvent -LogName System -MaxEvents 50 -ErrorAction Stop |
+        Where-Object { $_.Message -match 'Fibratus' -or $_.Message -match 'fibratus' } |
+        Select-Object -First 5 |
+        ForEach-Object {
+            Write-Host "    $($_.TimeCreated) Id=$($_.Id) $($_.LevelDisplayName)" -ForegroundColor DarkGray
+            Write-Host "      $($_.Message.Split([Environment]::NewLine)[0])" -ForegroundColor DarkGray
+        }
+} catch {
+    Write-Host "    (could not read System log: $_)" -ForegroundColor DarkGray
 }
 
-# Cleanup
-Remove-Item $tempMSI -ErrorAction SilentlyContinue
-
 Write-Host ""
-Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
-Write-Host "Server: $serverURL"
-Write-Host ""
-Write-Host "To check status:  sc.exe query fibratus"
+Write-Host "Installation completed but the service is not running." -ForegroundColor Red
+Write-Host "Share the diagnostic block above to investigate further." -ForegroundColor Red
+exit 1
 `, token.OrgName, tokenID, serverURL, tokenID)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

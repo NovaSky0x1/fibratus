@@ -366,9 +366,14 @@ func (f *App) Run(args []string) error {
 		if cfg.Yara.Enabled {
 			scanner, err := yara.NewScanner(f.psnap, cfg.Yara)
 			if err != nil {
-				return err
+				// Slim builds (no yara build tag) return ErrFeatureUnsupported.
+				// Don't take the whole agent down — log and proceed without
+				// the YARA scanner. Operators using on-demand scans will see
+				// command failures, but baseline agent ingest must keep working.
+				log.Warnf("fleet: yara scanner not available — %v. Continuing without YARA support; rebuild with -tags yara,yara_static for inline scanning.", err)
+			} else {
+				f.yaraScanner = scanner
 			}
-			f.yaraScanner = scanner
 		}
 		err = f.evs.Open(cfg)
 		if err != nil {
