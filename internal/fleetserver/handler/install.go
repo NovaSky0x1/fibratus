@@ -106,7 +106,24 @@ Write-Host "  MSI installation complete" -ForegroundColor Green
 # command as a terminating NativeCommandError — which would abort the script
 # even on a successful exit-0 enrollment.
 Write-Host "[3/5] Enrolling agent..." -ForegroundColor Yellow
-Stop-Service fibratus -ErrorAction SilentlyContinue
+
+# Stop the service if it's running. Stop-Service with -Force can hang
+# indefinitely waiting for ETW / fleet-client teardown — give it 10s, then
+# kill the process so enrollment isn't blocked by a stuck shutdown.
+$svcRunning = (Get-Service fibratus -ErrorAction SilentlyContinue)
+if ($svcRunning -and $svcRunning.Status -ne 'Stopped') {
+    $stopJob = Start-Job -ScriptBlock { Stop-Service fibratus -Force -ErrorAction SilentlyContinue }
+    $finished = Wait-Job $stopJob -Timeout 10
+    Remove-Job $stopJob -Force -ErrorAction SilentlyContinue
+    if (-not $finished) {
+        Write-Host "  Service did not stop in 10s — force-killing the process." -ForegroundColor DarkYellow
+        Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        # Tell the SCM the service is gone so subsequent calls don't think
+        # the old process is still running.
+        sc.exe stop fibratus 2>&1 | Out-Null
+        Start-Sleep -Seconds 2
+    }
+}
 $prevAction = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
