@@ -22,6 +22,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -70,7 +71,7 @@ func SuppressNoisyDefaultRules(ctx context.Context, db *sql.DB) {
 		WHERE name = ANY($1)
 		  AND COALESCE(user_modified, false) = false
 		  AND (enabled = true OR COALESCE(user_disabled, false) = false)
-	`, NoisyDefaultDisabledRules)
+	`, pq.Array(NoisyDefaultDisabledRules))
 	if err != nil {
 		log.Warnf("fleet: suppress noisy-default rules: %v", err)
 		return
