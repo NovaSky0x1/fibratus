@@ -1349,11 +1349,13 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// /f:rendertext returns XML augmented with a <RenderingInfo> block that
+	// /f:RenderedXml returns XML augmented with a <RenderingInfo> block that
 	// holds the human-readable Message (the narrative shown in Event Viewer:
 	// "An account was successfully logged on..."). Without it the operator
 	// only sees raw EventData fields and has to infer meaning per event.
-	args := []string{"qe", payload.Channel, "/c:" + fmt.Sprintf("%d", payload.Count), "/f:rendertext"}
+	// wevtutil only accepts XML, Text, or RenderedXml — anything else fails
+	// with "Invalid value for option f" (exit 87).
+	args := []string{"qe", payload.Channel, "/c:" + fmt.Sprintf("%d", payload.Count), "/f:RenderedXml"}
 	if payload.Reverse || xpath == "*" {
 		args = append(args, "/rd:true")
 	}
@@ -1379,7 +1381,7 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 
 // parseWevtutilXML does a simple parse of wevtutil XML output into structured maps.
 // Each <Event> block becomes a JSON object with System fields, EventData
-// fields, the rendered Message (when /f:rendertext was used), and the raw
+// fields, the rendered Message (when /f:RenderedXml was used), and the raw
 // XML so the dashboard can display anything our parser misses.
 func parseWevtutilXML(xmlData string) []map[string]interface{} {
 	var events []map[string]interface{}
@@ -1430,7 +1432,7 @@ func parseWevtutilXML(xmlData string) []map[string]interface{} {
 			evt["user_id"] = security
 		}
 
-		// RenderingInfo is added by wevtutil /f:rendertext. It contains the
+		// RenderingInfo is added by wevtutil /f:RenderedXml. It contains the
 		// human-readable Message ("An account was successfully logged on...")
 		// plus localized labels for Level, Task, Opcode, Keywords, Provider,
 		// and Channel. Surface them so the dashboard can show what Event
