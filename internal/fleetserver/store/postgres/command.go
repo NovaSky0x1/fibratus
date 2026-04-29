@@ -42,10 +42,17 @@ func (s *CommandStore) Create(ctx context.Context, cmd *fleet.Command) error {
 	if payload == nil {
 		payload = json.RawMessage(`{}`)
 	}
+	// Drop created_at from the INSERT so the schema's `DEFAULT now()` applies.
+	// Callers were constructing fleet.Command literals without setting
+	// CreatedAt, so the zero-time was being persisted — which broke
+	// HasRecentCommand's `created_at > NOW() - cooldown` cooldown check
+	// (epoch is < everything, so the cooldown never matched). Net effect:
+	// auto-update queued a fresh update_agent on every heartbeat (~30s),
+	// spawning concurrent install scripts that collided on msiexec.
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO commands (id, org_id, agent_id, type, payload, status, created_by, created_by_email, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		cmd.ID, cmd.OrgID, cmd.AgentID, cmd.Type, payload, cmd.Status, cmd.CreatedBy, cmd.CreatedByEmail, cmd.CreatedAt,
+		`INSERT INTO commands (id, org_id, agent_id, type, payload, status, created_by, created_by_email)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		cmd.ID, cmd.OrgID, cmd.AgentID, cmd.Type, payload, cmd.Status, cmd.CreatedBy, cmd.CreatedByEmail,
 	)
 	return err
 }

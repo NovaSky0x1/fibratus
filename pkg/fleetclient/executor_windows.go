@@ -591,11 +591,40 @@ $msiPath = "%s"
 $installDir = "%s"
 $binDir = Join-Path $installDir "Bin"
 $logFile = Join-Path $installDir "Logs\update.log"
+$lockFile = Join-Path $installDir "Logs\update.lock"
 
-"$(Get-Date) Update started (target MSI: $msiPath)" | Out-File $logFile
+# SINGLETON GUARD. Multiple update_agent commands queued in quick succession
+# (or duplicate fires from a flapping connection) used to spawn concurrent
+# install scripts that collided on msiexec and hung indefinitely. Take an
+# exclusive lock and bail if anyone else holds it. A stale lock (>10 min
+# old) is forcibly broken because the holder is by definition wedged.
+if (Test-Path $lockFile) {
+    $age = (Get-Date) - (Get-Item $lockFile).LastWriteTime
+    if ($age.TotalMinutes -lt 10) {
+        "$(Get-Date) Update already in progress (lock $age old), exiting" | Out-File $logFile -Append
+        exit 0
+    }
+    "$(Get-Date) Stale lock ($age old), breaking" | Out-File $logFile -Append
+}
+"$PID @ $(Get-Date)" | Out-File $lockFile -Force
+try {
+
+"$(Get-Date) Update started (target MSI: $msiPath, pid $PID)" | Out-File $logFile
 
 # Wait for the agent to finish reporting the command result
 Start-Sleep -Seconds 5
+
+# STALE MSIEXEC RECOVERY. A previous failed update can leave msiexec.exe
+# wedged for hours holding the install mutex; any new install attempt
+# blocks on it forever. Kill anything older than 5 minutes — a healthy
+# install never takes that long.
+Get-Process msiexec -ErrorAction SilentlyContinue | Where-Object {
+    ((Get-Date) - $_.StartTime).TotalMinutes -gt 5
+} | ForEach-Object {
+    "$(Get-Date) Killing stale msiexec PID $($_.Id) (age $([math]::Round(((Get-Date) - $_.StartTime).TotalMinutes,1)) min)" | Out-File $logFile -Append
+    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+}
+Start-Sleep -Seconds 2
 
 # Stop the service. Poll up to 30s for graceful stop; force-kill if still
 # running (the legacy ETW consumer sometimes hangs in StopPending indefinitely).
@@ -638,17 +667,31 @@ try {
     "$(Get-Date) Registry ACL reset skipped: $_" | Out-File $logFile -Append
 }
 
-# Try MSI upgrade first
-"$(Get-Date) Attempting MSI install..." | Out-File $logFile -Append
-$proc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i ""$msiPath"" /quiet /norestart REINSTALLMODE=vomus REINSTALL=ALL" -Wait -PassThru
-"$(Get-Date) MSI exit code: $($proc.ExitCode)" | Out-File $logFile -Append
+# Try MSI upgrade first, BOUNDED: a healthy install completes in under 60s.
+# If msiexec runs longer it has wedged on the install mutex / Windows
+# Installer service. Kill it and fall through to the binary-copy fallback.
+"$(Get-Date) Attempting MSI install (5 min cap)..." | Out-File $logFile -Append
+$msiProc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i ""$msiPath"" /quiet /norestart REINSTALLMODE=vomus REINSTALL=ALL" -PassThru
+$msiExit = $null
+if (-not $msiProc.WaitForExit(300000)) {
+    "$(Get-Date) MSI install exceeded 5 min, killing PID $($msiProc.Id)" | Out-File $logFile -Append
+    try { Stop-Process -Id $msiProc.Id -Force -ErrorAction SilentlyContinue } catch {}
+    $msiExit = -1
+} else {
+    $msiExit = $msiProc.ExitCode
+}
+"$(Get-Date) MSI exit code: $msiExit" | Out-File $logFile -Append
 
-if ($proc.ExitCode -ne 0) {
+if ($msiExit -ne 0) {
     # MSI failed — extract binary from MSI and copy directly
     "$(Get-Date) MSI failed, extracting binary..." | Out-File $logFile -Append
     $extractDir = Join-Path $env:TEMP "fibratus-extract"
     Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    $null = Start-Process -FilePath "msiexec.exe" -ArgumentList "/a ""$msiPath"" /qn TARGETDIR=""$extractDir""" -Wait -PassThru
+    $extractProc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/a ""$msiPath"" /qn TARGETDIR=""$extractDir""" -PassThru
+    if (-not $extractProc.WaitForExit(120000)) {
+        try { Stop-Process -Id $extractProc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        "$(Get-Date) Extract msiexec timed out, killed" | Out-File $logFile -Append
+    }
     $newBin = Get-ChildItem -Path $extractDir -Recurse -Filter "fibratus.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($newBin) {
         "$(Get-Date) Found binary: $($newBin.FullName) ($($newBin.Length) bytes)" | Out-File $logFile -Append
@@ -660,18 +703,31 @@ if ($proc.ExitCode -ne 0) {
     Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Start the service
-"$(Get-Date) Starting service..." | Out-File $logFile -Append
-sc.exe start fibratus 2>$null
-Start-Sleep -Seconds 5
+} finally {
+    # ALWAYS attempt to start the service, even if the install above failed.
+    # A failed update that leaves the service stopped is worse than one
+    # that runs the OLD binary — the host disappears from the dashboard
+    # entirely and we lose the ability to send another update_agent.
+    "$(Get-Date) Starting service..." | Out-File $logFile -Append
+    sc.exe start fibratus 2>$null
+    Start-Sleep -Seconds 5
+    $svc = Get-Service fibratus -ErrorAction SilentlyContinue
+    "$(Get-Date) Final service status: $($svc.Status)" | Out-File $logFile -Append
 
-# Verify
-$svc = Get-Service fibratus -ErrorAction SilentlyContinue
-"$(Get-Date) Service status: $($svc.Status)" | Out-File $logFile -Append
+    # If still not Running, retry once with a longer settle.
+    if (-not $svc -or $svc.Status -ne 'Running') {
+        Start-Sleep -Seconds 5
+        sc.exe start fibratus 2>$null
+        Start-Sleep -Seconds 10
+        $svc = Get-Service fibratus -ErrorAction SilentlyContinue
+        "$(Get-Date) After retry: $($svc.Status)" | Out-File $logFile -Append
+    }
 
-# Cleanup
-Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
-Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+    # Release the singleton lock and clean up artifacts.
+    Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
+    Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+}
 `, tempMSI, installDir)
 
 	scriptPath := filepath.Join(os.TempDir(), "fibratus-update.ps1")
