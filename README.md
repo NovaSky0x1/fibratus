@@ -67,8 +67,11 @@ Everything is open-source, self-hosted, and works with either a local ClickHouse
 ### Overview dashboard
 ![Overview](screenshots/MainPage.png)
 
+### Detection triage
+![Detection](screenshots/detection1.png)
+
 ### Process tree investigation
-![Process Tree](screenshots/process-tree.png)
+![Process Tree](screenshots/detection.png)
 
 ### Live SIEM-style event view
 ![SIEM](screenshots/SIEM.png)
