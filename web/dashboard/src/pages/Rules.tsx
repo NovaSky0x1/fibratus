@@ -13,7 +13,7 @@ type RuleTab = 'all' | 'official' | 'sigma' | 'custom' | 'tuning'
 
 function sourceBadge(source: string) {
   if (source === 'sigmahq' || source === 'sigma') return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">SIGMA</span>
-  if (source === 'official') return <span className="rounded bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">Official</span>
+  if (isOfficialSource(source)) return <span className="rounded bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">Official</span>
   if (source?.startsWith('github:')) return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">GitHub</span>
   return <span className="rounded bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:text-slate-400">Custom</span>
 }
@@ -27,7 +27,27 @@ function highlightMatch(text: string, search: string): ReactNode {
 }
 
 function isSigmaSource(s: string) { return s === 'sigmahq' || s === 'sigma' }
-function isCustomSource(s: string) { return s === 'manual' || s?.startsWith('github:') }
+
+// Official = upstream Fibratus rules — either seeded from disk (source='official')
+// or pulled via GitHub sync from one of the canonical Fibratus repos. Without
+// this match, a fleet that received its rule set via the GitHub sync flow
+// (instead of the on-disk seed) shows "Official: 0" and lumps every rule into
+// Custom, which is misleading.
+function isOfficialSource(s: string) {
+  if (!s) return false
+  if (s === 'official') return true
+  if (s.startsWith('github:')) {
+    const lower = s.toLowerCase()
+    return lower.includes('rabbitstack/fibratus') || lower.includes('novasky0x1/fibratus')
+  }
+  return false
+}
+
+function isCustomSource(s: string) {
+  if (s === 'manual') return true
+  if (s?.startsWith('github:')) return !isOfficialSource(s)
+  return false
+}
 
 export default function Rules() {
   const queryClient = useQueryClient()
@@ -182,13 +202,13 @@ export default function Rules() {
   }
   // Tab counts
   const sigmaCount = allRules.filter(r => isSigmaSource(r.source)).length
-  const officialCount = allRules.filter(r => r.source === 'official').length
+  const officialCount = allRules.filter(r => isOfficialSource(r.source)).length
   const customCount = allRules.filter(r => isCustomSource(r.source)).length
 
   // Tab filtering
   const tabRules = activeTab === 'all' ? allRules
     : activeTab === 'sigma' ? allRules.filter(r => isSigmaSource(r.source))
-    : activeTab === 'official' ? allRules.filter(r => r.source === 'official')
+    : activeTab === 'official' ? allRules.filter(r => isOfficialSource(r.source))
     : activeTab === 'custom' ? allRules.filter(r => isCustomSource(r.source))
     : allRules
 
