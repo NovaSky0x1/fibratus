@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { api, clearSession, getCurrentOrgId, setCurrentOrgId, type Account, type Organization, type User } from '../lib/api'
+import { api, clearSession, getCurrentOrgId, setCurrentOrgId, setSession, type Account, type Organization, type User } from '../lib/api'
 import { usePermissions } from '../contexts/PermissionContext'
 import CursorGlow from './CursorGlow'
 
@@ -131,20 +131,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   const handleAccountChange = async (accountId: string) => {
-    setSelectedAccountId(accountId)
-    localStorage.setItem('selectedAccountId', accountId)
     try {
-      const res = await api.adminGetAccountOrgs(accountId)
-      const accountOrgs = res.data as Organization[] | undefined
-      if (accountOrgs && accountOrgs.length > 0) {
-        setOrgs(accountOrgs)
-        setCurrentOrgId(accountOrgs[0].id)
-        setCurrentOrg(accountOrgs[0].id)
-      } else {
-        setOrgs([])
-        // Keep the current org if no orgs in new account
+      // Call the server first to mint a JWT scoped to the target account.
+      // Without replacing the JWT, every subsequent API call still resolves
+      // against the original account and the rest of the dashboard reads
+      // stale data while the labels say otherwise.
+      const switchRes = await api.adminSwitchAccount(accountId)
+      const switchData = switchRes.data as { account_id?: string; token?: string } | undefined
+      if (switchRes.error || !switchData?.token) {
+        return
       }
-      // Soft reload — navigate to current page to refresh data
+      setSelectedAccountId(accountId)
+      localStorage.setItem('selectedAccountId', accountId)
+
+      const orgsRes = await api.adminGetAccountOrgs(accountId)
+      const accountOrgs = orgsRes.data as Organization[] | undefined
+      const nextOrgId = accountOrgs && accountOrgs.length > 0 ? accountOrgs[0].id : ''
+      setOrgs(accountOrgs ?? [])
+      setCurrentOrgId(nextOrgId)
+      setCurrentOrg(nextOrgId)
+
+      // Install the new JWT so all subsequent fetches scope to the new
+      // account, then drop and re-pull every cached query.
+      setSession(switchData.token, nextOrgId)
+      queryClient.clear()
       navigate(location.pathname)
     } catch {
       // Don't sign out on error — just log

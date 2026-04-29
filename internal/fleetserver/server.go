@@ -506,13 +506,16 @@ func (s *Server) Run(ctx context.Context) error {
 		case subpath == "/eventlog-policy" && r.Method == http.MethodPut:
 			requirePermission(fleetauth.PermManageSettings, eventLogPolicyHandler.Upsert)(w, r)
 
-		// Enrollment Tokens
+		// Enrollment Tokens — gated on the dedicated enrollment perms, not
+		// settings:manage. The default Administrators group has enrollment:manage
+		// out of the box; gating these on settings:manage made them admin-only
+		// for non-root accounts.
 		case subpath == "/enrollment-tokens" && r.Method == http.MethodGet:
-			requirePermission(fleetauth.PermManageSettings, enrollTokenHandler.List)(w, r)
+			requirePermission(fleetauth.PermViewEnrollment, enrollTokenHandler.List)(w, r)
 		case subpath == "/enrollment-tokens" && r.Method == http.MethodPost:
-			requirePermission(fleetauth.PermManageSettings, enrollTokenHandler.Create)(w, r)
+			requirePermission(fleetauth.PermManageEnrollment, enrollTokenHandler.Create)(w, r)
 		case strings.HasPrefix(subpath, "/enrollment-tokens/") && r.Method == http.MethodDelete:
-			requirePermission(fleetauth.PermManageSettings, enrollTokenHandler.Delete)(w, r)
+			requirePermission(fleetauth.PermManageEnrollment, enrollTokenHandler.Delete)(w, r)
 
 		// Detections
 		case subpath == "/detections" && r.Method == http.MethodGet:

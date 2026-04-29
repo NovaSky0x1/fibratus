@@ -794,16 +794,33 @@ func (h *AdminHandler) SwitchAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify account exists
 	account, err := h.accounts.Get(r.Context(), req.AccountID)
 	if err != nil || account == nil {
 		writeError(w, http.StatusNotFound, "account not found")
 		return
 	}
 
+	// Mint a new JWT scoped to the target account so subsequent API calls
+	// resolve account-scoped data (rules, agents, telemetry, etc.) against
+	// the switched account. Without this the dashboard updates labels in
+	// the UI but every request still uses the original-account JWT, leaving
+	// pages like Rules / Agents showing the source account's data.
+	userID := ctxutil.UserIDFromContext(r.Context())
+	if userID == "" || h.authHandler == nil {
+		writeError(w, http.StatusInternalServerError, "user context missing")
+		return
+	}
+	token, err := fleetauth.GenerateJWT(h.authHandler.jwtSecret, userID, account.ID, role)
+	if err != nil {
+		log.Errorf("fleet: switch-account jwt mint: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to mint token")
+		return
+	}
+	log.Infof("fleet: root user %s switched account context to %s (%s)", userID, account.Name, account.ID)
 	writeJSON(w, http.StatusOK, fleet.Response{Data: map[string]string{
 		"account_id":   account.ID,
 		"account_name": account.Name,
+		"token":        token,
 	}})
 }
 
