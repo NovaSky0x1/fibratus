@@ -20,6 +20,15 @@ interface EventLogEntry {
   opcode: string
   keywords: string
   data: Record<string, string>
+  // Rendered Message + label fields (added by wevtutil /f:rendertext) and
+  // the raw event XML for forensic deep-dives.
+  message?: string
+  level_text?: string
+  task_text?: string
+  opcode_text?: string
+  provider_text?: string
+  channel_text?: string
+  raw_xml?: string
 }
 
 interface ChannelInfo {
@@ -310,6 +319,14 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
                                 {evt.task && <div><span className="text-gray-500 dark:text-slate-500">Task </span><span className="text-gray-800 dark:text-slate-300 font-mono">{evt.task}</span></div>}
                                 {evt.opcode && <div><span className="text-gray-500 dark:text-slate-500">Opcode </span><span className="text-gray-800 dark:text-slate-300 font-mono">{evt.opcode}</span></div>}
                               </div>
+                              {/* Rendered Message — what Event Viewer would show on the host */}
+                              {evt.message && (
+                                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-white dark:bg-slate-900/60 p-3">
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-2">Message</div>
+                                  <pre className="text-[11px] text-gray-800 dark:text-slate-200 whitespace-pre-wrap break-words font-sans leading-snug max-h-[400px] overflow-auto">{evt.message}</pre>
+                                </div>
+                              )}
+
                               {/* Event Data */}
                               {evt.data && Object.keys(evt.data).length > 0 && (
                                 <div className="rounded-lg border border-sky-200 dark:border-sky-800/50 bg-white dark:bg-slate-900/60 p-3">
@@ -323,6 +340,30 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
                                     ))}
                                   </div>
                                 </div>
+                              )}
+
+                              {/* Rendered labels (Level / Task / Opcode / Channel / Provider — friendly names) */}
+                              {(evt.level_text || evt.task_text || evt.opcode_text || evt.channel_text || evt.provider_text) && (
+                                <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 p-3">
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">Friendly Labels</div>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-[11px]">
+                                    {evt.level_text && <div><span className="text-gray-500 dark:text-slate-500">Level </span><span className="text-gray-800 dark:text-slate-200">{evt.level_text}</span></div>}
+                                    {evt.task_text && <div><span className="text-gray-500 dark:text-slate-500">Task </span><span className="text-gray-800 dark:text-slate-200">{evt.task_text}</span></div>}
+                                    {evt.opcode_text && <div><span className="text-gray-500 dark:text-slate-500">Opcode </span><span className="text-gray-800 dark:text-slate-200">{evt.opcode_text}</span></div>}
+                                    {evt.provider_text && <div><span className="text-gray-500 dark:text-slate-500">Provider </span><span className="text-gray-800 dark:text-slate-200">{evt.provider_text}</span></div>}
+                                    {evt.channel_text && <div><span className="text-gray-500 dark:text-slate-500">Channel </span><span className="text-gray-800 dark:text-slate-200">{evt.channel_text}</span></div>}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Raw XML — collapsed by default, the canonical fallback for any field
+                                  the structured parser missed (UserData with namespaced sub-elements,
+                                  TraceLogging payloads, custom provider schemas). */}
+                              {evt.raw_xml && (
+                                <details className="rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900/60">
+                                  <summary className="cursor-pointer px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 select-none">Raw XML</summary>
+                                  <pre className="px-3 pb-3 text-[10px] text-gray-700 dark:text-slate-300 font-mono whitespace-pre-wrap break-all max-h-[400px] overflow-auto">{evt.raw_xml}</pre>
+                                </details>
                               )}
                             </div>
                           </td>

@@ -1285,7 +1285,11 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	args := []string{"qe", payload.Channel, "/c:" + fmt.Sprintf("%d", payload.Count), "/f:xml"}
+	// /f:rendertext returns XML augmented with a <RenderingInfo> block that
+	// holds the human-readable Message (the narrative shown in Event Viewer:
+	// "An account was successfully logged on..."). Without it the operator
+	// only sees raw EventData fields and has to infer meaning per event.
+	args := []string{"qe", payload.Channel, "/c:" + fmt.Sprintf("%d", payload.Count), "/f:rendertext"}
 	if payload.Reverse || xpath == "*" {
 		args = append(args, "/rd:true")
 	}
@@ -1310,7 +1314,9 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 }
 
 // parseWevtutilXML does a simple parse of wevtutil XML output into structured maps.
-// Each <Event> block becomes a JSON object with System and EventData fields.
+// Each <Event> block becomes a JSON object with System fields, EventData
+// fields, the rendered Message (when /f:rendertext was used), and the raw
+// XML so the dashboard can display anything our parser misses.
 func parseWevtutilXML(xmlData string) []map[string]interface{} {
 	var events []map[string]interface{}
 
@@ -1318,6 +1324,12 @@ func parseWevtutilXML(xmlData string) []map[string]interface{} {
 	blocks := strings.Split(xmlData, "<Event ")
 	for _, block := range blocks[1:] { // skip first empty split
 		evt := make(map[string]interface{})
+
+		// Preserve the full event XML so the dashboard can drop into a
+		// "raw XML" panel for forensics — useful when our structured parse
+		// misses a field type (UserData with namespaced sub-elements,
+		// debug events with TraceLogging payload, etc.).
+		evt["raw_xml"] = "<Event " + strings.TrimRight(block, "\r\n\t ")
 
 		// Extract System fields
 		if provider := extractXMLAttr(block, "Provider", "Name"); provider != "" {
@@ -1352,6 +1364,36 @@ func parseWevtutilXML(xmlData string) []map[string]interface{} {
 		}
 		if security := extractXMLAttr(block, "Security", "UserID"); security != "" {
 			evt["user_id"] = security
+		}
+
+		// RenderingInfo is added by wevtutil /f:rendertext. It contains the
+		// human-readable Message ("An account was successfully logged on...")
+		// plus localized labels for Level, Task, Opcode, Keywords, Provider,
+		// and Channel. Surface them so the dashboard can show what Event
+		// Viewer would have shown a forensic analyst on the host itself.
+		if idx := strings.Index(block, "<RenderingInfo "); idx >= 0 {
+			endIdx := strings.Index(block[idx:], "</RenderingInfo>")
+			if endIdx > 0 {
+				ri := block[idx : idx+endIdx]
+				if msg := extractXMLValue(ri, "Message"); msg != "" {
+					evt["message"] = decodeXMLEntities(msg)
+				}
+				if v := extractXMLValue(ri, "Level"); v != "" {
+					evt["level_text"] = v
+				}
+				if v := extractXMLValue(ri, "Task"); v != "" {
+					evt["task_text"] = v
+				}
+				if v := extractXMLValue(ri, "Opcode"); v != "" {
+					evt["opcode_text"] = v
+				}
+				if v := extractXMLValue(ri, "Provider"); v != "" {
+					evt["provider_text"] = v
+				}
+				if v := extractXMLValue(ri, "Channel"); v != "" {
+					evt["channel_text"] = v
+				}
+			}
 		}
 
 		// Extract EventData fields
@@ -1448,6 +1490,24 @@ func parseWevtutilXML(xmlData string) []map[string]interface{} {
 		}
 	}
 	return events
+}
+
+// decodeXMLEntities reverses the standard XML entity escaping that wevtutil
+// applies to embedded text (in particular, <Message> bodies).
+func decodeXMLEntities(s string) string {
+	if s == "" {
+		return s
+	}
+	r := strings.NewReplacer(
+		"&lt;", "<",
+		"&gt;", ">",
+		"&quot;", `"`,
+		"&apos;", "'",
+		"&#13;", "\r",
+		"&#10;", "\n",
+		"&amp;", "&", // last so we don't double-decode &amp;lt; etc.
+	)
+	return r.Replace(s)
 }
 
 func extractXMLValue(xml, tag string) string {
