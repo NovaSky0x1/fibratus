@@ -104,6 +104,14 @@ goto :EOF
 :pkg
 set RELEASE_DIR=.\build\msi\fibratus-%VERSION%
 
+:: Always rebuild the Go binary so the MSI ships fibratus.exe stamped with
+:: the requested VERSION. Without this, pkg silently reuses whatever
+:: cmd\fibratus\fibratus.exe is on disk from a prior build — easy to ship
+:: an MSI labeled v3.0.4 that contains the v3.0.3 binary, which then makes
+:: every subsequent self-update look like it succeeded but no-op.
+call :build
+if errorlevel 1 goto fail
+
 :: Create the directory structure
 mkdir "%~dp0\%RELEASE_DIR%"
 mkdir "%~dp0\%RELEASE_DIR%\Bin"
@@ -165,6 +173,11 @@ goto :EOF
 
 :pkg-slim
 set RELEASE_DIR=.\build\msi\fibratus-%VERSION%-slim
+
+:: Always rebuild the Go binary so the MSI ships fibratus.exe stamped with
+:: the requested VERSION. See :pkg for the full rationale.
+call :build
+if errorlevel 1 goto fail
 
 :: Create the dir structure
 mkdir "%~dp0\%RELEASE_DIR%"
