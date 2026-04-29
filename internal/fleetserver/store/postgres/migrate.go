@@ -547,6 +547,13 @@ CREATE TABLE IF NOT EXISTS deleted_sync_rules (
 
 CREATE INDEX IF NOT EXISTS idx_detections_noisy ON detections(org_id, rule_name);
 
+-- Rules are account-scoped: one rule per (account, name). Prevents the
+-- duplication bug where seed / SIGMA-sync / GitHub-sync flows iterating per
+-- org would write the same rule once per org under the same account, leaving
+-- the dashboard's account-scoped read returning N copies of every rule.
+CREATE UNIQUE INDEX IF NOT EXISTS rules_account_name_uniq ON rules(account_id, name)
+    WHERE account_id IS NOT NULL;
+
 -- Agent self-update: store latest version and MSI URL per account
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS latest_agent_version TEXT NOT NULL DEFAULT '';
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS latest_agent_msi_url TEXT NOT NULL DEFAULT '';

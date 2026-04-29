@@ -61,11 +61,17 @@ func (s *RuleStore) Create(ctx context.Context, rule *fleet.Rule) error {
 			`SELECT account_id FROM organizations WHERE id = $1`, rule.OrgID,
 		).Scan(&accountID)
 	}
+	// ON CONFLICT (account_id, name) DO NOTHING enforces account-wide rule
+	// uniqueness: any seed / sync flow that runs more than once per account
+	// (e.g. multiple orgs under one account, repeated GitHub poll, repeated
+	// SIGMA import) silently no-ops on the duplicate insert instead of
+	// writing N rows. Pairs with the rules_account_name_uniq partial index.
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO rules (id, org_id, account_id, name, version, description, condition, output_template,
 			severity, labels, tags, "references", raw_yaml, enabled, source, validation_status, validation_errors,
 			user_modified, user_disabled, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
+		 ON CONFLICT (account_id, name) WHERE account_id IS NOT NULL DO NOTHING`,
 		rule.ID, rule.OrgID, accountID, rule.Name, rule.Version, rule.Description,
 		rule.Condition, rule.Output, rule.Severity, labels,
 		pq.Array(rule.Tags), pq.Array(rule.References), rule.RawYAML, rule.Enabled,
