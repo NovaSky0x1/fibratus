@@ -172,6 +172,11 @@ func (s *Server) Run(ctx context.Context) error {
 	seedMacrosFromFile(ctx, macroStore, orgStore, db)
 	seedRulesFromFiles(ctx, ruleStore, db)
 
+	// Suppress known-noisy default rules across every account/org. Idempotent
+	// — only flips rules that the operator hasn't explicitly modified
+	// themselves. Runs every boot so the list stays authoritative as it grows.
+	handler.SuppressNoisyDefaultRules(ctx, db)
+
 	// Create handlers
 	authHandler := handler.NewAuthHandler(accountStore, orgStore, userStore, agentStore, commandStore, s.config.Auth.JWTSecret)
 	authHandler.SetSettingsStore(s.settingsStore)

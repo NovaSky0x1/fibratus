@@ -67,9 +67,6 @@ Everything is open-source, self-hosted, and works with either a local ClickHouse
 ### Overview dashboard
 ![Overview](screenshots/MainPage.png)
 
-### Detection triage
-![Detection](screenshots/detection.png)
-
 ### Process tree investigation
 ![Process Tree](screenshots/process-tree.png)
 

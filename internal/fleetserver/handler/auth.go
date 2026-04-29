@@ -1430,6 +1430,13 @@ func (h *AuthHandler) seedOrgRules(ctx context.Context, orgID string) {
 			rule.ValidationErrors = errJSON
 			rule.Enabled = false
 		}
+		// Suppress noisy-by-default rules at seed time so they never spend a
+		// second enabled before the boot-time suppression sweep catches them.
+		// See handler.NoisyDefaultDisabledRules for the list + rationale.
+		if IsNoisyDefault(rule.Name) {
+			rule.Enabled = false
+			rule.UserDisabled = true
+		}
 		if err := h.rules.Create(ctx, rule); err != nil {
 			// Likely duplicate — skip silently
 			return nil
