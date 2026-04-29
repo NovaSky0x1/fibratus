@@ -670,8 +670,16 @@ try {
 # Try MSI upgrade first, BOUNDED: a healthy install completes in under 60s.
 # If msiexec runs longer it has wedged on the install mutex / Windows
 # Installer service. Kill it and fall through to the binary-copy fallback.
+#
+# Plain /i (no REINSTALL=ALL/REINSTALLMODE) so WiX MajorUpgrade fires:
+# uninstall the old ProductCode, install the new one, files replace
+# unconditionally. REINSTALL=ALL forces RECONFIGURE/REPAIR semantics
+# where REINSTALLMODE 'o' (overwrite-older) compares file mtimes — and
+# MSI-packaged binaries inherit the build-time mtime, which is identical
+# across patch builds, so the overwrite check never fires. Result was
+# msiexec exit 0 with no file replacement and the old binary still on disk.
 "$(Get-Date) Attempting MSI install (5 min cap)..." | Out-File $logFile -Append
-$msiProc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i ""$msiPath"" /quiet /norestart REINSTALLMODE=vomus REINSTALL=ALL" -PassThru
+$msiProc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i ""$msiPath"" /quiet /norestart" -PassThru
 $msiExit = $null
 if (-not $msiProc.WaitForExit(300000)) {
     "$(Get-Date) MSI install exceeded 5 min, killing PID $($msiProc.Id)" | Out-File $logFile -Append
