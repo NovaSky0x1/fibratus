@@ -65,10 +65,22 @@ export default function Detections() {
     refetchInterval: 30000,
   })
 
-  // Fetch rules to resolve rule links
+  // Fetch every rule in the org so the rule-link lookup works even on large
+  // accounts. The default per-page is small and a single call would silently
+  // truncate (production org has >2k rules) — loop until the page is short.
   const { data: rulesData } = useQuery({
     queryKey: ['rules-for-lookup'],
-    queryFn: () => api.getRules({ per_page: '1000' }),
+    queryFn: async () => {
+      const perPage = 1000
+      const all: Rule[] = []
+      for (let page = 1; page < 50; page++) {
+        const res = await api.getRules({ per_page: String(perPage), page: String(page) })
+        const batch = (res.data || []) as Rule[]
+        all.push(...batch)
+        if (batch.length < perPage) break
+      }
+      return { data: all }
+    },
     staleTime: 60000,
   })
   const rulesMap = new Map<string, Rule>()
