@@ -44,15 +44,23 @@ var NoisyDefaultDisabledRules = []string{
 	"Suspicious object symbolic link creation",            // Edge, Windows Update, every installer
 	"Suspicious access to the hosts file",                 // every AV / DNS-redirect product
 	"Suspicious access to Windows Credential Manager files", // password managers, browsers
+	".NET assembly loaded by unmanaged process",           // every PowerShell / .NET host (wix.exe, vstest, etc)
+	"Suspicious Vault client DLL load",                    // Brave/Chrome/Edge/Outlook/Teams all load vaultcli.dll
+	"Suspicious child process integrity level",            // any installer / elevated PS spawning DllHost.exe
+	"Unusual access to SSH keys",                          // ssh.exe / git running as the user — devs hit constantly
+	"Process execution from hollowed memory section",      // wevtutil.exe LoadImage pattern, also Defender
 
 	// SIGMA-converted rules (synced via sigmahq):
 	"Rare Remote Thread Creation By Uncommon Source Image", // legitimate AV / EDR / debuggers
 	"Potential Defense Evasion Via Rename Of Highly Relevant Binaries", // patch installers, msiexec
+	"Potential Defense Evasion Via Binary Rename",         // wslhost.exe → cmd.exe /C echo.%UserProfile%
 	"Portable Gpg.EXE Execution",                          // gpg.exe in non-system paths
 	"Potential CobaltStrike Service Installations - Registry", // generic service-install pattern
 	"Suspicious Process Created Via Wmic.EXE",             // sysadmin tooling
 	"Potential WinAPI Calls Via CommandLine",              // PowerShell scripting
 	"Scheduled TaskCache Change by Uncommon Program",      // installer-driven scheduled-task creation
+	"Potential Persistence Via New AMSI Providers - Registry", // Atera/Action1/AV legitimately add AMSI providers
+	"Windows Shell/Scripting Processes Spawning Suspicious Programs", // any admin script touching net/whoami/reg
 }
 
 // SuppressNoisyDefaultRules walks every account/org in the database and flips
