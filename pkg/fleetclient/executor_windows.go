@@ -1423,7 +1423,7 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 		"events":      events,
 		"count":       len(events),
 		"query":       xpath,
-		"files_read":  len(files),
+		"files_read":  len(targets),
 	})
 }
 
