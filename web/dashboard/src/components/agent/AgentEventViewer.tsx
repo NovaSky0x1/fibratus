@@ -96,9 +96,11 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
         const r = result.result as { events: EventLogEntry[] }
         const list = r.events || []
         setEvents(list)
-        // A page that comes back smaller than requested means we hit the
-        // tail of the channel — no point offering "Load more".
-        setHasMore(list.length >= params.count)
+        // wevtutil regularly returns fewer than the requested count even when
+        // there's plenty of data left (internal buffer caps, gaps in record
+        // IDs, malformed events skipped). Only hide "Load more" when the
+        // page came back EMPTY — that's the unambiguous tail signal.
+        setHasMore(list.length > 0)
       } else {
         setEvents([])
         setHasMore(false)
@@ -115,7 +117,7 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
         const r = result.result as { events: EventLogEntry[] }
         const next = r.events || []
         setEvents(prev => [...prev, ...next])
-        setHasMore(next.length >= params.count)
+        setHasMore(next.length > 0)
       } else {
         setHasMore(false)
       }
