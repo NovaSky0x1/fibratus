@@ -1311,14 +1311,22 @@ func isImportantChannel(name string) bool {
 }
 
 // queryEventLog queries events from a Windows Event Log channel using wevtutil.
+//
+// Pagination: wevtutil has no native offset/cursor. We synthesize one with
+// EventRecordID — every event in a given channel has a monotonically
+// increasing record ID, so "give me the next page older than the last one
+// I saw" maps cleanly to an XPath filter EventRecordID < <cursor>. The
+// dashboard tracks the smallest record_id from each page and passes it back
+// as before_record_id to fetch the next page.
 func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, error) {
 	var payload struct {
-		Channel string `json:"channel"`
-		Count   int    `json:"count"`
-		Query   string `json:"query"`   // XPath query filter
-		EventID int    `json:"event_id"` // Filter by event ID
-		Level   int    `json:"level"`    // 0=all, 1=critical, 2=error, 3=warning, 4=info
-		Reverse bool   `json:"reverse"`  // newest first (default true)
+		Channel         string `json:"channel"`
+		Count           int    `json:"count"`
+		Query           string `json:"query"`             // XPath query filter (overrides built-in filters when set)
+		EventID         int    `json:"event_id"`          // Filter by event ID
+		Level           int    `json:"level"`             // 0=all, 1=critical, 2=error, 3=warning, 4=info
+		Reverse         bool   `json:"reverse"`           // newest first (default true)
+		BeforeRecordID  int64  `json:"before_record_id"`  // Pagination cursor — return events with EventRecordID < this
 	}
 	json.Unmarshal(cmd.Payload, &payload)
 
@@ -1338,6 +1346,11 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 		}
 		if payload.Level > 0 {
 			filters = append(filters, fmt.Sprintf("Level=%d", payload.Level))
+		}
+		if payload.BeforeRecordID > 0 {
+			// XPath less-than. Go's exec.Command bypasses cmd.exe so the literal
+			// '<' is fine here (no shell redirection to escape against).
+			filters = append(filters, fmt.Sprintf("EventRecordID<%d", payload.BeforeRecordID))
 		}
 		if len(filters) > 0 {
 			xpath = fmt.Sprintf("*[System[%s]]", strings.Join(filters, " and "))

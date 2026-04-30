@@ -69,6 +69,10 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
   const [count, setCount] = useState(100)
   const [channels, setChannels] = useState<ChannelInfo[]>([])
   const [showAllChannels, setShowAllChannels] = useState(false)
+  // Pagination cursor — wevtutil has no native offset, so we synthesize one
+  // with EventRecordID. Each page returns a window of events; the smallest
+  // record_id seen so far is the cursor for "load older events".
+  const [hasMore, setHasMore] = useState(false)
 
   // Poll for a command result by ID
   const pollCommand = async (cmdId: string, maxAttempts: number, intervalMs: number): Promise<Command | null> => {
@@ -90,9 +94,30 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
       const result = await pollCommand(cmd.id, 30, 1000)
       if (result?.status === 'completed' && result.result) {
         const r = result.result as { events: EventLogEntry[] }
-        setEvents(r.events || [])
+        const list = r.events || []
+        setEvents(list)
+        // A page that comes back smaller than requested means we hit the
+        // tail of the channel — no point offering "Load more".
+        setHasMore(list.length >= params.count)
       } else {
         setEvents([])
+        setHasMore(false)
+      }
+    },
+  })
+
+  const loadMoreMutation = useMutation({
+    mutationFn: async (params: { channel: string; count: number; event_id: number; level: number; before_record_id: number }) => {
+      const res = await api.createCommand(agentId, 'query_eventlog', params)
+      const cmd = (res as { data: Command }).data
+      const result = await pollCommand(cmd.id, 30, 1000)
+      if (result?.status === 'completed' && result.result) {
+        const r = result.result as { events: EventLogEntry[] }
+        const next = r.events || []
+        setEvents(prev => [...prev, ...next])
+        setHasMore(next.length >= params.count)
+      } else {
+        setHasMore(false)
       }
     },
   })
@@ -136,11 +161,24 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
   const handleQuery = () => {
     setEvents([])
     setExpandedIdx(null)
+    setHasMore(false)
     queryMutation.mutate({
       channel: selectedChannel,
       count,
       event_id: eventIdFilter ? parseInt(eventIdFilter, 10) : 0,
       level: levelFilter,
+    })
+  }
+
+  const handleLoadMore = () => {
+    const oldest = events[events.length - 1]
+    if (!oldest?.record_id) return
+    loadMoreMutation.mutate({
+      channel: selectedChannel,
+      count,
+      event_id: eventIdFilter ? parseInt(eventIdFilter, 10) : 0,
+      level: levelFilter,
+      before_record_id: parseInt(oldest.record_id, 10),
     })
   }
 
@@ -168,7 +206,7 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
           {displayChannels.map(ch => (
             <button
               key={ch.name}
-              onClick={() => { setSelectedChannel(ch.name); setEvents([]); setExpandedIdx(null) }}
+              onClick={() => { setSelectedChannel(ch.name); setEvents([]); setExpandedIdx(null); setHasMore(false) }}
               className={`w-full text-left px-3 py-2 text-xs transition-colors ${
                 selectedChannel === ch.name
                   ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
@@ -374,6 +412,23 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
                 })}
               </tbody>
             </table>
+          )}
+          {events.length > 0 && hasMore && !queryMutation.isPending && (
+            <div className="flex items-center justify-center px-4 py-3 border-t border-gray-200 dark:border-slate-700 bg-gray-50/60 dark:bg-slate-900/40">
+              <button
+                onClick={handleLoadMore}
+                disabled={loadMoreMutation.isPending}
+                className="flex items-center gap-2 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadMoreMutation.isPending ? 'animate-spin' : ''}`} />
+                {loadMoreMutation.isPending ? 'Loading older events...' : `Load ${count} older events`}
+              </button>
+            </div>
+          )}
+          {events.length > 0 && !hasMore && !queryMutation.isPending && !loadMoreMutation.isPending && (
+            <div className="px-4 py-3 border-t border-gray-200 dark:border-slate-700 bg-gray-50/60 dark:bg-slate-900/40 text-center text-[11px] text-gray-500 dark:text-slate-500">
+              No older events in this channel
+            </div>
           )}
         </div>
       </div>
