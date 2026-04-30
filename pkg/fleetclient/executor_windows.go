@@ -31,6 +31,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -1314,20 +1315,26 @@ func isImportantChannel(name string) bool {
 // queryEventLog queries events from a Windows Event Log channel using wevtutil.
 //
 // Pagination: wevtutil has no native offset/cursor. We synthesize one with
-// EventRecordID — every event in a given channel has a monotonically
-// increasing record ID, so "give me the next page older than the last one
-// I saw" maps cleanly to an XPath filter EventRecordID < <cursor>. The
-// dashboard tracks the smallest record_id from each page and passes it back
-// as before_record_id to fetch the next page.
+// TimeCreated.SystemTime — every event has a timestamp that is monotonically
+// consistent across the live log AND its rotated archive files, which makes
+// it the right cursor for "give me the next page older than the last one I
+// saw". The dashboard tracks the oldest timestamp it has displayed and
+// passes it back as before_time to fetch the next page.
+//
+// Archive coverage: a channel's history isn't just the live <channel>.evtx
+// — once it hits its size cap, oldest records are rotated to
+// Archive-<channel>-<timestamp>.evtx files in C:\Windows\System32\winevt\Logs.
+// We enumerate the live + all archive files for the channel and query each in
+// time order (newest first) until we have `count` events, so an operator can
+// scroll back through every record the OS still has on disk.
 func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, error) {
 	var payload struct {
-		Channel         string `json:"channel"`
-		Count           int    `json:"count"`
-		Query           string `json:"query"`             // XPath query filter (overrides built-in filters when set)
-		EventID         int    `json:"event_id"`          // Filter by event ID
-		Level           int    `json:"level"`             // 0=all, 1=critical, 2=error, 3=warning, 4=info
-		Reverse         bool   `json:"reverse"`           // newest first (default true)
-		BeforeRecordID  int64  `json:"before_record_id"`  // Pagination cursor — return events with EventRecordID < this
+		Channel    string `json:"channel"`
+		Count      int    `json:"count"`
+		Query      string `json:"query"`        // raw XPath (overrides built-in filters when set)
+		EventID    int    `json:"event_id"`     // filter by event ID
+		Level      int    `json:"level"`        // 0=all, 1=critical, 2=error, 3=warning, 4=info
+		BeforeTime string `json:"before_time"`  // ISO 8601 cursor — return events with TimeCreated < this
 	}
 	json.Unmarshal(cmd.Payload, &payload)
 
@@ -1338,7 +1345,7 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 		payload.Count = 100
 	}
 
-	// Build XPath query
+	// Build the XPath predicate shared across every file we query.
 	xpath := payload.Query
 	if xpath == "" {
 		var filters []string
@@ -1348,10 +1355,11 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 		if payload.Level > 0 {
 			filters = append(filters, fmt.Sprintf("Level=%d", payload.Level))
 		}
-		if payload.BeforeRecordID > 0 {
-			// XPath less-than. Go's exec.Command bypasses cmd.exe so the literal
-			// '<' is fine here (no shell redirection to escape against).
-			filters = append(filters, fmt.Sprintf("EventRecordID<%d", payload.BeforeRecordID))
+		if payload.BeforeTime != "" {
+			// XPath time comparison. Go's exec.Command bypasses cmd.exe so the
+			// literal '<' is fine; quoting the value lets wevtutil parse it as
+			// xs:dateTime regardless of timezone suffix.
+			filters = append(filters, fmt.Sprintf("TimeCreated[@SystemTime<'%s']", payload.BeforeTime))
 		}
 		if len(filters) > 0 {
 			xpath = fmt.Sprintf("*[System[%s]]", strings.Join(filters, " and "))
@@ -1360,37 +1368,103 @@ func (e *WindowsExecutor) queryEventLog(cmd *fleet.Command) (json.RawMessage, er
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// /f:RenderedXml returns XML augmented with a <RenderingInfo> block that
-	// holds the human-readable Message (the narrative shown in Event Viewer:
-	// "An account was successfully logged on..."). Without it the operator
-	// only sees raw EventData fields and has to infer meaning per event.
-	// wevtutil only accepts XML, Text, or RenderedXml — anything else fails
-	// with "Invalid value for option f" (exit 87).
-	args := []string{"qe", payload.Channel, "/c:" + fmt.Sprintf("%d", payload.Count), "/f:RenderedXml"}
-	if payload.Reverse || xpath == "*" {
-		args = append(args, "/rd:true")
-	}
-	if xpath != "*" {
-		args = append(args, "/q:"+xpath)
+	// First target is the live channel (queried by name), then every archive
+	// file for that channel (queried by file path with /lf:true).
+	targets := append([]string{payload.Channel}, enumerateChannelArchives(payload.Channel)...)
+	events := make([]map[string]interface{}, 0, payload.Count)
+	for i, target := range targets {
+		if len(events) >= payload.Count {
+			break
+		}
+		remaining := payload.Count - len(events)
+		// /f:RenderedXml gives the human-readable Message + RenderingInfo
+		// block used by the dashboard (without it operators only see raw
+		// EventData fields). wevtutil only accepts XML, Text, or RenderedXml
+		// for /f — anything else exits 87 ("Invalid value for option f").
+		args := []string{"qe", target, "/c:" + fmt.Sprintf("%d", remaining), "/f:RenderedXml", "/rd:true"}
+		if i > 0 {
+			// Archive files are passed as paths; /lf:true tells wevtutil to
+			// read them as saved logs instead of looking them up by channel.
+			args = append(args, "/lf:true")
+		}
+		if xpath != "*" {
+			args = append(args, "/q:"+xpath)
+		}
+		out, err := exec.CommandContext(ctx, "wevtutil", args...).CombinedOutput()
+		if err != nil {
+			// Don't fail the whole query if one archive is corrupt or locked
+			// — just skip it. Errors on the live channel are still fatal so
+			// the operator gets feedback when something is genuinely wrong.
+			if i == 0 {
+				return nil, fmt.Errorf("wevtutil qe %s: %s: %v", payload.Channel, truncate(string(out), 500), err)
+			}
+			continue
+		}
+		events = append(events, parseWevtutilXML(string(out))...)
 	}
 
-	out, err := exec.CommandContext(ctx, "wevtutil", args...).CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("wevtutil qe %s: %s: %v", payload.Channel, truncate(string(out), 500), err)
+	// Each per-file query returned newest-first within itself, but archive
+	// files were appended in mtime order — re-sort the merged list to be
+	// strictly newest-first across the entire result.
+	sort.SliceStable(events, func(i, j int) bool {
+		ti, _ := events[i]["timestamp"].(string)
+		tj, _ := events[j]["timestamp"].(string)
+		return ti > tj // ISO 8601 sorts lexicographically
+	})
+	if len(events) > payload.Count {
+		events = events[:payload.Count]
 	}
-
-	// Parse XML events into structured JSON
-	events := parseWevtutilXML(string(out))
 
 	return json.Marshal(map[string]interface{}{
-		"channel": payload.Channel,
-		"events":  events,
-		"count":   len(events),
-		"query":   xpath,
+		"channel":     payload.Channel,
+		"events":      events,
+		"count":       len(events),
+		"query":       xpath,
+		"files_read":  len(files),
 	})
+}
+
+// channelToFilename maps a channel name to the on-disk evtx filename portion.
+// Forward slashes in channel paths (e.g. "Microsoft-Windows-Sysmon/Operational")
+// are stored as %4 by the Event Log service.
+func channelToFilename(channel string) string {
+	return strings.ReplaceAll(channel, "/", "%4")
+}
+
+// enumerateChannelArchives returns the rotated archive .evtx files for a
+// channel, sorted newest first by mtime. The live channel log itself is
+// queried by channel name and is not included here. The agent runs as SYSTEM
+// so it has read access to the protected C:\Windows\System32\winevt\Logs
+// directory.
+func enumerateChannelArchives(channel string) []string {
+	base := `C:\Windows\System32\winevt\Logs`
+	name := channelToFilename(channel)
+	matches, _ := filepath.Glob(filepath.Join(base, "Archive-"+name+"-*.evtx"))
+
+	type fileInfo struct {
+		path  string
+		mtime time.Time
+	}
+	infos := make([]fileInfo, 0, len(matches))
+	for _, m := range matches {
+		st, err := os.Stat(m)
+		if err != nil {
+			continue
+		}
+		infos = append(infos, fileInfo{m, st.ModTime()})
+	}
+	sort.Slice(infos, func(i, j int) bool {
+		return infos[i].mtime.After(infos[j].mtime)
+	})
+
+	files := make([]string, 0, len(infos))
+	for _, fi := range infos {
+		files = append(files, fi.path)
+	}
+	return files
 }
 
 // parseWevtutilXML does a simple parse of wevtutil XML output into structured maps.

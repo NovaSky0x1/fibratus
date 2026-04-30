@@ -109,10 +109,10 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
   })
 
   const loadMoreMutation = useMutation({
-    mutationFn: async (params: { channel: string; count: number; event_id: number; level: number; before_record_id: number }) => {
+    mutationFn: async (params: { channel: string; count: number; event_id: number; level: number; before_time: string }) => {
       const res = await api.createCommand(agentId, 'query_eventlog', params)
       const cmd = (res as { data: Command }).data
-      const result = await pollCommand(cmd.id, 30, 1000)
+      const result = await pollCommand(cmd.id, 60, 1000)
       if (result?.status === 'completed' && result.result) {
         const r = result.result as { events: EventLogEntry[] }
         const next = r.events || []
@@ -174,13 +174,13 @@ export default function AgentEventViewer({ agentId }: EventViewerProps) {
 
   const handleLoadMore = () => {
     const oldest = events[events.length - 1]
-    if (!oldest?.record_id) return
+    if (!oldest?.timestamp) return
     loadMoreMutation.mutate({
       channel: selectedChannel,
       count,
       event_id: eventIdFilter ? parseInt(eventIdFilter, 10) : 0,
       level: levelFilter,
-      before_record_id: parseInt(oldest.record_id, 10),
+      before_time: oldest.timestamp,
     })
   }
 
