@@ -18,6 +18,13 @@ interface TelemetryEvent {
   params: Record<string, unknown>; raw_event?: unknown
 }
 
+interface SyntheticAncestor {
+  pid: number
+  name: string
+  ppid: number
+  parent_name: string
+}
+
 interface Props {
   events: TelemetryEvent[]
   focusPids: Record<number, boolean>
@@ -25,6 +32,10 @@ interface Props {
   loadingPid?: number | null
   // Raw detection events JSON — used to enrich trigger process nodes with hashes, certs, etc.
   detectionEvents?: Record<string, unknown>[]
+  // Ancestor chain that exists in the detection but has no telemetry of its own
+  // (typically SYSTEM processes started before the agent). Rendered as muted
+  // "pre-existing process" nodes so the trigger isn't orphaned in the graph.
+  syntheticAncestors?: SyntheticAncestor[]
 }
 
 // ═══════════════════════════════════════════════════
@@ -82,6 +93,27 @@ function ProcessNode({ data }: { data: Record<string, unknown> }) {
     canLoadParent: boolean; loading: boolean; onLoadParent?: () => void
     catSummary: string; expanded: boolean
     md5: string; sha256: string; isSigned: boolean; certSubject: string; sid: string; username: string
+    isSynthetic?: boolean; name?: string
+  }
+  if (d.isSynthetic) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800/50 opacity-80"
+        style={{ width: 240, borderLeftWidth: 4, borderLeftColor: '#9ca3af' }}>
+        <Handle type="target" position={Position.Left} className="!bg-transparent !border-0 !w-3 !h-3" />
+        <div className="px-3 py-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="rounded-md bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-400 text-[9px] px-1.5 py-0.5 font-bold uppercase tracking-wide">Pre-agent</span>
+            <span className="text-[11px] font-mono text-gray-700 dark:text-slate-300 break-all">{d.name || 'unknown'}</span>
+          </div>
+          <div className="mt-1 flex gap-3 text-[10px] font-mono">
+            <span><span className="text-gray-400">pid </span><span className="text-gray-600 dark:text-slate-400">{d.pid}</span></span>
+            {d.ppid > 0 && <span><span className="text-gray-400">parent </span><span className="text-gray-600 dark:text-slate-400">{d.ppid}</span></span>}
+          </div>
+          <div className="mt-1 text-[9px] text-gray-400 italic">no telemetry — process started before agent</div>
+        </div>
+        <Handle type="source" position={Position.Right} className="!bg-transparent !border-0 !w-3 !h-3" />
+      </div>
+    )
   }
   return (
     <div className={
@@ -188,7 +220,11 @@ const elk = new ELK()
 async function doLayout(nodes: Node[], edges: Edge[]): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const elkNodes = nodes.map(n => {
     let w = 260, h = 55
-    if (n.type === 'processNode') { w = 300; h = 160 }
+    if (n.type === 'processNode') {
+      const isSynthetic = (n.data as Record<string, unknown>).isSynthetic
+      if (isSynthetic) { w = 240; h = 90 }
+      else { w = 300; h = 160 }
+    }
     else if (n.type === 'categoryNode') {
       const expanded = (n.data as Record<string, unknown>).expanded
       w = expanded ? 320 : 220
@@ -278,7 +314,7 @@ function FitOnLoad({ trigger }: { trigger: number }) {
   return null
 }
 
-function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }: Props) {
+function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents, syntheticAncestors }: Props) {
   const [expandedPids, setExpandedPids] = useState<Set<number>>(new Set())
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set())
   const [loadedAncestors, setLoadedAncestors] = useState<Set<number>>(new Set())
@@ -309,10 +345,24 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
     const byPid = new Map<number, TelemetryEvent[]>()
     for (const e of events) { if (e.pid > 0) { const l = byPid.get(e.pid) || []; l.push(e); byPid.set(e.pid, l) } }
 
+    // Index synthetic ancestors for parent linking — keep the metadata so we
+    // can render their nodes even though they have no telemetry events.
+    const syntheticByPid = new Map<number, SyntheticAncestor>()
+    for (const a of syntheticAncestors || []) {
+      if (a.pid > 0 && !byPid.has(a.pid)) syntheticByPid.set(a.pid, a)
+    }
+
+    // pidExists includes both telemetry and synthetic — used to decide whether
+    // a parent edge can be drawn at all.
+    const pidExists = (pid: number) => byPid.has(pid) || syntheticByPid.has(pid)
+
     const parentOf = new Map<number, number>()
     for (const [pid, evts] of byPid) {
       const ppid = evts[0].parent_pid
-      if (ppid > 0 && ppid !== pid && byPid.has(ppid)) parentOf.set(pid, ppid)
+      if (ppid > 0 && ppid !== pid && pidExists(ppid)) parentOf.set(pid, ppid)
+    }
+    for (const [pid, a] of syntheticByPid) {
+      if (a.ppid > 0 && a.ppid !== pid && pidExists(a.ppid)) parentOf.set(pid, a.ppid)
     }
 
     const onPath = new Set<number>()
@@ -327,7 +377,7 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
       const procId = `p-${pid}`
       // Look up enrichment from detection events for this PID
       const detEvt = (detectionEvents || []).find(e => (e.proc as Record<string, unknown>)?.pid === pid)?.proc as Record<string, unknown> | undefined
-      const canLP = main.parent_pid > 0 && !byPid.has(main.parent_pid) && !!onLoadContext && !loadedAncestors.has(pid)
+      const canLP = main.parent_pid > 0 && !byPid.has(main.parent_pid) && !syntheticByPid.has(main.parent_pid) && !!onLoadContext && !loadedAncestors.has(pid)
       const pidExp = expandedPids.has(pid)
 
       const catCounts = new Map<string, number>()
@@ -379,8 +429,27 @@ function Inner({ events, focusPids, onLoadContext, loadingPid, detectionEvents }
         }
       }
     }
+
+    // Synthetic ancestor nodes — rendered for processes referenced in the
+    // detection's ancestry chain that have no telemetry of their own. Without
+    // these the trigger appears unrooted because its parent has no events.
+    for (const [pid, a] of syntheticByPid) {
+      const procId = `p-${pid}`
+      allNodes.push({ id: procId, type: 'processNode', position: { x: 0, y: 0 }, data: {
+        eventName: '', exe: '', cmdline: '', pid, ppid: a.ppid, parentName: a.parent_name,
+        timestamp: '', isTrigger: false, isOnPath: onPath.has(pid),
+        canLoadParent: false, loading: false, catSummary: '', expanded: false,
+        md5: '', sha256: '', isSigned: undefined as unknown as boolean, certSubject: '',
+        sid: '', username: '', isSynthetic: true, name: a.name,
+      }})
+      if (parentOf.has(pid)) {
+        const isP = onPath.has(pid)
+        allEdges.push({ id: `e-${parentOf.get(pid)}-${pid}`, source: `p-${parentOf.get(pid)}`, target: procId,
+          type: 'smoothstep', style: { stroke: isP ? '#9ca3af' : '#d1d5db', strokeWidth: 1.5, strokeDasharray: '4 3' } })
+      }
+    }
     return { rawNodes: allNodes, rawEdges: allEdges, evtMap }
-  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid, detectionEvents, loadedAncestors, catEvtStore])
+  }, [events, focusPids, expandedPids, expandedCats, onLoadContext, loadingPid, detectionEvents, loadedAncestors, catEvtStore, syntheticAncestors])
 
   // Run ELK layout async
   useEffect(() => {

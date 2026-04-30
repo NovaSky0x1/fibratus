@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api, type Detection } from '../lib/api'
+import { api, type Detection, type SyntheticAncestor } from '../lib/api'
 import ProcessChain from '../components/ProcessChain'
 
 interface TelemetryEvent {
@@ -91,6 +91,8 @@ export default function ProcessTreePage() {
   const focusPids = (treeDataObj.focus_pids || {}) as Record<number, boolean>
   if (pidParam) focusPids[Number(pidParam)] = true
 
+  const syntheticAncestors = (treeDataObj.synthetic_ancestors || []) as SyntheticAncestor[]
+
   const title = detection?.rule_name || detection?.title || `Process Tree — PID ${pidParam}`
 
   return (
@@ -119,7 +121,8 @@ export default function ProcessTreePage() {
           <div className="flex items-center justify-center h-full text-sm text-gray-400">Loading process tree...</div>
         ) : (
           <ProcessChain events={allEvents} focusPids={focusPids} onLoadContext={loadContext} loadingPid={loadingPid}
-            detectionEvents={detection ? parseDetectionEvents(detection.events) : undefined} />
+            detectionEvents={detection ? parseDetectionEvents(detection.events) : undefined}
+            syntheticAncestors={syntheticAncestors} />
         )}
       </div>
     </div>

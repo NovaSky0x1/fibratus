@@ -376,13 +376,116 @@ func (h *DetectionHandler) ProcessTree(w http.ResponseWriter, r *http.Request) {
 
 	log.Infof("fleet: process tree: %d PIDs queried, %d events returned", len(allPIDs), len(filtered))
 
+	// Build the synthetic ancestor chain from the detection's own ancestors[]
+	// list so the trigger never appears orphaned, even when its parents
+	// (typically SYSTEM processes spawned before the agent started) have no
+	// telemetry events. The frontend renders these nodes muted/dashed.
+	pidsInTelemetry := make(map[int]bool, len(filtered))
+	for _, e := range filtered {
+		if e.PID > 0 {
+			pidsInTelemetry[e.PID] = true
+		}
+	}
+	synthetic := buildSyntheticAncestors(det.Events, pidsInTelemetry)
+
 	writeJSON(w, http.StatusOK, fleet.Response{
 		Data: map[string]interface{}{
-			"detection":  det,
-			"events":     filtered,
-			"focus_pids": triggerPIDs,
+			"detection":           det,
+			"events":              filtered,
+			"focus_pids":          triggerPIDs,
+			"synthetic_ancestors": synthetic,
 		},
 	})
+}
+
+// SyntheticAncestor is a process node we know about from the detection's own
+// proc.ancestors[] field but which has no telemetry events (typically a SYSTEM
+// process that pre-dates the agent). The frontend renders these so the trigger
+// process is never orphaned in the tree.
+type SyntheticAncestor struct {
+	PID        int    `json:"pid"`
+	Name       string `json:"name"`
+	PPID       int    `json:"ppid"`
+	ParentName string `json:"parent_name"`
+}
+
+// ancestorRE captures "image.exe (1234)" entries in proc.ancestors[].
+// Trailing parens around the PID are required.
+func parseAncestor(s string) (name string, pid int, ok bool) {
+	idx := strings.LastIndex(s, "(")
+	if idx < 0 || !strings.HasSuffix(s, ")") {
+		return "", 0, false
+	}
+	pidStr := strings.TrimSpace(s[idx+1 : len(s)-1])
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil || pid <= 0 {
+		return "", 0, false
+	}
+	name = strings.TrimSpace(s[:idx])
+	return name, pid, true
+}
+
+// buildSyntheticAncestors walks every detection event's proc tree and produces
+// one entry per ancestor PID that has no telemetry counterpart. The chain is
+// reconstructed so each entry points at the next one as parent: trigger ←
+// proc.parent_name(ppid) ← ancestors[0] ← ancestors[1] ← ...
+func buildSyntheticAncestors(eventsRaw json.RawMessage, pidsInTelemetry map[int]bool) []SyntheticAncestor {
+	type procInfo struct {
+		PID        int      `json:"pid"`
+		PPID       int      `json:"ppid"`
+		ParentName string   `json:"parent_name"`
+		Ancestors  []string `json:"ancestors"`
+	}
+	type eventInfo struct {
+		Proc procInfo `json:"proc"`
+	}
+
+	var events []eventInfo
+	if err := json.Unmarshal(eventsRaw, &events); err != nil {
+		var alert struct {
+			Events []eventInfo `json:"events"`
+		}
+		if err2 := json.Unmarshal(eventsRaw, &alert); err2 == nil {
+			events = alert.Events
+		}
+	}
+	if len(events) == 0 {
+		return nil
+	}
+
+	seen := make(map[int]bool)
+	out := make([]SyntheticAncestor, 0)
+
+	for _, evt := range events {
+		// Build the chain: [parent (proc.ppid/proc.parent_name), ancestors[0], ancestors[1], ...]
+		chain := make([]SyntheticAncestor, 0, len(evt.Proc.Ancestors)+1)
+		if evt.Proc.PPID > 0 {
+			chain = append(chain, SyntheticAncestor{PID: evt.Proc.PPID, Name: evt.Proc.ParentName})
+		}
+		for _, a := range evt.Proc.Ancestors {
+			name, pid, ok := parseAncestor(a)
+			if !ok {
+				continue
+			}
+			chain = append(chain, SyntheticAncestor{PID: pid, Name: name})
+		}
+		// Wire up parent pointers: each chain entry's parent is the next one.
+		for i := range chain {
+			if i+1 < len(chain) {
+				chain[i].PPID = chain[i+1].PID
+				chain[i].ParentName = chain[i+1].Name
+			}
+		}
+		// Emit only entries that have no telemetry events of their own.
+		for _, a := range chain {
+			if a.PID <= 0 || pidsInTelemetry[a.PID] || seen[a.PID] {
+				continue
+			}
+			seen[a.PID] = true
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // extractDetectionPIDs parses the detection events JSON and returns:

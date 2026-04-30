@@ -49,6 +49,16 @@ var NoisyDefaultDisabledRules = []string{
 	"Suspicious child process integrity level",            // any installer / elevated PS spawning DllHost.exe
 	"Unusual access to SSH keys",                          // ssh.exe / git running as the user — devs hit constantly
 	"Process execution from hollowed memory section",      // wevtutil.exe LoadImage pattern, also Defender
+	"File access to SAM database",                         // svchost.exe SysMain (Superfetch) — normal Windows behavior
+	"Renamed Schtasks Execution",                          // ngentask.exe (.NET native image gen) and wuaucltcore.exe (Windows Update)
+	"Common Autorun Keys Modification",                    // every browser / Edge / Chrome installer
+	"Local Accounts Discovery",                            // quser.exe — common admin tooling
+	"Compressed File Creation Via Tar.EXE",                // tar.exe ships with modern Windows; devs use routinely
+	"Suspicious Execution of Hostname",                    // every Cygwin/MSYS2/build script invokes hostname
+	"Weak or Abused Passwords In CLI",                     // pattern matches autoconf alphabet strings (sed/expr)
+	"Potential Hidden Directory Creation Via NTFS INDEX_ALLOCATION Stream - CLI", // pattern over-matches autoconf m4 macros
+	"Curl Download And Execute Combination",               // matches every dev curl-then-tar/extract sequence
+	"Usage Of Web Request Commands And Cmdlets",           // matches every dev/admin curl/wget/Invoke-WebRequest
 
 	// SIGMA-converted rules (synced via sigmahq):
 	"Rare Remote Thread Creation By Uncommon Source Image", // legitimate AV / EDR / debuggers

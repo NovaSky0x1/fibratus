@@ -93,6 +93,13 @@ export interface TimelineBucket {
   by_severity: Record<string, number>
 }
 
+export interface SyntheticAncestor {
+  pid: number
+  name: string
+  ppid: number
+  parent_name: string
+}
+
 export interface Organization {
   id: string
   account_id: string
@@ -548,7 +555,7 @@ export const api = {
     return fetchApi<TimelineBucket[]>(orgPath(`/detections/timeline?${q}`))
   },
   getDetectionProcessTree: (id: string) =>
-    fetchApi<{ detection: Detection; events: unknown[] }>(orgPath(`/detections/${id}/process-tree`)),
+    fetchApi<{ detection: Detection; events: unknown[]; focus_pids?: Record<number, boolean>; synthetic_ancestors?: SyntheticAncestor[] }>(orgPath(`/detections/${id}/process-tree`)),
   getDetectionProcessContext: (id: string, pid: number, ancestorsOnly = false) =>
     fetchApi<{ events: unknown[]; target_pid: number; parent_pid: number; child_pids: Record<number, boolean> }>(
       orgPath(`/detections/${id}/process-context?pid=${pid}${ancestorsOnly ? '&ancestors=true' : ''}`)
