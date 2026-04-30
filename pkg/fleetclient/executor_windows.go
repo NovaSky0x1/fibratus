@@ -23,6 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -1573,20 +1574,16 @@ func parseWevtutilXML(xmlData string) []map[string]interface{} {
 
 // decodeXMLEntities reverses the standard XML entity escaping that wevtutil
 // applies to embedded text (in particular, <Message> bodies).
+//
+// Uses html.UnescapeString because Security event Messages embed numeric
+// entities for indentation tabs (&#9;), unicode separators (&#160;), etc.
+// in addition to the named entities (&lt;, &gt;, &amp;, &quot;, &apos;).
+// A hand-rolled NewReplacer can't keep up with arbitrary numeric refs.
 func decodeXMLEntities(s string) string {
 	if s == "" {
 		return s
 	}
-	r := strings.NewReplacer(
-		"&lt;", "<",
-		"&gt;", ">",
-		"&quot;", `"`,
-		"&apos;", "'",
-		"&#13;", "\r",
-		"&#10;", "\n",
-		"&amp;", "&", // last so we don't double-decode &amp;lt; etc.
-	)
-	return r.Replace(s)
+	return html.UnescapeString(s)
 }
 
 func extractXMLValue(xml, tag string) string {
