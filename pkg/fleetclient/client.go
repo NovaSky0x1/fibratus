@@ -158,7 +158,7 @@ func New(config Config, dataDir string) (*Client, error) {
 	return c, nil
 }
 
-// parseGRPCAddr converts a URL like "https://edr.novasky.io" to "edr.novasky.io:443"
+// parseGRPCAddr converts a URL like "https://fleet.example.com" to "fleet.example.com:443"
 // gRPC traffic goes through Nginx on port 443, which proxies to the gRPC backend.
 func parseGRPCAddr(serverURL string) string {
 	addr := serverURL

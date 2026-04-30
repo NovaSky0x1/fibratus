@@ -152,7 +152,7 @@ func (e *WindowsExecutor) isolate(cmd *fleet.Command) (json.RawMessage, error) {
 	json.Unmarshal(cmd.Payload, &payload)
 
 	// Resolve fleet server IP — must be an actual IP for WFP filters.
-	// The server URL may be a hostname (e.g. edr.novasky.io) which WFP cannot use directly.
+	// The server URL may be a hostname (e.g. fleet.example.com) which WFP cannot use directly.
 	serverHost := strings.TrimPrefix(e.serverURL, "https://")
 	serverHost = strings.TrimPrefix(serverHost, "http://")
 	serverHost = strings.Split(serverHost, ":")[0]

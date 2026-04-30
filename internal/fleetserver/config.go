@@ -73,7 +73,7 @@ type ServerConfig struct {
 	Listen      string `yaml:"listen"`
 	TLSCert     string `yaml:"tls-cert"`
 	TLSKey      string `yaml:"tls-key"`
-	ExternalURL string `yaml:"external-url"` // Public URL for agent enrollment (e.g., https://edr.novasky.io)
+	ExternalURL string `yaml:"external-url"` // Public URL for agent enrollment (e.g., https://fleet.example.com)
 }
 
 // DeploymentConfig configures agent deployment.

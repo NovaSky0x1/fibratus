@@ -15,7 +15,7 @@ type InstallHandler struct {
 	tokens     store.EnrollmentTokenStore
 	accounts   store.AccountStore
 	orgs       store.OrgStore
-	serverURL  string // External URL (e.g., https://edr.novasky.io)
+	serverURL  string // External URL (e.g., https://fleet.example.com)
 	binaryPath string // Path to agent EXE on disk
 	installDir string // Target dir on endpoints
 }

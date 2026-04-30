@@ -301,7 +301,7 @@ Enabled linters: bodyclose, errcheck, goconst, goprintffuncname, govet, ineffass
 ## Fleet Management Server (`feat/fleet-server` branch)
 
 ### Overview
-Centralized EDR fleet management server — agents enroll, send heartbeats, stream telemetry, receive rules and commands from the server. Dashboard at `https://edr.novasky.io`.
+Centralized EDR fleet management server — agents enroll, send heartbeats, stream telemetry, receive rules and commands from the server.
 
 ### Architecture
 ```
@@ -340,7 +340,7 @@ Agent (Windows Service) → HTTPS → Nginx (:443, Let's Encrypt) → Go backend
 
 ### Agent Enrollment Flow
 1. Admin creates enrollment token in dashboard (Settings page)
-2. On endpoint: `fibratus enroll --token <TOKEN> --server https://edr.novasky.io`
+2. On endpoint: `fibratus enroll --token <TOKEN> --server https://fleet.example.com`
 3. Agent generates RSA key pair + CSR, server signs with org CA
 4. Certs + agent-id + org-id + server-url saved to `data/` directory
 5. On next service start, agent auto-detects enrollment data — zero config needed
