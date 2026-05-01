@@ -180,7 +180,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <aside className="fixed inset-y-0 left-0 z-20 w-64 sidebar-gradient dark:sidebar-gradient-dark flex flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center gap-3 px-6 border-b border-white/10">
-          <img src="/logo.png" alt="Fibratus" className="h-8 w-8" />
+          <img src="/fibratus.svg" alt="Fibratus" className="h-8 w-8" />
           <h1 className="text-xl font-bold tracking-tight text-white">
             Fibratus <span className="font-normal text-white/70">Fleet</span>
           </h1>

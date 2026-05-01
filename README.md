@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Fibratus Fleet" width="200">
+  <img src="logo.svg" alt="Fibratus Fleet" width="200">
 </p>
 
 <h1 align="center">Fibratus Fleet</h1>
