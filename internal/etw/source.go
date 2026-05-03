@@ -34,6 +34,7 @@ import (
 	"github.com/rabbitstack/fibratus/pkg/util/multierror"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sys/windows/registry"
+	"os"
 	"time"
 	"unsafe"
 )
@@ -290,7 +291,45 @@ func (e *EventSource) Open(config *config.Config) error {
 		}(t)
 	}
 
+	// Tamper-resistance watchdog: poll each ETW session and force the
+	// process to exit if any session is externally stopped (e.g.
+	// `logman stop SessionName -ets`). The service-watchdog process
+	// (pkg/fleet/tamper) detects the death and re-runs `sc start fibratus`,
+	// bringing up a fresh trace. Net effect: a one-shot tamper attempt
+	// blinds the agent for ~1-2s and then everything's back.
+	e.startTamperWatchdog()
+
 	return nil
+}
+
+// startTamperWatchdog polls every ETW session every 5 seconds and
+// hard-exits the process if one of them is no longer running. The
+// service watchdog will then restart the service with fresh sessions.
+// This is the last line of defense against an Admin/SYSTEM caller
+// who bypasses the service+process+ACL hardening by stopping the
+// kernel logger session directly.
+func (e *EventSource) startTamperWatchdog() {
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-e.stop:
+				return
+			case <-ticker.C:
+				if e.isClosed {
+					return
+				}
+				for _, t := range e.traces {
+					if t.IsRunning() {
+						continue
+					}
+					log.Errorf("tamper: ETW session [%s] is no longer running — likely externally stopped (logman/PowerShell). Forcing process exit so the service watchdog can restart with a fresh session.", t.Name)
+					os.Exit(1)
+				}
+			}
+		}
+	}()
 }
 
 // Close shutdowns all tracing sessions orderly. Firstly,
@@ -301,6 +340,12 @@ func (e *EventSource) Close() error {
 	if e.isClosed {
 		return nil
 	}
+
+	// Mark closed and signal the tamper watchdog to exit before we
+	// stop any sessions — otherwise the watchdog would see a stopped
+	// session during legitimate shutdown and force-exit the process.
+	e.isClosed = true
+	close(e.stop)
 
 	for _, consumer := range e.consumers {
 		if err := consumer.Close(); err != nil {
@@ -324,10 +369,6 @@ func (e *EventSource) Close() error {
 			log.Warnf("couldn't stop trace session for [%s]: %v", trace.Name, err)
 		}
 	}
-
-	close(e.stop)
-
-	e.isClosed = true
 
 	return e.sequencer.Shutdown()
 }
