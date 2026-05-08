@@ -126,8 +126,8 @@ if ($svcRunning) {
         }
     }
     # Wait for the process to actually exit so the registry isn't read again
-    # between our clear and the enroll write. ForEach-Object's `return` only
-    # skips one iteration, not the whole pipeline — use a for/break loop.
+    # between our clear and the enroll write. ForEach-Object's return only
+    # skips one iteration, not the whole pipeline -- use a for/break loop.
     for ($i = 0; $i -lt 20; $i++) {
         if (-not (Get-Process fibratus -ErrorAction SilentlyContinue)) { break }
         Start-Sleep -Milliseconds 500
