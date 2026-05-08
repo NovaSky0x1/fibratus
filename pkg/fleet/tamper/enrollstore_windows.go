@@ -129,18 +129,35 @@ type EnrollmentData struct {
 // with read-only access. If CreateKey fails because of that, take ownership
 // and widen the DACL so the elevated re-install can proceed; ProtectRegistryKeys
 // re-applies the lockdown after the rewrite.
+//
+// Stale values from a prior install are explicitly deleted before the new
+// values are written. Without this, a previous enrollment that left behind
+// values the new EnrollmentData doesn't supply (e.g., keys we no longer
+// write) would silently leak into the agent's identity. Clearing also
+// guarantees the OrgID/AgentID can never half-update — partial writes can't
+// produce a Frankenstein identity that mixes the prior and current enroll.
 func StoreEnrollment(data *EnrollmentData) error {
-	k, _, err := registry.CreateKey(registry.LOCAL_MACHINE, enrollmentKeyPath, registry.SET_VALUE)
+	k, _, err := registry.CreateKey(registry.LOCAL_MACHINE, enrollmentKeyPath, registry.SET_VALUE|registry.QUERY_VALUE)
 	if err != nil {
 		if isAccessDenied(err) {
 			unprotectEnrollmentKeys()
-			k, _, err = registry.CreateKey(registry.LOCAL_MACHINE, enrollmentKeyPath, registry.SET_VALUE)
+			k, _, err = registry.CreateKey(registry.LOCAL_MACHINE, enrollmentKeyPath, registry.SET_VALUE|registry.QUERY_VALUE)
 		}
 		if err != nil {
 			return fmt.Errorf("create enrollment registry key: %w", err)
 		}
 	}
 	defer k.Close()
+
+	if names, err := k.ReadValueNames(0); err == nil {
+		for _, n := range names {
+			if err := k.DeleteValue(n); err != nil {
+				log.Debugf("enrollment: clear stale value %s: %v", n, err)
+			}
+		}
+	} else {
+		log.Debugf("enrollment: enumerate values: %v", err)
+	}
 
 	values := map[string][]byte{
 		regServerURL: []byte(data.ServerURL),

@@ -100,30 +100,55 @@ if ($proc.ExitCode -ne 0) {
 }
 Write-Host "  MSI installation complete" -ForegroundColor Green
 
+# CRITICAL: stop the service and wipe stale enrollment registry BEFORE enroll.
+#
+# Without this guard the install races itself on any host that previously had
+# an agent: the WiX manifest historically had Start="install" so msiexec
+# auto-started the service the moment install finished. The service then
+# loaded the old (decommissioned) DPAPI enrollment from HKLM\SOFTWARE\Fibratus,
+# called the server, was told it was decommissioned, and self-uninstalled —
+# all in the seconds before the enroll step below could write fresh creds.
+#
+# The MSI itself is fixed (Start="install" removed in fibratus.wxs) but we
+# keep this belt-and-suspenders so a host running an older MSI still recovers.
+$svcRunning = (Get-Service fibratus -ErrorAction SilentlyContinue)
+if ($svcRunning) {
+    sc.exe config fibratus start= demand 2>&1 | Out-Null
+    if ($svcRunning.Status -ne 'Stopped') {
+        $stopJob = Start-Job -ScriptBlock { Stop-Service fibratus -Force -ErrorAction SilentlyContinue }
+        $finished = Wait-Job $stopJob -Timeout 10
+        Remove-Job $stopJob -Force -ErrorAction SilentlyContinue
+        if (-not $finished) {
+            Write-Host "  Service did not stop in 10s — force-killing the process." -ForegroundColor DarkYellow
+            Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            sc.exe stop fibratus 2>&1 | Out-Null
+            Start-Sleep -Seconds 2
+        }
+    }
+    # Wait for the process to actually exit so the registry isn't read again
+    # between our clear and the enroll write. ForEach-Object's `return` only
+    # skips one iteration, not the whole pipeline — use a for/break loop.
+    for ($i = 0; $i -lt 20; $i++) {
+        if (-not (Get-Process fibratus -ErrorAction SilentlyContinue)) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
+# Wipe any leftover enrollment data from a previous install on this host.
+# ProtectRegistryKeys() locks the keys to SYSTEM-only; the elevated MSI
+# context can take ownership and delete them.
+takeown /F "HKLM\SOFTWARE\Fibratus" /R 2>&1 | Out-Null
+icacls "HKLM\SOFTWARE\Fibratus" /grant "Administrators:F" /T 2>&1 | Out-Null
+Remove-Item HKLM:\SOFTWARE\Fibratus\Enrollment -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item HKLM:\SOFTWARE\Fibratus\State -Recurse -Force -ErrorAction SilentlyContinue
+
 # Enroll agent. Drop ErrorActionPreference to Continue around the native call:
 # fibratus writes info-level logs to stderr (logrus default), and PowerShell
 # under $ErrorActionPreference=Stop treats any stderr line from a native
 # command as a terminating NativeCommandError — which would abort the script
 # even on a successful exit-0 enrollment.
 Write-Host "[3/5] Enrolling agent..." -ForegroundColor Yellow
-
-# Stop the service if it's running. Stop-Service with -Force can hang
-# indefinitely waiting for ETW / fleet-client teardown — give it 10s, then
-# kill the process so enrollment isn't blocked by a stuck shutdown.
-$svcRunning = (Get-Service fibratus -ErrorAction SilentlyContinue)
-if ($svcRunning -and $svcRunning.Status -ne 'Stopped') {
-    $stopJob = Start-Job -ScriptBlock { Stop-Service fibratus -Force -ErrorAction SilentlyContinue }
-    $finished = Wait-Job $stopJob -Timeout 10
-    Remove-Job $stopJob -Force -ErrorAction SilentlyContinue
-    if (-not $finished) {
-        Write-Host "  Service did not stop in 10s — force-killing the process." -ForegroundColor DarkYellow
-        Get-Process fibratus -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        # Tell the SCM the service is gone so subsequent calls don't think
-        # the old process is still running.
-        sc.exe stop fibratus 2>&1 | Out-Null
-        Start-Sleep -Seconds 2
-    }
-}
 $prevAction = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
@@ -142,6 +167,9 @@ if ($enrollExit -ne 0) {
 # Start service. Capture the actual start error if it fails so the operator
 # isn't left with "Service status: Stopped" and no clue why.
 Write-Host "[4/5] Starting service..." -ForegroundColor Yellow
+# We forced start type to demand earlier to win the enroll-vs-start race.
+# Restore it to auto so the service boots with the host on subsequent reboots.
+sc.exe config fibratus start= auto 2>&1 | Out-Null
 try {
     Start-Service fibratus -ErrorAction Stop
 } catch {

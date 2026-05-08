@@ -46,7 +46,14 @@
           <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart"
               ThirdFailureActionType="restart" RestartServiceDelayInSeconds="10" />
         </ServiceInstall>
-        <ServiceControl Id="Fibratus" Name="Fibratus" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+        <!-- Service is registered Start="auto" so it boots with the host, but
+             we deliberately do NOT start it during install. The accompanying
+             install script (handler/install.go) runs `fibratus enroll` AFTER
+             the MSI completes; if the SCM auto-started the service here, it
+             would race the enroll step, read stale DPAPI enrollment from a
+             prior install, get decommissioned by the server, and self-uninstall
+             before fresh creds were ever written. -->
+        <ServiceControl Id="Fibratus" Name="Fibratus" Stop="both" Remove="uninstall" Wait="yes" />
       </Component>
     </ComponentGroup>
 

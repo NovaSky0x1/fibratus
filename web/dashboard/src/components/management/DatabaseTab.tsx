@@ -294,10 +294,21 @@ function ProfileCard({
           <label className={labelCls}>Host</label>
           <input
             value={draft.host}
-            onChange={e => patch({ host: e.target.value })}
-            placeholder={profile.name === 'cloud' ? 'abc123.us-east-1.aws.clickhouse.cloud' : 'localhost'}
+            onChange={e => {
+              // Strip a `:port` suffix if the user pasted a host:port string.
+              // Keeping it would produce "host:port:Port" downstream → too-many-colons.
+              const raw = e.target.value
+              const m = raw.match(/^(.*?):(\d+)\s*$/)
+              if (m) {
+                patch({ host: m[1], port: Number(m[2]) || draft.port })
+              } else {
+                patch({ host: raw })
+              }
+            }}
+            placeholder={profile.name === 'cloud' ? 'abc123.us-east-1.aws.clickhouse.cloud' : '127.0.0.1'}
             className={inputCls}
           />
+          <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-500">Hostname only — set the port in the field below.</p>
         </div>
         <div>
           <label className={labelCls}>Port</label>
@@ -326,29 +337,43 @@ function ProfileCard({
           />
         </div>
         <div>
-          <label className={labelCls}>Password</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className={`${labelCls} mb-0`}>Password</label>
+            {profile.has_password && !pwTouched && (
+              <button
+                type="button"
+                onClick={() => { patch({ password: '' }); setPwTouched(true) }}
+                className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline"
+                title="Clear the stored password (saves with no auth)"
+              >
+                Clear stored
+              </button>
+            )}
+          </div>
           <input
             type="password"
             value={draft.password ?? ''}
             onChange={e => { patch({ password: e.target.value }); setPwTouched(true) }}
-            placeholder={pwTouched ? '' : (profile.has_password ? '•••••• (stored)' : 'no password set')}
+            placeholder={pwTouched ? '(no password — will be saved with no auth)' : (profile.has_password ? '•••••• (stored)' : 'no password set')}
             className={inputCls}
           />
         </div>
       </div>
 
       <div className="mt-3 rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3">
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={draft.secure}
-            onChange={e => patch({ secure: e.target.checked })}
-            className="rounded border-gray-300 dark:border-slate-600"
-          />
-          <span>TLS</span>
-        </label>
+        <button
+          type="button"
+          onClick={() => patch({ secure: !draft.secure })}
+          className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${draft.secure ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200' : 'bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}
+          aria-pressed={draft.secure}
+        >
+          <span className="font-medium">TLS {draft.secure ? 'enabled' : 'disabled'}</span>
+          <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${draft.secure ? 'bg-amber-500' : 'bg-gray-300 dark:bg-slate-600'}`}>
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${draft.secure ? 'translate-x-4' : 'translate-x-1'}`} />
+          </span>
+        </button>
         {draft.secure && (
-          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer mt-2 ml-6">
+          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer mt-2 ml-1">
             <input
               type="checkbox"
               checked={draft.skip_verify}

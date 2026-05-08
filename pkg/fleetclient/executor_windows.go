@@ -501,6 +501,13 @@ $pc = (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
 if ($pc) { msiexec /x $pc /quiet /norestart 2>$null; Start-Sleep 3 }
 Remove-Item -Recurse -Force "%s" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "%s" -ErrorAction SilentlyContinue
+# Remove the Fibratus registry tree. ProtectRegistryKeys() locks these to
+# SYSTEM-only, so take ownership and grant Administrators full control before
+# deleting. Leaving stale enrollment values behind is what previously caused
+# a fresh re-install to be decommissioned by the server on first start.
+takeown /F "HKLM\SOFTWARE\Fibratus" /R 2>$null | Out-Null
+icacls "HKLM\SOFTWARE\Fibratus" /grant "Administrators:F" /T 2>$null | Out-Null
+Remove-Item -Recurse -Force HKLM:\SOFTWARE\Fibratus -ErrorAction SilentlyContinue
 # Remove PATH entry
 $path = [Environment]::GetEnvironmentVariable("PATH", "Machine")
 $newPath = ($path -split ";" | Where-Object { $_ -notlike "*Fibratus*" }) -join ";"

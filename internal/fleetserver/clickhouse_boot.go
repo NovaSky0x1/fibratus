@@ -39,60 +39,38 @@ import (
 //   - If no active profile is set, point at "local" so behaviour is identical
 //     to pre-migration boots.
 func (s *Server) migrateLegacyClickHouseConfig(ctx context.Context) error {
-	// Local profile.
+	// Local profile. Always seeded with safe self-hosted defaults. We deliberately
+	// ignore s.config.ClickHouse here: that YAML block historically pointed at a
+	// ClickHouse Cloud endpoint on some installs, and copying those values into
+	// the "local" slot meant the slot was never actually local — a fresh deploy
+	// could end up with both slots pointing at the same remote host. Always
+	// seeding 127.0.0.1:9000 plaintext makes "local" mean local for everyone
+	// who runs deploy/install-fleet-server.sh.
 	if _, err := s.profileStore.Get(ctx, ProfileLocal); errors.Is(err, postgres.ErrProfileNotFound) {
-		c := s.config.ClickHouse
-		// Sane defaults if YAML had nothing.
-		if c.Host == "" {
-			c.Host = "localhost"
-		}
-		if c.Port == 0 {
-			c.Port = 9000
-		}
-		if c.Database == "" {
-			c.Database = "fibratus"
-		}
-		if c.User == "" {
-			c.User = "default"
-		}
-		if c.MaxOpenConns == 0 {
-			c.MaxOpenConns = 20
-		}
-		if c.MaxIdleConns == 0 {
-			c.MaxIdleConns = 10
-		}
-		if c.ConnMaxLifetime == 0 {
-			c.ConnMaxLifetime = 3600
-		}
-		if c.DialTimeoutSecs == 0 {
-			c.DialTimeoutSecs = 10
-		}
 		local := &postgres.ClickHouseProfile{
 			Name:                ProfileLocal,
-			Enabled:             c.Enabled,
-			Host:                c.Host,
-			Port:                c.Port,
-			Database:            c.Database,
-			User:                c.User,
-			Secure:              c.Secure,
-			SkipVerify:          c.SkipVerify,
-			DialTimeoutSecs:     c.DialTimeoutSecs,
-			MaxOpenConns:        c.MaxOpenConns,
-			MaxIdleConns:        c.MaxIdleConns,
-			ConnMaxLifetimeSecs: c.ConnMaxLifetime,
+			Enabled:             true,
+			Host:                "127.0.0.1",
+			Port:                9000,
+			Database:            "default",
+			User:                "default",
+			Secure:              false,
+			SkipVerify:          false,
+			DialTimeoutSecs:     10,
+			MaxOpenConns:        20,
+			MaxIdleConns:        10,
+			ConnMaxLifetimeSecs: 3600,
 			UpdatedBy:           "boot-migration",
 		}
 		if err := s.profileStore.Upsert(ctx, local); err != nil {
 			return err
 		}
-		log.Info("fleet: seeded clickhouse profile 'local' from legacy YAML config")
+		log.Info("fleet: seeded clickhouse profile 'local' (127.0.0.1:9000, plaintext)")
 
-		// Copy password if one was present, either in YAML (already loaded
-		// into c.Password by initSecretStore) or in the legacy single-key
-		// secret. The single-key secret has already been deprecated; we
-		// keep this branch for installs that never went through the
-		// previous migration.
-		if c.Password != "" {
+		// If the legacy YAML had a password, preserve it under the new
+		// per-profile secret name so installs that did configure auth on
+		// localhost don't lose it across the migration.
+		if c := s.config.ClickHouse; c.Password != "" {
 			if err := s.secretStore.Set(ctx, SecretProfilePassword(ProfileLocal), c.Password, "boot-migration"); err != nil {
 				return err
 			}
